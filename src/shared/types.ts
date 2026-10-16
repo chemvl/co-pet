@@ -95,6 +95,8 @@ export interface ItemDetail extends ItemSummary {
   /** Absolute path of the stored blob. */
   filePath: string | null;
   events: ItemEvent[];
+  /** Live tasks converted from this item. */
+  tasks: TaskSummary[];
 }
 
 export interface Cursor { capturedAt: number; id: string }
@@ -115,7 +117,77 @@ export interface Counts {
   unsorted: number;
   pinned: number;
   byCategory: Record<string, number>;
+  tasksOpen: number;
+  tasksDoneToday: number;
+  taskDueSoon: boolean;
 }
+
+export interface NewTask {
+  title: string;
+  notes?: string;
+  /** 'YYYY-MM-DD' local calendar date. */
+  dueDate?: string;
+  /** 'HH:MM' local; requires dueDate. */
+  dueTime?: string;
+  priority?: number;
+  estimateMin?: number;
+  firstStep?: string;
+  sourceItemId?: string;
+}
+
+/** Absent = keep; `null` clears the nullable fields. */
+export interface TaskPatch {
+  title?: string;
+  notes?: string;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  priority?: number;
+  estimateMin?: number | null;
+  firstStep?: string | null;
+}
+
+export type TaskStatus = 'open' | 'done';
+
+/** `sourceTitle` is null once the source item is trashed; `categoryId` falls back to 'todo'. */
+export interface TaskSummary {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  dueDate: string | null;
+  dueTime: string | null;
+  priority: number;
+  estimateMin: number | null;
+  firstStep: string | null;
+  sourceItemId: string | null;
+  sourceTitle: string | null;
+  categoryId: CategoryId;
+  addedBy: string | null;
+  snoozedUntil: number | null;
+  doneAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' | 'trashed' | 'restored';
+
+export interface TaskEvent {
+  id: string;
+  at: number;
+  actor: 'user' | 'agent' | 'next';
+  clientId: string | null;
+  action: TaskAction;
+  /** JSON text of the changed columns before / after. */
+  beforeJson: string | null;
+  afterJson: string | null;
+  undoneAt: number | null;
+}
+
+export interface TaskDetail extends TaskSummary {
+  notes: string;
+  events: TaskEvent[];
+}
+
+export interface TaskQuery { view: TaskStatus; search?: string }
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface HitRegion extends Rect { kind: 'pet' | 'panel' }

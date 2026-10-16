@@ -4,7 +4,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, Tra
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-use crate::db::{categories, new_id, now_ms, search, Db};
+use crate::db::{categories, new_id, now_ms, search, tasks, undo, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::{
@@ -357,19 +357,6 @@ pub fn trash(conn: &mut Connection, ids: &[String]) -> AppResult<Vec<String>> {
     set_status(conn, ids, "trashed", true, "trash")
 }
 
-fn json_to_sql(v: &Value) -> SqlValue {
-    match v {
-        Value::Null => SqlValue::Null,
-        Value::Bool(b) => SqlValue::Integer(i64::from(*b)),
-        Value::Number(n) => match n.as_i64() {
-            Some(i) => SqlValue::Integer(i),
-            None => SqlValue::Real(n.as_f64().unwrap_or_default()),
-        },
-        Value::String(s) => SqlValue::Text(s.clone()),
-        other => SqlValue::Text(other.to_string()),
-    }
-}
-
 /// Restores the event's `before_json` onto its item and marks the event undone. Appends no new
 /// event. Undoing a user recategorize also retracts the `category_examples` row it taught.
 /// Returns the item id.
@@ -387,28 +374,15 @@ pub fn undo_event(conn: &mut Connection, event_id: &str) -> AppResult<String> {
     if ev.undone_at.is_some() {
         return Err(AppError::Code("alreadyUndone"));
     }
-    let before = match &ev.before_json {
-        Some(Value::Object(m)) => m,
-        _ => return Err(AppError::Code("notUndoable")),
-    };
     let now = now_ms();
-    let mut sets = Vec::new();
-    let mut values = vec![SqlValue::Text(ev.item_id.clone()), SqlValue::Integer(now)];
-    for (key, value) in before {
-        if UNDOABLE.contains(&key.as_str()) {
-            values.push(json_to_sql(value));
-            sets.push(format!("{key} = ?{}", values.len()));
-        }
-    }
-    if sets.is_empty() {
-        return Err(AppError::Code("notUndoable"));
-    }
-    tx.execute(
-        &format!(
-            "UPDATE items SET {}, updated_at = ?2 WHERE id = ?1",
-            sets.join(", ")
-        ),
-        params_from_iter(values),
+    undo::restore_before(
+        &tx,
+        "items",
+        "id",
+        &ev.item_id,
+        ev.before_json.as_ref(),
+        &UNDOABLE,
+        now,
     )?;
     if ev.action == "recategorize" && ev.actor == "user" {
         if let Some(cat) = ev
@@ -608,6 +582,7 @@ pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<
         extracted_text,
         file_path,
         events,
+        tasks: tasks::for_item(conn, id)?,
     })
 }
 
@@ -639,6 +614,7 @@ pub fn counts(conn: &Connection) -> AppResult<Counts> {
         c.by_category.insert(cat, n);
     }
     c.by_category.insert("unsorted".into(), c.unsorted);
+    (c.tasks_open, c.tasks_done_today, c.task_due_soon) = tasks::counts(conn, now_ms())?;
     Ok(c)
 }
 

@@ -2,7 +2,7 @@
 //! mirrors these structs field for field.
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 /// Built-in category ids in design-system order; `unsorted` is last. Users add more rows to
@@ -191,6 +191,8 @@ pub struct ItemDetail {
     /// Absolute path of the stored blob.
     pub file_path: Option<String>,
     pub events: Vec<ItemEvent>,
+    /// Live tasks converted from this item.
+    pub tasks: Vec<TaskSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,6 +235,9 @@ pub struct Counts {
     pub unsorted: i64,
     pub pinned: i64,
     pub by_category: BTreeMap<String, i64>,
+    pub tasks_open: i64,
+    pub tasks_done_today: i64,
+    pub task_due_soon: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -332,4 +337,110 @@ pub struct PetStatus {
     /// `"fullscreen" | "user"` or `None`.
     pub reason: Option<&'static str>,
     pub sleep: bool,
+}
+
+/// Who made a task change; maps to the `task_events.actor` / `client_id` columns. Not serialized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // constructed by the task commands (next M2 task)
+pub enum Actor {
+    User,
+}
+
+impl Actor {
+    /// `(actor, client_id)` column values.
+    pub fn columns(&self) -> (&'static str, Option<&str>) {
+        match self {
+            Actor::User => ("user", None),
+        }
+    }
+}
+
+/// `Some(None)` for an explicit `null`, `None` (via `#[serde(default)]`) when the key is absent.
+fn double_option<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(d).map(Some)
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewTask {
+    pub title: String,
+    pub notes: Option<String>,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub priority: Option<i64>,
+    pub estimate_min: Option<i64>,
+    pub first_step: Option<String>,
+    pub source_item_id: Option<String>,
+}
+
+/// Absent field = keep; for `Option<Option<_>>` fields, `null` = clear.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskPatch {
+    pub title: Option<String>,
+    pub notes: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub due_date: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub due_time: Option<Option<String>>,
+    pub priority: Option<i64>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub estimate_min: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub first_step: Option<Option<String>>,
+}
+
+/// `source_title` is NULL when there is no source or it is trashed/deleted; `category_id` is the
+/// source item's category, else `todo`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskSummary {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub priority: i64,
+    pub estimate_min: Option<i64>,
+    pub first_step: Option<String>,
+    pub source_item_id: Option<String>,
+    pub source_title: Option<String>,
+    pub category_id: String,
+    pub added_by: Option<String>,
+    pub snoozed_until: Option<i64>,
+    pub done_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskEvent {
+    pub id: String,
+    pub at: i64,
+    pub actor: String,
+    pub client_id: Option<String>,
+    pub action: String,
+    pub before_json: Option<String>,
+    pub after_json: Option<String>,
+    pub undone_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDetail {
+    #[serde(flatten)]
+    pub task: TaskSummary,
+    pub notes: String,
+    pub events: Vec<TaskEvent>,
+}
+
+/// `view`: `open | done`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskQuery {
+    pub view: String,
+    pub search: Option<String>,
 }

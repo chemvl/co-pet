@@ -91,18 +91,19 @@ fn app_name(url: &objc2_foundation::NSURL) -> Option<String> {
 // ---------- export ----------
 
 /// Writes `<dir>/Co-pet export <YYYY-MM-DD HHmm>/` with `items.json` (every column of every
-/// non-deleted item), `rules.json`, `categories.json` and `files/` (copies of stored files).
+/// non-deleted item), `tasks.json`, `rules.json`, `categories.json` and `files/` (copies of stored files).
 /// Returns the folder.
 pub fn export_all(app: &AppHandle, dir: &Path) -> AppResult<PathBuf> {
     if !dir.is_dir() {
         return Err(AppError::Code("notFound"));
     }
     let paths = app.state::<Paths>();
-    let (items, rules, categories) = {
+    let (items, tasks, rules, categories) = {
         let db = app.state::<Db>();
         let conn = db.conn();
         (
             rows_json(&conn, "SELECT * FROM items WHERE deleted_at IS NULL ORDER BY captured_at")?,
+            rows_json(&conn, "SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY created_at")?,
             rows_json(&conn, "SELECT * FROM rules WHERE deleted_at IS NULL ORDER BY builtin, position")?,
             rows_json(&conn, "SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY position, id")?,
         )
@@ -113,6 +114,7 @@ pub fn export_all(app: &AppHandle, dir: &Path) -> AppResult<PathBuf> {
     let files = out.join("files");
     std::fs::create_dir_all(&files)?;
     std::fs::write(out.join("items.json"), serde_json::to_vec_pretty(&items)?)?;
+    std::fs::write(out.join("tasks.json"), serde_json::to_vec_pretty(&tasks)?)?;
     std::fs::write(out.join("rules.json"), serde_json::to_vec_pretty(&rules)?)?;
     std::fs::write(out.join("categories.json"), serde_json::to_vec_pretty(&categories)?)?;
 

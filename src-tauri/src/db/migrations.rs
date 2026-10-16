@@ -173,5 +173,29 @@ DROP TABLE rules;
 ALTER TABLE rules_v2 RENAME TO rules;
 "#;
 
+/// Schema v3: local tasks and their history.
+const V3: &str = r#"
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
+  due_date TEXT,                 -- 'YYYY-MM-DD' local calendar date
+  due_time TEXT,                 -- 'HH:MM' local; NULL = any time that day
+  priority INTEGER NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 3),
+  estimate_min INTEGER,
+  first_step TEXT,
+  source_item_id TEXT REFERENCES items(id),
+  added_by TEXT,                 -- mcp_clients.id; NULL = the user
+  snoozed_until INTEGER, done_at INTEGER,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER);
+CREATE INDEX tasks_open ON tasks(status, due_date) WHERE deleted_at IS NULL;
+CREATE INDEX tasks_source ON tasks(source_item_id) WHERE deleted_at IS NULL;
+CREATE TABLE task_events (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), at INTEGER NOT NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user','agent','next')), client_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('created','edited','done','reopened','snoozed','trashed','restored')),
+  before_json TEXT, after_json TEXT, undone_at INTEGER, updated_at INTEGER NOT NULL);
+CREATE INDEX task_events_task ON task_events(task_id, at DESC);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> =
-    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2)]));
+    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3)]));

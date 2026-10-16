@@ -1,15 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { save } from '@tauri-apps/plugin-dialog';
 import { useEffect, useId, useState, type ReactElement } from 'react';
 import { Button } from '../../../ds';
 import { useT } from '../../../shared/i18n';
 import {
-  confirmRecoveryKey, createRecoveryKey, deleteCloudData, enterRecoveryKey, on, sendEmailCode, signInGoogle, signOut,
-  verifyEmailCode, writeTextFile,
+  confirmRecoveryKey, copyConcealedText, createRecoveryKey, deleteCloudData, enterRecoveryKey, on, saveTextFile,
+  sendEmailCode, signInGoogle, signOut, verifyEmailCode,
 } from '../../../shared/ipc';
 import { ACCOUNT_KEY, useAccountStatus, useSetSetting, useSetting } from '../../../shared/queries';
 import { useToast } from '../../../shared/Toast';
 import type { AccountStatus } from '../../../shared/types';
+import { QueryState } from '../../InboxPage';
 import { Group, SettingRow, TypedConfirmDialog, useCopied } from '../parts';
 import { accountError, accountView } from './account';
 
@@ -19,12 +19,15 @@ const KEY_FILE_NAME = 'Co-pet recovery key.txt';
 interface Run {
   busy: boolean;
   run: (op: () => Promise<unknown>) => Promise<boolean>;
+  /** Shows `e` as the section's error and re-reads the status. */
+  fail: (e: unknown) => void;
 }
 
 export function AccountSection({ onNavigate }: { onNavigate: (route: string) => void }): ReactElement | null {
   const t = useT();
   const qc = useQueryClient();
-  const { data: status } = useAccountStatus();
+  const statusQuery = useAccountStatus();
+  const status = statusQuery.data;
   const localOnly = useSetting<boolean>('privacy.localOnly', false);
   const [busy, setBusy] = useState(false);
   // Kept across state changes: `keyExists` is meant to be read on the recovery-key view it leads to.
@@ -35,6 +38,12 @@ export function AccountSection({ onNavigate }: { onNavigate: (route: string) => 
     void qc.invalidateQueries({ queryKey: ACCOUNT_KEY });
   }, [qc, localOnly]);
 
+  const fail: Run['fail'] = (e) => {
+    setError(accountError(t, e));
+    // A refused step may mean the state moved (signed out, another Mac turned sync on).
+    void qc.invalidateQueries({ queryKey: ACCOUNT_KEY });
+  };
+
   const run: Run['run'] = async (op) => {
     setBusy(true);
     setError(null);
@@ -42,16 +51,14 @@ export function AccountSection({ onNavigate }: { onNavigate: (route: string) => 
       await op();
       return true;
     } catch (e) {
-      setError(accountError(t, e));
-      // A refused step may mean the state moved (signed out, another Mac turned sync on).
-      void qc.invalidateQueries({ queryKey: ACCOUNT_KEY });
+      fail(e);
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  if (!status) return null;
+  if (!status) return <QueryState q={statusQuery} loading={t('settings.account.loading')} />;
   const view = accountView(status);
   if (view === 'notConfigured') {
     return (
@@ -61,7 +68,7 @@ export function AccountSection({ onNavigate }: { onNavigate: (route: string) => 
     );
   }
 
-  const r: Run = { busy, run };
+  const r: Run = { busy, run, fail };
   return (
     <>
       {localOnly ? (
@@ -194,28 +201,27 @@ function NeedsSetup({ status, r }: { status: AccountStatus; r: Run }): ReactElem
   const checkId = useId();
   const [key, setKey] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [copied, copy] = useCopied();
-  const { run } = r;
+  const [copied, copy] = useCopied(copyConcealedText);
+  const { run, fail } = r;
 
-  // A new key each time the view opens; nothing is stored until Turn on sync.
+  // A new key each time the view opens; nothing is stored until Turn on sync. Not through `run`:
+  // StrictMode's second mount would end the first call's busy state while its own is in flight.
   useEffect(() => {
     let live = true;
-    void run(async () => {
-      const text = await createRecoveryKey();
-      if (live) setKey(text);
-    });
+    createRecoveryKey().then(
+      (text) => live && setKey(text),
+      (e) => live && fail(e),
+    );
     return () => {
       live = false;
     };
   }, []);
 
-  const saveFile = async (text: string) => {
-    const path = await save({ defaultPath: KEY_FILE_NAME });
-    if (!path) return;
-    if (await run(() => writeTextFile(path, text))) {
-      toast.show({ message: t('settings.account.savedFile', { file: path.split('/').pop() ?? path }) });
-    }
-  };
+  const saveFile = (text: string) =>
+    run(async () => {
+      const file = await saveTextFile(KEY_FILE_NAME, text);
+      if (file) toast.show({ message: t('settings.account.savedFile', { file }) });
+    });
 
   return (
     <Group title={t('settings.account.setupTitle')}>
@@ -290,10 +296,17 @@ function Ready({ status, r }: { status: AccountStatus; r: Run }): ReactElement {
 
   const saveName = async () => {
     const next = name.trim();
-    if (next === status.deviceName) return;
-    // Empty goes back to the Mac's host name.
-    await set('sync.deviceName', next || null);
-    void qc.invalidateQueries({ queryKey: ACCOUNT_KEY });
+    if (next !== status.deviceName) {
+      try {
+        // Empty goes back to the Mac's host name.
+        await set('sync.deviceName', next || null);
+        await qc.invalidateQueries({ queryKey: ACCOUNT_KEY });
+      } catch (e) {
+        r.fail(e);
+      }
+    }
+    // The field shows the saved name even when the status didn't change (cleared while unset).
+    setName(qc.getQueryData<AccountStatus>(ACCOUNT_KEY)?.deviceName ?? status.deviceName);
   };
 
   return (

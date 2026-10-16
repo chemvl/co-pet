@@ -439,6 +439,7 @@ export const vi: Record<keyof typeof en, string> = {
   'settings.data.deletePrompt': 'Nhập “{phrase}” để xác nhận.',
   'settings.data.deletePhrase': 'xóa tất cả',
   'settings.data.deleteFailed': 'Không xóa được — {reason}.',
+  'settings.account.loading': 'Đang tải tài khoản',
   'settings.account.notConfigured': 'Bản này chưa thiết lập đồng bộ.',
   'settings.account.localOnly': 'Tắt Chế độ chỉ trên máy trong Quyền riêng tư để đăng nhập.',
   'settings.account.openPrivacy': 'Mở Quyền riêng tư',

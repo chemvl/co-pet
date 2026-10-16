@@ -743,9 +743,16 @@ pub async fn delete_cloud_data(app: AppHandle, confirmation: String) -> AppResul
     crate::account::delete_cloud_data(&app, &confirmation).await
 }
 
-/// Writes `text` to the file the user just picked in a save dialog. Rejects with `invalid` for
-/// any other path.
+/// Shows the save panel at `default_name` and writes `text` to the picked file; the file name,
+/// or `None` when cancelled.
 #[tauri::command]
-pub fn write_text_file(app: AppHandle, path: String, text: String) -> AppResult<()> {
-    crate::data::write_text_file(&app, &path, &text)
+pub async fn save_text_file(app: AppHandle, default_name: String, text: String) -> AppResult<Option<String>> {
+    crate::data::save_text_file(&app, &default_name, &text).await
+}
+
+/// Copies a secret (the recovery key) marked concealed and transient, so Save clipboard and
+/// clipboard managers skip it.
+#[tauri::command]
+pub async fn copy_concealed_text(app: AppHandle, text: String) -> AppResult<()> {
+    crate::platform::macos::pasteboard::write_concealed_text(&app, text).await
 }

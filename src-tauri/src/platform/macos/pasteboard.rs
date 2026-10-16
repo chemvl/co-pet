@@ -104,6 +104,21 @@ pub async fn write_on_main(
     super::on_main(app, move |_| write(&files, &data, png.as_deref())).await?
 }
 
+/// `text` as plain text marked concealed and transient (nspasteboard.org), so Save clipboard and
+/// clipboard managers don't keep it.
+fn concealed_text(text: &str) -> BTreeMap<String, String> {
+    BTreeMap::from([
+        (TYPE_PLAIN.to_string(), text.to_string()),
+        (TYPE_CONCEALED.to_string(), String::new()),
+        (TYPE_TRANSIENT.to_string(), String::new()),
+    ])
+}
+
+/// Copies a secret (the recovery key) to the general pasteboard; see [`concealed_text`].
+pub async fn write_concealed_text(app: &AppHandle, text: String) -> AppResult<()> {
+    write_on_main(app, Vec::new(), concealed_text(&text), None).await
+}
+
 fn read_from(pb: &NSPasteboard) -> PbRead {
     let change_count = pb.changeCount();
     let types: Vec<String> =
@@ -235,4 +250,21 @@ fn write_to(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concealed_text_is_skipped_by_clipboard_capture() {
+        // A private pasteboard, so the test leaves the user's clipboard alone.
+        let pb = NSPasteboard::pasteboardWithUniqueName();
+        write_to(&pb, &[], &concealed_text("ABCD-EFGH"), None).unwrap();
+        let read = read_from(&pb);
+        // `capture::clipboard::run` skips a board that reads as concealed.
+        assert!(read.concealed());
+        assert!(read.types.iter().any(|t| t == TYPE_TRANSIENT));
+        assert!(matches!(read.content, Some(PbContent::Text { ref plain, .. }) if plain == "ABCD-EFGH"));
+    }
 }

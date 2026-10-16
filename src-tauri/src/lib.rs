@@ -196,7 +196,8 @@ pub fn run() {
             commands::enter_recovery_key,
             commands::sign_out,
             commands::delete_cloud_data,
-            commands::write_text_file,
+            commands::save_text_file,
+            commands::copy_concealed_text,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

@@ -182,8 +182,11 @@ export function Dialog(p: {
 
 const COPIED_MS = 1500;
 
-/** A button label that reads "Copied" for a moment after `copy` succeeds. */
-export function useCopied(): [boolean, (text: string) => void] {
+/** A button label that reads "Copied" for a moment after `copy` succeeds. `write` defaults to the
+ *  plain clipboard; secrets pass `copyConcealedText`. */
+export function useCopied(
+  write: (text: string) => Promise<void> = (text) => navigator.clipboard.writeText(text),
+): [boolean, (text: string) => void] {
   const t = useT();
   const { show } = useToast();
   const [copied, setCopied] = useState(false);
@@ -193,7 +196,7 @@ export function useCopied(): [boolean, (text: string) => void] {
     return () => window.clearTimeout(id);
   }, [copied]);
   const copy = (text: string) => {
-    navigator.clipboard.writeText(text).then(
+    write(text).then(
       () => setCopied(true),
       (e) => show({ message: errorMessage(t, e) }),
     );

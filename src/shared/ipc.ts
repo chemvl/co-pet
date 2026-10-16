@@ -193,8 +193,12 @@ export const enterRecoveryKey = (key: string) => invoke<void>('enter_recovery_ke
 export const signOut = () => invoke<void>('sign_out');
 /** Rejects with `"confirmation"`, `"signedOut"`, `"localOnly"`, `"notConfigured"` or `"network"`. */
 export const deleteCloudData = (confirmation: string) => invoke<void>('delete_cloud_data', { confirmation });
-/** Writes `text` to the file just picked in a save dialog. Rejects with `"invalid"` for any other path. */
-export const writeTextFile = (path: string, text: string) => invoke<void>('write_text_file', { path, text });
+/** Shows the save panel at `defaultName` and writes `text` to the picked file. The file name, or
+ *  `null` when cancelled. */
+export const saveTextFile = (defaultName: string, text: string) =>
+  invoke<string | null>('save_text_file', { defaultName, text });
+/** Copies a secret marked concealed and transient, so clipboard capture and managers skip it. */
+export const copyConcealedText = (text: string) => invoke<void>('copy_concealed_text', { text });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

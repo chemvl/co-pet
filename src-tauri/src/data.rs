@@ -201,27 +201,22 @@ fn unique_dir(dir: &Path, base: &str) -> PathBuf {
 
 // ---------- save as file ----------
 
-/// Writes `text` to `path`, which must be the file the user just picked in a save dialog (the
-/// dialog plugin adds it to the asset scope); never a path in Co-pet's own folder. Error
-/// `invalid` for any other path. The text is never logged.
-pub fn write_text_file(app: &AppHandle, path: &str, text: &str) -> AppResult<()> {
-    let path = Path::new(path);
-    let picked = app.asset_protocol_scope().is_allowed(path);
-    if !may_write(path, &app.state::<Paths>().root, picked) {
-        return Err(AppError::Code("invalid"));
+/// Shows the save panel (starting at `default_name`) and writes `text` to the file the user
+/// picks; no path comes from the webview. Returns the saved file's name, `None` when cancelled.
+/// The text is never logged.
+pub async fn save_text_file(app: &AppHandle, default_name: &str, text: &str) -> AppResult<Option<String>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app.dialog().file().set_file_name(default_name);
+    if let Some(home) = app.get_webview_window(windows::HOME) {
+        dialog = dialog.set_parent(&home);
     }
-    std::fs::write(path, text)?;
-    Ok(())
-}
-
-/// An absolute file path, without `..`, outside Co-pet's folder (whose files the asset scope
-/// allows anyway), that the save dialog `picked`.
-fn may_write(path: &Path, app_root: &Path, picked: bool) -> bool {
-    picked
-        && path.is_absolute()
-        && !path.components().any(|c| c == std::path::Component::ParentDir)
-        && !path.starts_with(app_root)
-        && !path.is_dir()
+    dialog.save_file(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let Some(picked) = rx.await.ok().flatten() else { return Ok(None) };
+    let path = picked.into_path().map_err(|e| AppError::msg(e.to_string()))?;
+    std::fs::write(&path, text)?;
+    Ok(Some(path.file_name().map_or_else(|| default_name.to_string(), |n| n.to_string_lossy().into_owned())))
 }
 
 // ---------- delete everything ----------
@@ -276,25 +271,8 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use super::{may_write, phrase_ok, CONFIRMATIONS};
+    use super::{phrase_ok, CONFIRMATIONS};
     use crate::account::CLOUD_PHRASES;
-
-    #[test]
-    fn writes_only_the_picked_file_outside_the_app_folder() {
-        let root = Path::new("/Users/u/Library/Application Support/com.copet.app");
-        let file = Path::new("/Users/u/Documents/Co-pet recovery key.txt");
-        assert!(may_write(file, root, true));
-        // Not picked in the save dialog.
-        assert!(!may_write(file, root, false));
-        // Co-pet's own files are in the asset scope already.
-        assert!(!may_write(&root.join("library/x.txt"), root, true));
-        assert!(!may_write(Path::new("relative.txt"), root, true));
-        assert!(!may_write(Path::new("/Users/u/Documents/../Library/x.txt"), root, true));
-        let dir = std::env::temp_dir();
-        assert!(!may_write(&dir, root, true));
-    }
 
     #[test]
     fn confirmation_accepts_both_languages_however_typed() {

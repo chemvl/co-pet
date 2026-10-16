@@ -438,6 +438,7 @@ export const en = {
   'settings.data.deletePrompt': 'Type “{phrase}” to confirm.',
   'settings.data.deletePhrase': 'delete everything',
   'settings.data.deleteFailed': "Couldn't delete — {reason}.",
+  'settings.account.loading': 'Loading account',
   'settings.account.notConfigured': "Sync isn't set up in this build.",
   'settings.account.localOnly': 'Turn off Local-only mode in Privacy to sign in.',
   'settings.account.openPrivacy': 'Open Privacy',

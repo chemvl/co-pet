@@ -2,8 +2,11 @@
 //! of the monitor it is on; the frontend draws the pet and its panels inside it and reports hit
 //! regions so everything else clicks through (see `platform::macos::pointer`).
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
-use objc2::MainThreadMarker;
+use objc2::{sel, MainThreadMarker};
+use objc2_app_kit::{NSApplication, NSWindow};
+use objc2_foundation::NSObjectProtocol;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{
@@ -20,7 +23,7 @@ use crate::events;
 use crate::model::{Placement, Rect};
 use crate::platform::macos::pointer::{self, PointerState};
 use crate::platform::macos::screens::{self, Screen};
-use crate::platform::macos::on_main_sync;
+use crate::platform::macos::{on_main, on_main_sync};
 
 pub const PET: &str = "pet";
 pub const HOME: &str = "home";
@@ -289,6 +292,7 @@ pub fn open_home(app: &AppHandle, route: Option<String>) -> AppResult<()> {
         window.unminimize()?;
         window.show()?;
         window.set_focus()?;
+        bring_to_front(&window);
         if let Some(route) = route {
             app.emit_to(HOME, events::NAVIGATE, events::Navigate { route })?;
         }
@@ -301,6 +305,7 @@ pub fn open_home(app: &AppHandle, route: Option<String>) -> AppResult<()> {
         .build()?;
     track_activation_policy(&window);
     window.set_focus()?;
+    bring_to_front(&window);
     Ok(())
 }
 
@@ -310,7 +315,9 @@ pub fn open_onboarding(app: &AppHandle) -> AppResult<()> {
     if let Some(window) = app.get_webview_window(ONBOARDING) {
         window.unminimize()?;
         window.show()?;
-        return Ok(window.set_focus()?);
+        window.set_focus()?;
+        bring_to_front(&window);
+        return Ok(());
     }
     let window = overlay_window(app, ONBOARDING, "onboarding.html")
         .inner_size(960.0, 640.0)
@@ -319,7 +326,56 @@ pub fn open_onboarding(app: &AppHandle) -> AppResult<()> {
         .build()?;
     track_activation_policy(&window);
     window.set_focus()?;
+    bring_to_front(&window);
     Ok(())
+}
+
+/// When the deferred activation runs, and when it is retried if Co-pet still isn't active.
+const FRONT_DELAYS: [Duration; 2] = [Duration::from_millis(80), Duration::from_millis(250)];
+
+/// Activates Co-pet and brings `window` to front on later main-loop turns. Opened from the
+/// menu-bar status menu, the immediate `set_focus` runs while the menu is still tracking and the
+/// menu's close leaves the previous app frontmost; activating after the menu has closed sticks.
+/// The first try uses the cooperative `activate` (macOS 14+), the retry forces it.
+fn bring_to_front(window: &WebviewWindow) {
+    let window = window.clone();
+    tauri::async_runtime::spawn(async move {
+        for (attempt, delay) in FRONT_DELAYS.into_iter().enumerate() {
+            tokio::time::sleep(delay).await;
+            let target = window.clone();
+            let app = window.app_handle().clone();
+            match on_main(&app, move |mtm| front_now(mtm, &target, attempt)).await {
+                Ok(false) => continue,
+                Ok(true) => break,
+                Err(e) => {
+                    eprintln!("[windows] bring to front: {e}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+/// One activation attempt; true once Co-pet is active with `window` key (or the window is gone).
+fn front_now(mtm: MainThreadMarker, window: &WebviewWindow, attempt: usize) -> bool {
+    let Ok(ptr) = window.ns_window() else { return true };
+    // SAFETY: tauri's NSWindow for a live window, used on the main thread.
+    let ns: &NSWindow = unsafe { &*ptr.cast::<NSWindow>() };
+    let nsapp = NSApplication::sharedApplication(mtm);
+    if nsapp.isActive() && ns.isKeyWindow() {
+        return true;
+    }
+    #[cfg(debug_assertions)]
+    eprintln!("[windows] {}: activating (attempt {}, active={})", window.label(), attempt + 1, nsapp.isActive());
+    if attempt == 0 && nsapp.respondsToSelector(sel!(activate)) {
+        nsapp.activate();
+    } else {
+        #[allow(deprecated)]
+        nsapp.activateIgnoringOtherApps(true);
+        ns.orderFrontRegardless();
+    }
+    ns.makeKeyAndOrderFront(None);
+    false
 }
 
 /// A titled window whose content runs under a transparent title bar: native traffic lights over

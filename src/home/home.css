@@ -24,7 +24,7 @@ body { margin: 0; overflow: hidden; background: var(--surface); color: var(--ink
 .hm-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ---------- title bar ---------- */
-.hm-titlebar { flex: none; height: 44px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 440px) minmax(0, 1fr); align-items: center; gap: var(--space-4); padding: 0 var(--space-4) 0 78px; background: var(--surface-sunken); border-bottom: 1px solid var(--line); user-select: none; -webkit-user-select: none; }
+.hm-titlebar { flex: none; height: 44px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 440px) minmax(0, 1fr); align-items: center; gap: var(--space-4); padding: 0 var(--space-4) 0 88px; background: var(--surface-sunken); border-bottom: 1px solid var(--line); user-select: none; -webkit-user-select: none; }
 .hm-titlebar__lead { display: flex; align-items: baseline; gap: var(--space-4); min-width: 0; }
 .hm-titlebar__wm { flex: none; font: 700 17px/24px var(--font-display); color: var(--ink); }
 .hm-titlebar__crumb { font: 500 13px/20px var(--font-sans); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

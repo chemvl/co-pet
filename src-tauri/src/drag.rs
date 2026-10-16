@@ -19,6 +19,7 @@ const PASTE_DELAY: Duration = Duration::from_millis(120);
 const COPY_PNG_MAX_SOURCE: u64 = 40 * 1024 * 1024;
 
 pub async fn prepare_drag(app: &AppHandle, ids: Vec<String>, as_files: bool) -> AppResult<DragPlan> {
+    crate::platform::macos::drop_target::mark_own_drag();
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let rows = items::get_rows(&handle.state::<Db>().conn(), &ids)?;

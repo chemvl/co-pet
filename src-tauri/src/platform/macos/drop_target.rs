@@ -14,9 +14,10 @@
 //! dragging protocol synchronously: `Copy` inside the halo for drags from other apps, nothing
 //! otherwise; on drop it reads the drag pasteboard and starts the capture. Spring-loading is
 //! disabled on the view, and since macOS still activates the destination's app when a drag rests
-//! on a window, an activation of Co-pet during a drag is handed back to the source app.
+//! on a window, an activation of Co-pet during a drag is handed back to the source app. Co-pet's
+//! own tray drag-outs are left alone while they run and hand activation back once at the end.
 use std::cell::{Cell, RefCell};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
@@ -51,6 +52,14 @@ thread_local! {
     static DRAGGING: Cell<bool> = const { Cell::new(false) };
     /// The source app to hand activation back to, and until when (see `set_dragging`).
     static GUARD: Cell<Option<(i32, Instant)>> = const { Cell::new(None) };
+    /// The current drag is Co-pet's own tray drag-out (see `mark_own_drag`).
+    static OWN: Cell<bool> = const { Cell::new(false) };
+    /// The app that was frontmost when the own drag-out started.
+    static OWN_FRONT: Cell<Option<i32>> = const { Cell::new(None) };
+    /// After an own drag-out: the app to give activation back to, and from when.
+    static OWN_RESTORE: Cell<Option<(i32, Instant)>> = const { Cell::new(None) };
+    /// Whether Co-pet was the active app at the last check, so each activation is handled once.
+    static WAS_ACTIVE: Cell<bool> = const { Cell::new(false) };
     /// The catcher panel (the pet panel's drop view is retained by its content view).
     static CATCHER: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) };
 }
@@ -105,6 +114,9 @@ define_class!(
     unsafe impl NSDraggingDestination for DropView {
         #[unsafe(method(draggingEntered:))]
         fn dragging_entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
+            if OWN.get() || sender.draggingSource().is_some() {
+                return NSDragOperation::None;
+            }
             SOURCE.with_borrow_mut(|s| {
                 if s.is_none() {
                     *s = frontmost::frontmost_app();
@@ -240,38 +252,104 @@ pub fn place_catcher(mtm: MainThreadMarker, pet: &NSWindow, rect: Option<Rect>) 
 
 /// How long after a drag ends Co-pet still gives activation back to the drag's source app.
 const GUARD_AFTER: Duration = Duration::from_millis(1500);
+/// How recent a `mark_own_drag` must be for the next drag to count as Co-pet's own.
+const OWN_MARK_WINDOW: Duration = Duration::from_secs(3);
+/// How long after an own drag-out ends activation is given back (lets the drop settle).
+const OWN_RESTORE_AFTER: Duration = Duration::from_millis(250);
 
-/// Hands any activation of Co-pet back to `source` until `GUARD_AFTER` from now.
+/// Set by `mark_own_drag` (any thread): when, and the app that was frontmost then.
+static OWN_MARK: Mutex<Option<(Instant, Option<i32>)>> = Mutex::new(None);
+
+/// Called when the frontend prepares a tray drag-out, just before it starts the OS drag: the next
+/// drag the pointer loop sees is Co-pet's own. Records the user's app, which the non-activating
+/// pet panel left frontmost.
+pub fn mark_own_drag() {
+    let own = std::process::id() as i32;
+    let front = frontmost::frontmost_app().map(|a| a.pid).filter(|&pid| pid != own);
+    *OWN_MARK.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), front));
+}
+
+/// Hands any activation of Co-pet back to `source` until `GUARD_AFTER` from now. Arming a fresh
+/// guard treats an already active Co-pet as a new activation.
 fn arm_guard(source: Option<&FrontApp>) {
     let own = std::process::id() as i32;
     if let Some(pid) = source.map(|s| s.pid).filter(|&pid| pid != own) {
-        GUARD.set(Some((pid, Instant::now() + GUARD_AFTER)));
+        if GUARD.replace(Some((pid, Instant::now() + GUARD_AFTER))).is_none() {
+            WAS_ACTIVE.set(false);
+        }
+    }
+}
+
+fn begin_drag() {
+    let mark = OWN_MARK.lock().unwrap_or_else(|e| e.into_inner()).take();
+    match mark.filter(|(at, _)| at.elapsed() < OWN_MARK_WINDOW) {
+        Some((_, front)) => {
+            OWN.set(true);
+            OWN_FRONT.set(front);
+            OWN_RESTORE.set(None);
+            GUARD.set(None);
+            #[cfg(debug_assertions)]
+            eprintln!("[drop] own drag-out started (front pid {front:?})");
+        }
+        None => {
+            OWN.set(false);
+            SOURCE.set(frontmost::frontmost_app());
+        }
+    }
+}
+
+fn end_drag() {
+    if OWN.replace(false) {
+        OWN_RESTORE.set(OWN_FRONT.take().map(|pid| (pid, Instant::now() + OWN_RESTORE_AFTER)));
+    }
+}
+
+fn give_back(pid: i32, why: &str) {
+    if let Some(source) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
+        let ok = source.activateWithOptions(NSApplicationActivationOptions::empty());
+        #[cfg(debug_assertions)]
+        eprintln!("[drop] {why}: gave activation back to pid {pid}: {ok}");
+        let _ = (ok, why);
     }
 }
 
 /// Called by the pointer loop every tick. Records the source app when a drag starts, and keeps
 /// Co-pet from taking over: when a drag rests on the catcher, macOS activates the window's app
 /// (the same hover activation Chrome does), which for the accessory Co-pet means losing the
-/// user's app. While a drag is on and briefly after, an activation of Co-pet is handed straight
-/// back to the source app, unless Home or Onboarding (`may_restore` false) is open.
+/// user's app. While a drag is on and briefly after, each activation of Co-pet is handed back to
+/// the source app once, unless Home or Onboarding (`may_restore` false) is open. Co-pet's own
+/// drag-outs are not fought tick by tick: once one ends, activation goes back once to the app
+/// that was frontmost when it started.
 pub fn set_dragging(mtm: MainThreadMarker, dragging: bool, may_restore: bool) {
-    if DRAGGING.replace(dragging) != dragging && dragging {
-        SOURCE.set(frontmost::frontmost_app());
+    if DRAGGING.replace(dragging) != dragging {
+        if dragging {
+            begin_drag();
+        } else {
+            end_drag();
+        }
     }
-    if dragging {
+    if dragging && !OWN.get() {
         SOURCE.with_borrow(|s| arm_guard(s.as_ref()));
+    }
+    let active = NSApplication::sharedApplication(mtm).isActive();
+    let became_active = active && !WAS_ACTIVE.replace(active);
+    if OWN.get() {
+        return;
+    }
+    if let Some((pid, at)) = OWN_RESTORE.get().filter(|_| !dragging) {
+        if Instant::now() >= at {
+            OWN_RESTORE.set(None);
+            if may_restore && active {
+                give_back(pid, "drag-out ended");
+            }
+        }
     }
     let Some((pid, until)) = GUARD.get() else { return };
     if Instant::now() >= until {
         GUARD.set(None);
         return;
     }
-    if may_restore && NSApplication::sharedApplication(mtm).isActive() {
-        if let Some(source) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) {
-            let ok = source.activateWithOptions(NSApplicationActivationOptions::empty());
-            #[cfg(debug_assertions)]
-            eprintln!("[drop] gave activation back to pid {pid}: {ok}");
-            let _ = ok;
-        }
+    if may_restore && became_active {
+        give_back(pid, "drag");
     }
 }

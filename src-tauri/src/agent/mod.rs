@@ -4,6 +4,7 @@
 //! touch SQLite.
 pub mod activity;
 pub mod clients;
+pub mod http;
 mod socket;
 pub mod tools;
 
@@ -24,8 +25,8 @@ use crate::paths::Paths;
 /// At most one `glance` reaction per this gap.
 const GLANCE_GAP: Duration = Duration::from_secs(5);
 
-/// Deletes activity older than 90 days and starts the socket. Needs `Paths`, `Db` and the
-/// export queue managed.
+/// Deletes activity older than 90 days, starts the socket and the local HTTP server
+/// ([`http`]). Needs `Paths`, `Db` and the export queue managed.
 pub fn start(app: &AppHandle) {
     match activity::prune(&app.state::<Db>().conn(), now_ms()) {
         Ok(0) => {}
@@ -33,6 +34,7 @@ pub fn start(app: &AppHandle) {
         Err(e) => eprintln!("[agent] prune failed: {e}"),
     }
     socket::start(app);
+    http::start(app);
 }
 
 /// The running app as the tools' [`tools::Host`].

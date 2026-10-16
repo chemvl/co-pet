@@ -6,8 +6,8 @@
   "build": {
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist",
-    "beforeDevCommand": "bun run dev",
-    "beforeBuildCommand": "bun run build"
+    "beforeDevCommand": "bun run build:mcp && bun run dev",
+    "beforeBuildCommand": "bun run build:mcp && bun run build"
   },
   "app": {
     "macOSPrivateApi": true,
@@ -42,6 +42,7 @@
       "icons/icon.icns",
       "icons/icon.png"
     ],
+    "externalBin": ["binaries/copet-mcp"],
     "resources": {
       "resources/llama/": "llama/"
     },

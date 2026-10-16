@@ -1,11 +1,12 @@
-//! App lifecycle: quitting (never leaves `llama-server` behind), open at login, and the run-loop
-//! events that decide whether closing the last window quits.
+//! App lifecycle: quitting (never leaves `llama-server` or `copet-mcp` behind), open at login,
+//! and the run-loop events that decide whether closing the last window quits.
 use std::time::Duration;
 
 use serde_json::Value;
 use tauri::{AppHandle, Listener, Manager, RunEvent};
 use tauri_plugin_autostart::ManagerExt as _;
 
+use crate::agent::http::McpHttp;
 use crate::db::settings;
 use crate::events;
 use crate::llm::LlmServer;
@@ -15,10 +16,13 @@ const OPEN_AT_LOGIN: &str = "general.openAtLogin";
 /// Quit must not hang on a `llama-server` that is still starting.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// `quit_app` and the menu bar's Quit: stop the model server, then exit.
+/// `quit_app` and the menu bar's Quit: stop the model server and the MCP HTTP server, then exit.
 pub async fn quit(app: &AppHandle) {
     if let Some(llm) = app.try_state::<LlmServer>() {
         let _ = tokio::time::timeout(STOP_TIMEOUT, llm.stop()).await;
+    }
+    if let Some(http) = app.try_state::<McpHttp>() {
+        http.stop().await;
     }
     app.exit(0);
 }
@@ -80,8 +84,8 @@ pub fn watch_autostart(app: &AppHandle) {
 }
 
 /// `App::run` callback. Closing Home keeps Co-pet running while the pet exists (during
-/// onboarding, closing the window quits); every exit path stops `llama-server` first, because
-/// `exit` skips destructors and `kill_on_drop` would never run.
+/// onboarding, closing the window quits); every exit path stops `llama-server` and the MCP HTTP
+/// server first, because `exit` skips destructors and `kill_on_drop` would never run.
 pub fn on_run_event(app: &AppHandle, event: RunEvent) {
     match event {
         RunEvent::ExitRequested { code: None, api, .. } if windows::pet_window(app).is_some() => {
@@ -93,6 +97,9 @@ pub fn on_run_event(app: &AppHandle, event: RunEvent) {
                 tauri::async_runtime::block_on(async move {
                     let _ = tokio::time::timeout(STOP_TIMEOUT, llm.stop()).await;
                 });
+            }
+            if let Some(http) = app.try_state::<McpHttp>() {
+                tauri::async_runtime::block_on(http.stop());
             }
         }
         _ => {}

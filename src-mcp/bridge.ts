@@ -23,7 +23,8 @@ export interface ClientRef {
   token: string | null;
 }
 
-/// A failed call: Co-pet's error code (or `notRunning`) and an English sentence for the agent.
+/// A failed call: Co-pet's error code (or `notRunning` / `unreachable`) and an English sentence
+/// for the agent.
 export class BridgeError extends Error {
   constructor(
     readonly code: string,
@@ -60,6 +61,14 @@ interface Pending {
   reject: (e: BridgeError) => void;
 }
 
+/// A failed connect: `notRunning` when there is no socket or nobody listens on it
+/// (`ENOENT`/`ECONNREFUSED`), else `unreachable` with the system's message (`EACCES`, `EPERM`…).
+export function connectError(e: unknown): BridgeError {
+  const code = (e as NodeJS.ErrnoException | null)?.code;
+  if (code === 'ECONNREFUSED' || code === 'ENOENT') return new BridgeError('notRunning', NOT_RUNNING);
+  return new BridgeError('unreachable', `Can't reach Co-pet: ${e instanceof Error ? e.message : String(e)}`);
+}
+
 export class Bridge {
   private socket: Socket | null = null;
   private connecting: Promise<Socket> | null = null;
@@ -82,18 +91,17 @@ export class Bridge {
     return promise;
   }
 
-  /// The open socket; connects (and once more on `ECONNREFUSED`/`ENOENT`) when there is none.
+  /// The open socket; connects (and once more when Co-pet isn't running) when there is none.
   private connected(): Promise<Socket> {
     if (this.socket) return Promise.resolve(this.socket);
     this.connecting ??= this.open()
       .catch(async (e: unknown) => {
-        const code = (e as NodeJS.ErrnoException).code;
-        if (code !== 'ECONNREFUSED' && code !== 'ENOENT') throw e;
+        if (connectError(e).code !== 'notRunning') throw e;
         await sleep(200);
         return this.open();
       })
-      .catch(() => {
-        throw new BridgeError('notRunning', NOT_RUNNING);
+      .catch((e: unknown) => {
+        throw connectError(e);
       })
       .finally(() => {
         this.connecting = null;

@@ -168,6 +168,16 @@ pub fn run() {
             commands::set_export_target,
             commands::export_task,
             commands::retry_exports,
+            commands::mcp_status,
+            commands::set_mcp_paused,
+            commands::list_mcp_clients,
+            commands::add_mcp_client,
+            commands::approve_mcp_client,
+            commands::revoke_mcp_client,
+            commands::remove_mcp_client,
+            commands::create_http_client,
+            commands::list_agent_activity,
+            commands::undo_agent_activity,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

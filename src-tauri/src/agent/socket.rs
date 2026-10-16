@@ -20,6 +20,7 @@ use tokio::sync::{Mutex, Semaphore};
 use crate::agent::clients::ClientRef;
 use crate::agent::tools::{self, ToolError};
 use crate::agent::AppHost;
+use crate::events;
 use crate::paths::Paths;
 
 /// Longest request line in bytes, without its newline.
@@ -156,8 +157,11 @@ async fn handle(app: AppHandle, line: String) -> Value {
         }
     };
     let Request { id, client, tool, args } = req;
-    let host = AppHost(app);
-    match tauri::async_runtime::spawn_blocking(move || tools::dispatch(&host, &client, &tool, args)).await {
+    let host = AppHost(app.clone());
+    let done = tauri::async_runtime::spawn_blocking(move || tools::dispatch(&host, &client, &tool, args)).await;
+    // The call logged a row and set the client's `last_call_at`.
+    events::agents_changed_throttled(&app);
+    match done {
         Ok(Ok(result)) => json!({ "id": id, "ok": true, "result": result }),
         Ok(Err(e)) => error_reply(id, &e),
         Err(e) => {

@@ -73,7 +73,7 @@ impl OAuthPending {
 }
 
 /// 32 random bytes, base64url without padding (43 characters).
-fn random_b64() -> AppResult<String> {
+pub(crate) fn random_b64() -> AppResult<String> {
     let mut buf = [0u8; 32];
     getrandom::fill(&mut buf).map_err(|e| AppError::msg(format!("random: {e}")))?;
     Ok(URL_SAFE_NO_PAD.encode(buf))

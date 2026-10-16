@@ -576,3 +576,65 @@ pub fn retry_exports(app: AppHandle, db: State<'_, Db>, provider: Option<String>
     crate::events::exports_changed(&app, ids);
     Ok(())
 }
+
+// ---------- M5: agents ----------
+
+#[tauri::command]
+pub fn mcp_status(app: AppHandle) -> AppResult<crate::model::McpStatus> {
+    crate::agent::status(&app)
+}
+
+#[tauri::command]
+pub fn set_mcp_paused(app: AppHandle, paused: bool) -> AppResult<()> {
+    crate::agent::set_paused(&app, paused)
+}
+
+#[tauri::command]
+pub async fn list_mcp_clients(app: AppHandle) -> AppResult<Vec<crate::model::McpClientView>> {
+    crate::agent::list_clients(&app).await
+}
+
+/// Writes the client's config. Rejects with `invalid` (unknown key) or `configUnreadable`.
+#[tauri::command]
+pub async fn add_mcp_client(app: AppHandle, key: String) -> AppResult<crate::model::McpClientView> {
+    crate::agent::add_client(&app, key).await
+}
+
+/// Approves writes; the token is returned only here. Rejects with `notFound`.
+#[tauri::command]
+pub fn approve_mcp_client(app: AppHandle, id: String) -> AppResult<crate::model::McpToken> {
+    crate::agent::approve_client(&app, &id)
+}
+
+/// Rejects with `notFound`.
+#[tauri::command]
+pub fn revoke_mcp_client(app: AppHandle, id: String) -> AppResult<()> {
+    crate::agent::revoke_client(&app, &id)
+}
+
+/// Rejects with `notFound` or `configUnreadable`.
+#[tauri::command]
+pub async fn remove_mcp_client(app: AppHandle, id: String) -> AppResult<()> {
+    crate::agent::remove_client(&app, id).await
+}
+
+/// Rejects with `invalid`.
+#[tauri::command]
+pub fn create_http_client(app: AppHandle, name: String) -> AppResult<crate::model::HttpClientCreated> {
+    crate::agent::create_http_client(&app, &name)
+}
+
+#[tauri::command]
+pub fn list_agent_activity(
+    app: AppHandle,
+    changes_only: bool,
+    limit: i64,
+) -> AppResult<Vec<crate::model::ActivityRow>> {
+    crate::agent::list_activity(&app, changes_only, limit)
+}
+
+/// Rejects with `notFound`, `alreadyUndone` or `notUndoable`.
+#[tauri::command]
+pub fn undo_agent_activity(app: AppHandle, id: String) -> AppResult<()> {
+    crate::agent::undo_activity(&app, &id)
+}

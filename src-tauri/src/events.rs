@@ -29,9 +29,14 @@ pub const WHATS_NEXT: &str = "whats-next";
 pub const EXPORTS_CHANGED: &str = "exports-changed";
 /// A Notion/Asana connection finished (OAuth or token) or failed.
 pub const INTEGRATION_CHANGED: &str = "integration-changed";
+/// Agents screen data changed (a call, an activity row, a client, the HTTP server's state);
+/// payload `{}`.
+pub const AGENTS_CHANGED: &str = "agents-changed";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
+/// Agent calls send `agents-changed` at most once per this gap.
+const AGENTS_GAP: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -138,6 +143,11 @@ pub struct IntegrationChanged {
     pub error: Option<String>,
 }
 
+/// Payload `{}`: listeners re-read `list_mcp_clients`, `list_agent_activity` and `mcp_status`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentsChanged {}
+
 /// Emits to every webview; a failure to emit is logged, never fatal.
 pub fn emit<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     if let Err(e) = app.emit(event, payload) {
@@ -163,6 +173,69 @@ pub fn integration_changed(app: &AppHandle, provider: Option<&str>, ok: bool, er
         INTEGRATION_CHANGED,
         IntegrationChanged { provider: provider.map(String::from), ok, error: error.map(String::from) },
     );
+}
+
+/// After an Agents command.
+pub fn agents_changed(app: &AppHandle) {
+    emit(app, AGENTS_CHANGED, AgentsChanged {});
+}
+
+/// When `agents-changed` goes out after a call or log write.
+#[derive(Debug, PartialEq)]
+enum Emit {
+    Now,
+    /// One emit at the end of the gap covers every call until then.
+    After(Duration),
+    /// That emit is already scheduled.
+    Scheduled,
+}
+
+#[derive(Default)]
+struct Throttle {
+    last: Option<Instant>,
+    scheduled: bool,
+}
+
+impl Throttle {
+    fn emit(&mut self, now: Instant, gap: Duration) -> Emit {
+        if self.scheduled {
+            return Emit::Scheduled;
+        }
+        match self.last {
+            Some(t) if now.duration_since(t) < gap => {
+                self.scheduled = true;
+                Emit::After(gap - now.duration_since(t))
+            }
+            _ => {
+                self.last = Some(now);
+                Emit::Now
+            }
+        }
+    }
+
+    fn emitted(&mut self, now: Instant) {
+        self.last = Some(now);
+        self.scheduled = false;
+    }
+}
+
+/// After an agent call or activity log write: at most once per second, the last one never lost.
+pub fn agents_changed_throttled(app: &AppHandle) {
+    static STATE: Mutex<Throttle> = Mutex::new(Throttle { last: None, scheduled: false });
+    let lock = || STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let next = lock().emit(Instant::now(), AGENTS_GAP);
+    match next {
+        Emit::Now => agents_changed(app),
+        Emit::After(delay) => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(delay).await;
+                lock().emitted(Instant::now());
+                agents_changed(&app);
+            });
+        }
+        Emit::Scheduled => {}
+    }
 }
 
 pub fn counts_changed(app: &AppHandle, counts: Counts) {
@@ -231,5 +304,19 @@ mod tests {
         assert!(gap_passed(None, t0));
         assert!(!gap_passed(Some(t0), t0 + Duration::from_millis(9_999)));
         assert!(gap_passed(Some(t0), t0 + CELEBRATE_GAP));
+    }
+
+    #[test]
+    fn agents_changed_is_throttled_with_a_trailing_emit() {
+        let t0 = Instant::now();
+        let ms = Duration::from_millis;
+        let mut t = Throttle::default();
+        assert_eq!(t.emit(t0, AGENTS_GAP), Emit::Now);
+        assert_eq!(t.emit(t0 + ms(300), AGENTS_GAP), Emit::After(ms(700)));
+        assert_eq!(t.emit(t0 + ms(600), AGENTS_GAP), Emit::Scheduled);
+        t.emitted(t0 + ms(1_000));
+        assert_eq!(t.emit(t0 + ms(1_500), AGENTS_GAP), Emit::After(ms(500)));
+        t.emitted(t0 + ms(2_000));
+        assert_eq!(t.emit(t0 + ms(3_000), AGENTS_GAP), Emit::Now);
     }
 }

@@ -251,7 +251,11 @@ async fn run_job(app: &AppHandle, job: Job) {
         eprintln!("[export] job {}: {e}", job.id);
     }
     match (update.state, update.error) {
-        ("exported", _) => events::pet_reaction(app, PetReaction::new("cheer")),
+        ("exported", _) => {
+            events::pet_reaction(app, PetReaction::new("cheer"));
+            // An agent's export stored its `result_url` on the activity row.
+            events::agents_changed_throttled(app);
+        }
         ("failed", error) => {
             if error == Some("unauthorized") {
                 if let Some(Err(e)) = provider.map(super::mark_needs_reconnect) {

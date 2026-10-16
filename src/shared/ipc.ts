@@ -5,6 +5,7 @@ import type {
   AiStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
+  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken,
 } from './types';
 
 // Step 3 — storage
@@ -141,6 +142,25 @@ export const exportTask = (taskId: string, provider: ExportProvider) =>
   invoke<TaskExportState>('export_task', { taskId, provider });
 /** Requeues this device's failed and queued jobs (of `provider`, or all). */
 export const retryExports = (provider?: ExportProvider) => invoke<void>('retry_exports', { provider: provider ?? null });
+
+// Phase 2 M5 — agents
+export const mcpStatus = () => invoke<McpStatus>('mcp_status');
+export const setMcpPaused = (paused: boolean) => invoke<void>('set_mcp_paused', { paused });
+export const listMcpClients = () => invoke<McpClientView[]>('list_mcp_clients');
+/** Writes the client's config. Rejects with `"invalid"` or `"configUnreadable"`. */
+export const addMcpClient = (key: KnownMcpClient) => invoke<McpClientView>('add_mcp_client', { key });
+/** The token is returned only here. Rejects with `"notFound"`. */
+export const approveMcpClient = (id: string) => invoke<McpToken>('approve_mcp_client', { id });
+/** Writes off, token cleared. Rejects with `"notFound"`. */
+export const revokeMcpClient = (id: string) => invoke<void>('revoke_mcp_client', { id });
+/** Removes the `copet` config entry Co-pet wrote. Rejects with `"notFound"` or `"configUnreadable"`. */
+export const removeMcpClient = (id: string) => invoke<void>('remove_mcp_client', { id });
+/** Key `http:<slug>`, writes approved. Rejects with `"invalid"`. */
+export const createHttpClient = (name: string) => invoke<HttpClientCreated>('create_http_client', { name });
+export const listAgentActivity = (changesOnly: boolean, limit: number) =>
+  invoke<ActivityRow[]>('list_agent_activity', { changesOnly, limit });
+/** Rejects with `"notFound"`, `"alreadyUndone"` or `"notUndoable"`. */
+export const undoAgentActivity = (id: string) => invoke<void>('undo_agent_activity', { id });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

@@ -623,3 +623,64 @@ pub struct NotionProp {
     pub kind: String,
     pub options: Vec<String>,
 }
+
+// ---------- M5: agents ----------
+
+/// `mcp_status`. `http_url` is `http://127.0.0.1:<mcp.httpPort>/mcp`; `stdio_command` is the
+/// bundled `copet-mcp`'s absolute path followed by ` --stdio`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpStatus {
+    pub paused: bool,
+    pub http_state: crate::agent::http::HttpState,
+    pub http_url: String,
+    pub stdio_command: String,
+}
+
+/// An MCP client as the Agents screen lists it. The four known clients are listed before their
+/// first contact with `id: None`; `config_installed` says whether their config file has the
+/// `copet` entry (always false for other and HTTP clients).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpClientView {
+    pub id: Option<String>,
+    pub key: String,
+    pub name: String,
+    pub write_approved: bool,
+    pub has_token: bool,
+    pub config_installed: bool,
+    pub created_at: Option<i64>,
+    pub approved_at: Option<i64>,
+    pub last_call_at: Option<i64>,
+}
+
+/// A bearer token, returned once; only its sha256 is stored.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpToken {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpClientCreated {
+    pub client: McpClientView,
+    pub token: String,
+}
+
+/// One `agent_activity` row. `undoable`: a write other than `export_task` that recorded
+/// changes (also when it failed part-way), whether or not it was undone since (`undone_at`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityRow {
+    pub id: String,
+    pub at: i64,
+    pub client_name: String,
+    pub tool: String,
+    pub is_write: bool,
+    pub detail: Value,
+    pub result_url: Option<String>,
+    pub error: Option<String>,
+    pub undone_at: Option<i64>,
+    pub undoable: bool,
+}

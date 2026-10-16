@@ -772,7 +772,7 @@ fn export_task(host: &impl Host, a: ExportArgs, log: &mut Entry, fx: &mut Vec<Ef
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::agent::activity::undo_activity;
+    use crate::agent::activity::{undo_activity, Undone};
     use crate::capture;
     use crate::model::{NewItem, TriageUpdate};
 
@@ -982,13 +982,24 @@ pub(crate) mod tests {
         let item_id = added["id"].as_str().unwrap();
 
         let mut conn = h.db.conn();
+        let undoable = |conn: &Connection| -> Vec<(String, bool)> {
+            activity::list(conn, false, 10).unwrap().into_iter().map(|r| (r.id, r.undoable)).collect()
+        };
+        assert_eq!(undoable(&conn), [(adding.clone(), true), (created.clone(), true), (read.clone(), false)]);
+        let writes: Vec<String> = activity::list(&conn, true, 10).unwrap().into_iter().map(|r| r.id).collect();
+        assert_eq!(writes, [adding.clone(), created.clone()]);
         assert!(matches!(undo_activity(&mut conn, &read), Err(AppError::Code("notUndoable"))));
-        assert_eq!(undo_activity(&mut conn, &created).unwrap(), [task_id]);
+        let undone = undo_activity(&mut conn, &created).unwrap();
+        assert_eq!(undone, Undone { item_ids: vec![], task_ids: vec![task_id.to_owned()] });
         assert!(matches!(tasks::get(&conn, task_id), Err(AppError::Code("notFound"))));
-        assert_eq!(undo_activity(&mut conn, &adding).unwrap(), [item_id]);
+        let undone = undo_activity(&mut conn, &adding).unwrap();
+        assert_eq!(undone, Undone { item_ids: vec![item_id.to_owned()], task_ids: vec![] });
         let row = items::get_row(&conn, item_id).unwrap();
         assert_eq!(row.status, "trashed");
         assert!(row.deleted_at.is_some());
+        let rows = activity::list(&conn, false, 10).unwrap();
+        assert!(rows[1].undone_at.is_some() && rows[1].undoable, "undone writes keep the flag");
+        assert_eq!((rows[0].client_name.as_str(), rows[0].tool.as_str()), ("Client claude-code", "add_item"));
         assert!(matches!(undo_activity(&mut conn, &created), Err(AppError::Code("alreadyUndone"))));
         assert!(matches!(undo_activity(&mut conn, "nope"), Err(AppError::Code("notFound"))));
     }
@@ -1058,11 +1069,15 @@ pub(crate) mod tests {
         assert_eq!(items::get_row(&h.db.conn(), &id).unwrap().category_id, "code");
         let activity = last_activity(&h);
         assert_eq!(activity.1.as_deref(), Some("internal"));
-        assert_eq!(undo_activity(&mut h.db.conn(), &activity.0).unwrap(), [id.clone()]);
+        let partial = activity::list(&h.db.conn(), true, 1).unwrap().remove(0);
+        assert_eq!((partial.id.as_str(), partial.undoable), (activity.0.as_str(), true));
+        let undone = undo_activity(&mut h.db.conn(), &activity.0).unwrap();
+        assert_eq!(undone, Undone { item_ids: vec![id.clone()], task_ids: vec![] });
         assert_eq!(items::get_row(&h.db.conn(), &id).unwrap().category_id, "read");
         // A failed call that changed nothing has nothing to undo.
         call(&h, "cursor", "update_item", json!({ "id": "nope", "archive": true })).unwrap_err();
         let failed = last_activity(&h).0;
+        assert!(!activity::list(&h.db.conn(), true, 1).unwrap()[0].undoable);
         assert!(matches!(undo_activity(&mut h.db.conn(), &failed), Err(AppError::Code("notUndoable"))));
     }
 

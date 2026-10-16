@@ -88,6 +88,8 @@ export const vi: Record<keyof typeof en, string> = {
   'error.rateLimited': 'Đang có quá nhiều yêu cầu. Hãy thử lại sau một phút.',
   'error.unauthorized': 'Quyền truy cập đã bị thu hồi. Hãy kết nối lại trong Integrations.',
   'error.targetMissing': 'Database hoặc project đó không còn, hoặc Co-pet không truy cập được.',
+  'error.writesNotApproved': 'Client này chưa được cấp quyền ghi.',
+  'error.configUnreadable': 'Co-pet không đọc được file cài đặt của ứng dụng đó nên giữ nguyên.',
 
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',

@@ -332,6 +332,49 @@ export interface Rule {
 
 export type HotkeyAction = 'focusPet' | 'sendSelection' | 'captureScreen' | 'quickNote';
 
+// ---------- M5: agents ----------
+
+export type McpHttpState = 'running' | 'stopped' | 'portInUse';
+
+/** `httpUrl` is `http://127.0.0.1:<port>/mcp`; `stdioCommand` is `<copet-mcp path> --stdio`. */
+export interface McpStatus { paused: boolean; httpState: McpHttpState; httpUrl: string; stdioCommand: string }
+
+/** The clients "Add to …" configures. */
+export type KnownMcpClient = 'claude-code' | 'cursor' | 'codex' | 'gemini-cli';
+
+/** The four known clients are listed with `id: null` until their first contact;
+ *  `configInstalled` is false for other and HTTP clients. */
+export interface McpClientView {
+  id: string | null;
+  key: string;
+  name: string;
+  writeApproved: boolean;
+  hasToken: boolean;
+  configInstalled: boolean;
+  createdAt: number | null;
+  approvedAt: number | null;
+  lastCallAt: number | null;
+}
+
+/** Shown once; only its hash is stored. */
+export interface McpToken { token: string }
+
+export interface HttpClientCreated { client: McpClientView; token: string }
+
+/** `undoable`: a write other than `export_task` that recorded changes, undone or not. */
+export interface ActivityRow {
+  id: string;
+  at: number;
+  clientName: string;
+  tool: string;
+  isWrite: boolean;
+  detail: Record<string, unknown>;
+  resultUrl: string | null;
+  error: string | null;
+  undoneAt: number | null;
+  undoable: boolean;
+}
+
 // ---------- events ----------
 
 export type PetInput =
@@ -364,4 +407,6 @@ export interface EventPayloads {
     ok: boolean;
     error: 'oauthExpired' | 'oauthDenied' | string | null;
   };
+  /** Agents screen data changed: re-read clients, activity and `mcp_status`. */
+  'agents-changed': Record<string, never>;
 }

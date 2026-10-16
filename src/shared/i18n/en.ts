@@ -87,6 +87,8 @@ export const en = {
   'error.rateLimited': 'Too many requests right now. Try again in a minute.',
   'error.unauthorized': 'Access was revoked. Reconnect in Integrations.',
   'error.targetMissing': "That database or project is gone, or Co-pet can't see it.",
+  'error.writesNotApproved': "Writes aren't approved for this client.",
+  'error.configUnreadable': "Co-pet couldn't read that app's settings file, so it left it unchanged.",
 
   'kind.file': 'File',
   'kind.image': 'Image',

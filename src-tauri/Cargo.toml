@@ -54,6 +54,7 @@ unicode-normalization = "0.1"
 url = "2"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v7", "v4"] }
+toml_edit = "0.25.17"
 
 [profile.release]
 codegen-units = 1

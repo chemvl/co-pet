@@ -29,8 +29,14 @@ Deno.serve(async (req) => {
     const { data: objects, error } = await bucket.list(uid, { limit: PAGE, offset: 0 });
     if (error) return json(500, { error: "storage_list_failed" });
     if (!objects || objects.length === 0) break;
-    const { error: rmErr } = await bucket.remove(objects.map((o) => `${uid}/${o.name}`));
-    if (rmErr) return json(500, { error: "storage_remove_failed" });
+    const { data: removed, error: rmErr } = await bucket.remove(
+      objects.map((o) => `${uid}/${o.name}`),
+    );
+    // Blobs are flat under `<uid>/`; an empty result on a non-empty page (e.g. a folder prefix entry)
+    // would otherwise list the same page forever.
+    if (rmErr || !removed || removed.length === 0) {
+      return json(500, { error: "storage_remove_failed" });
+    }
     if (objects.length < PAGE) break;
   }
 

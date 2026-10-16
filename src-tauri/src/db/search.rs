@@ -38,11 +38,17 @@ pub fn index_item(conn: &Connection, item: &ItemRow) -> AppResult<()> {
         ];
         fold(&parts.join("\n"))
     };
-    conn.execute("DELETE FROM items_fts WHERE item_id = ?1", [&item.id])?;
+    unindex(conn, &item.id)?;
     conn.execute(
         "INSERT INTO items_fts (item_id, body) VALUES (?1, ?2)",
         params![item.id, body],
     )?;
+    Ok(())
+}
+
+/// Removes the item's `items_fts` row.
+pub fn unindex(conn: &Connection, id: &str) -> AppResult<()> {
+    conn.execute("DELETE FROM items_fts WHERE item_id = ?1", [id])?;
     Ok(())
 }
 

@@ -47,13 +47,13 @@ fn blob_rel(sha: &str, ext: &str) -> String {
 }
 
 /// A fresh `tmp/` file path for staging a write.
-fn staging(paths: &Paths) -> AppResult<PathBuf> {
+pub(crate) fn staging(paths: &Paths) -> AppResult<PathBuf> {
     fs::create_dir_all(&paths.tmp)?;
     Ok(paths.tmp.join(format!("store-{}.part", new_id())))
 }
 
-/// Moves a staged file to `rel` unless identical content is already there.
-fn commit(paths: &Paths, staged: &Path, rel: &str) -> AppResult<()> {
+/// Moves a staged file to `rel` (creating its folder) unless identical content is already there.
+pub(crate) fn commit(paths: &Paths, staged: &Path, rel: &str) -> AppResult<()> {
     let dest = paths.abs(rel);
     if dest.exists() {
         fs::remove_file(staged)?;

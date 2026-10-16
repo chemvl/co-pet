@@ -187,6 +187,9 @@ pub struct ItemSummary {
     pub updated_at: i64,
     pub added_by: Option<String>,
     pub task_suggestion: Option<String>,
+    /// `false` when the item's library file isn't on this Mac (synced from another Mac, not
+    /// downloaded yet or over the size limit).
+    pub file_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -412,6 +415,35 @@ pub struct AccountStatus {
     pub key_state: KeyState,
     pub device_name: String,
     pub last_synced_at: Option<i64>,
+}
+
+/// Where the sync engine stands (`sync_status`, event `sync-status`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncState {
+    /// No Supabase project in this build, or signed out.
+    Off,
+    /// `privacy.localOnly` is on.
+    Paused,
+    /// Signed in, but this Mac has no sync key yet.
+    NeedsKey,
+    /// The session was refused; sign in again.
+    SignedOut,
+    Syncing,
+    Idle,
+    Offline,
+    Error,
+}
+
+/// `pending`: changes waiting in `sync_outbox`; `blobs_pending`: files waiting to upload or
+/// download.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStatus {
+    pub state: SyncState,
+    pub last_synced_at: Option<i64>,
+    pub pending: i64,
+    pub blobs_pending: i64,
 }
 
 /// Who made an item or task change; maps to the `actor` / `client_id` columns of

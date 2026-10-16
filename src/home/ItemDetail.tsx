@@ -6,6 +6,7 @@ import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Button, Icon, SegmentedControl, StatusPill, type ButtonProps } from '../ds';
 import { categoryLabelOf } from '../shared/categories';
+import { errorMessage, errorText } from '../shared/errors';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
 import { copyItems } from '../shared/ipc';
@@ -66,6 +67,7 @@ function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactE
         <div className="hm-item__head">
           <div className="heading hm-ellipsis">{item.title}</div>
           <div className="caption hm-muted hm-ellipsis">{detailMeta(item, t, lang)}</div>
+          {item.fileAvailable ? null : <div className="caption hm-muted">{t('item.fileElsewhere')}</div>}
         </div>
         <ConvertButton item={item} />
         <CopyButton item={item} />
@@ -116,6 +118,7 @@ function ItemPane({ item }: { item: Item }): ReactElement {
         <div className="hm-det__title">
           <h2 className="heading hm-det__h">{item.title}</h2>
           <div className="caption hm-muted">{detailMeta(item, t, lang)}</div>
+          {item.fileAvailable ? null : <div className="caption hm-muted">{t('item.fileElsewhere')}</div>}
         </div>
         <Button
           variant="quiet"
@@ -169,10 +172,14 @@ function Field({ label, children }: { label: string; children: ReactNode }): Rea
   );
 }
 
+/** Known error codes show their copy; anything else reads as a failed action. */
 function useFail(): (err: unknown) => void {
   const t = useT();
   const { show } = useToast();
-  return (err) => show({ message: t('home.actionFailed', { reason: String(err) }) });
+  return (err) => {
+    const message = errorMessage(t, err);
+    show({ message: message === errorText(err) ? t('home.actionFailed', { reason: message }) : message });
+  };
 }
 
 function CopyButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['size'] }): ReactElement {
@@ -254,7 +261,13 @@ function OpenButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['siz
   if (item.filePath) {
     const path = item.filePath;
     return (
-      <Button variant="secondary" size={size} icon="export" onClick={() => openPath(path).catch(fail)}>
+      <Button
+        variant="secondary"
+        size={size}
+        icon="export"
+        disabled={!item.fileAvailable}
+        onClick={() => openPath(path).catch(fail)}
+      >
         {t('common.openFile')}
       </Button>
     );
@@ -335,7 +348,7 @@ function FileCard({ item }: { item: Item }): ReactElement {
 }
 
 function Preview({ item }: { item: Item }): ReactElement {
-  const src = item.filePath ? convertFileSrc(item.filePath) : null;
+  const src = item.filePath && item.fileAvailable ? convertFileSrc(item.filePath) : null;
   switch (item.kind) {
     case 'image':
     case 'screenshot':

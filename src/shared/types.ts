@@ -71,6 +71,9 @@ export interface ItemSummary {
   addedBy: string | null;
   /** AI-suggested task title; null for rule-decided or non-actionable items. */
   taskSuggestion: string | null;
+  /** False when the item's library file isn't on this Mac (synced from another Mac, not
+   *  downloaded yet or over the size limit): drag-out, Copy, Paste and Open file can't use it. */
+  fileAvailable: boolean;
 }
 
 export type EventAction =
@@ -279,6 +282,17 @@ export interface AccountStatus {
   lastSyncedAt: number | null;
 }
 
+export type SyncState = 'off' | 'paused' | 'needsKey' | 'signedOut' | 'syncing' | 'idle' | 'offline' | 'error';
+
+/** `sync_status` / `sync-status`. `pending`: changes waiting to upload; `blobsPending`: files
+ *  waiting to upload or download. */
+export interface SyncStatus {
+  state: SyncState;
+  lastSyncedAt: number | null;
+  pending: number;
+  blobsPending: number;
+}
+
 export type ExportProvider = 'notion' | 'asana';
 export type ExportState = 'queued' | 'exporting' | 'exported' | 'failed';
 export type ExportErrorCode = 'rateLimited' | 'network' | 'unauthorized' | 'targetMissing' | 'invalid' | 'disconnected';
@@ -440,4 +454,6 @@ export interface EventPayloads {
   /** Sign-in, sign-out, the sync key or cloud data changed: re-read `account_status`.
    *  `error` is set only when Google sign-in failed. */
   'account-changed': { error: 'oauthExpired' | 'otherAccount' | string | null };
+  /** The sync engine's state changed or a sync finished. */
+  'sync-status': SyncStatus;
 }

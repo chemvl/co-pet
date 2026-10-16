@@ -221,7 +221,11 @@ export function PetApp() {
             showNotice({ message: t('notice.needsAccessibility'), permission: 'accessibility' });
           }
         },
-        (err: unknown) => showNotice({ message: t('notice.captureFailed', { reason: String(err) }) }),
+        (err: unknown) => {
+          // Known codes (a file on another Mac) have their own copy.
+          const message = errorMessage(t, err);
+          showNotice({ message: message === errorText(err) ? t('notice.captureFailed', { reason: message }) : message });
+        },
       );
     },
     [closeSurface, showNotice, t],

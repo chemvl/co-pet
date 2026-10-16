@@ -85,6 +85,7 @@ pub fn run() {
             export::queue::start(&handle);
             // After the export queue: `export_task` pokes it.
             agent::start(&handle);
+            sync::start(&handle);
             system::watch_autostart(&handle);
             if settings_bool(&handle, "onboarding.completed") {
                 windows::create_pet_window(&handle)?;
@@ -199,6 +200,8 @@ pub fn run() {
             commands::delete_cloud_data,
             commands::save_text_file,
             commands::copy_concealed_text,
+            commands::sync_status,
+            commands::sync_now,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

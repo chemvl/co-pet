@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement};
+use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, SyncStatus};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -35,6 +35,8 @@ pub const AGENTS_CHANGED: &str = "agents-changed";
 /// Sign-in, sign-out, the sync key or Delete cloud data changed the account; listeners re-read
 /// `account_status`. `error` is set only when Google sign-in failed.
 pub const ACCOUNT_CHANGED: &str = "account-changed";
+/// The sync engine's state changed or a sync finished; payload `SyncStatus`.
+pub const SYNC_STATUS: &str = "sync-status";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
@@ -192,6 +194,10 @@ pub fn agents_changed(app: &AppHandle) {
 
 pub fn account_changed(app: &AppHandle, error: Option<&str>) {
     emit(app, ACCOUNT_CHANGED, AccountChanged { error: error.map(String::from) });
+}
+
+pub fn sync_status(app: &AppHandle, s: SyncStatus) {
+    emit(app, SYNC_STATUS, s);
 }
 
 /// When `agents-changed` goes out after a call or log write.

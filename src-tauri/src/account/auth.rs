@@ -18,6 +18,7 @@ use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::export::oauth::challenge;
 use crate::secrets;
+use crate::sync;
 use crate::windows;
 
 /// Keychain account of the [`Session`].
@@ -237,6 +238,7 @@ fn adopt(app: &AppHandle, session: Session) -> AppResult<()> {
     settings::set(app, "sync.userId", &json!(session.user_id))?;
     settings::set(app, "sync.email", &json!(session.email))?;
     events::account_changed(app, None);
+    sync::poke(app);
     if let Err(e) = windows::open_home(app, Some("settings/account".into())) {
         eprintln!("[account] open home: {e}");
     }
@@ -251,10 +253,21 @@ pub(crate) fn stored_session() -> AppResult<Option<Session>> {
 /// `signedOut` without a session or when the refresh is refused (the session is then deleted
 /// and `account-changed` emitted).
 pub(crate) async fn session(app: &AppHandle) -> AppResult<Session> {
+    fresh_session(app, None).await
+}
+
+/// Like [`session`], after the server refused the access token `rejected`: refreshes even
+/// before expiry, unless another caller already replaced that token.
+pub(crate) async fn session_after_rejection(app: &AppHandle, rejected: &str) -> AppResult<Session> {
+    fresh_session(app, Some(rejected)).await
+}
+
+async fn fresh_session(app: &AppHandle, rejected: Option<&str>) -> AppResult<Session> {
     let b = server(app)?;
     let _turn = REFRESH.lock().await;
     let current = stored_session()?.ok_or(AppError::Code("signedOut"))?;
-    if !needs_refresh(current.expires_at, now_ms()) {
+    let refused = rejected == Some(current.access_token.as_str());
+    if !refused && !needs_refresh(current.expires_at, now_ms()) {
         return Ok(current);
     }
     let outcome = refresh(&b, &current.refresh_token).await;
@@ -285,6 +298,7 @@ pub async fn access_token(app: &AppHandle) -> AppResult<String> {
 pub async fn sign_out(app: &AppHandle) -> AppResult<()> {
     forget_session(app).await?;
     events::account_changed(app, None);
+    sync::poke(app);
     Ok(())
 }
 

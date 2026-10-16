@@ -17,8 +17,9 @@ pub fn get_settings(db: State<'_, Db>) -> AppResult<Map<String, Value>> {
 pub fn set_setting(app: AppHandle, key: String, value: Value) -> AppResult<()> {
     settings::set(&app, &key, &value)?;
     if key == "privacy.localOnly" {
-        // The export worker sleeps on its notify while local-only is on.
+        // The export worker and sync sleep on their notify while local-only is on.
         app.state::<crate::export::queue::ExportQueue>().poke();
+        crate::sync::poke(&app);
     }
     Ok(())
 }
@@ -312,7 +313,7 @@ pub fn create_category(
     color: String,
 ) -> AppResult<crate::model::Category> {
     let category = crate::db::categories::create(&mut db.conn(), &name, &icon, &color)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(category)
 }
 
@@ -325,7 +326,7 @@ pub fn update_category(
     patch: crate::model::CategoryPatch,
 ) -> AppResult<crate::model::Category> {
     let category = crate::db::categories::update(&mut db.conn(), &id, &patch)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(category)
 }
 
@@ -337,7 +338,7 @@ pub fn delete_category(
     id: String,
 ) -> AppResult<crate::model::EventIds> {
     let (moved, event_ids) = crate::db::categories::delete(&mut db.conn(), &id)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     crate::db::items::notify_changed(&app, moved);
     Ok(crate::model::EventIds { event_ids })
 }
@@ -346,7 +347,7 @@ pub fn delete_category(
 #[tauri::command]
 pub fn reorder_categories(app: AppHandle, db: State<'_, Db>, ids: Vec<String>) -> AppResult<()> {
     crate::db::categories::reorder(&mut db.conn(), &ids)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(())
 }
 
@@ -367,21 +368,21 @@ pub fn add_rule(
     pattern: String,
 ) -> AppResult<crate::model::Rule> {
     let rule = crate::db::rules::add_rule(&mut db.conn(), &category_id, &kind, &pattern)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(rule)
 }
 
 #[tauri::command]
 pub fn delete_rule(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<()> {
     crate::db::rules::delete_rule(&db.conn(), &id)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub fn restore_rule(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<()> {
     crate::db::rules::restore_rule(&db.conn(), &id)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(())
 }
 
@@ -393,7 +394,7 @@ pub fn list_examples(db: State<'_, Db>, category_id: String) -> AppResult<Vec<cr
 #[tauri::command]
 pub fn delete_example(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<()> {
     crate::db::rules::delete_example(&db.conn(), &id)?;
-    crate::events::categories_changed(&app);
+    crate::db::categories::notify_changed(&app);
     Ok(())
 }
 
@@ -755,4 +756,17 @@ pub async fn save_text_file(app: AppHandle, default_name: String, text: String) 
 #[tauri::command]
 pub async fn copy_concealed_text(app: AppHandle, text: String) -> AppResult<()> {
     crate::platform::macos::pasteboard::write_concealed_text(&app, text).await
+}
+
+// ---------- M9: sync ----------
+
+#[tauri::command]
+pub fn sync_status(app: AppHandle) -> AppResult<crate::model::SyncStatus> {
+    crate::sync::status(&app)
+}
+
+/// Runs a sync now (after one in progress) and returns the status it ended in.
+#[tauri::command]
+pub async fn sync_now(app: AppHandle) -> AppResult<crate::model::SyncStatus> {
+    crate::sync::sync_now(&app).await
 }

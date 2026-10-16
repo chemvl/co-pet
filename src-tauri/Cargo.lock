@@ -750,6 +750,7 @@ name = "copet"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "calamine",
  "chacha20poly1305",
  "chrono",

@@ -14,6 +14,7 @@ use crate::db::{settings, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::AccountStatus;
+use crate::sync;
 
 /// Accepted like Delete everything's phrases (`xoá` is the older Vietnamese spelling).
 pub(crate) const CLOUD_PHRASES: [&str; 3] = ["delete cloud data", "xoá dữ liệu đám mây", "xóa dữ liệu đám mây"];
@@ -33,15 +34,15 @@ async fn send(req: reqwest::RequestBuilder) -> AppResult<reqwest::Response> {
     })
 }
 
-/// `last_synced_at` stays `None` until the sync engine (M9) records runs.
 pub async fn status(app: &AppHandle) -> AppResult<AccountStatus> {
-    let (user_id, email, device_name) = {
+    let (user_id, email, device_name, last_synced_at) = {
         let db = app.state::<Db>();
         let conn = db.conn();
         (
             settings::get::<Option<String>>(&conn, "sync.userId")?,
             settings::get::<Option<String>>(&conn, "sync.email")?,
             settings::get::<Option<String>>(&conn, "sync.deviceName")?,
+            sync::last_synced_at(&conn)?,
         )
     };
     Ok(AccountStatus {
@@ -53,12 +54,13 @@ pub async fn status(app: &AppHandle) -> AppResult<AccountStatus> {
         device_name: device_name
             .filter(|n| !n.trim().is_empty())
             .unwrap_or_else(|| sysinfo::System::host_name().unwrap_or_default()),
-        last_synced_at: None,
+        last_synced_at,
     })
 }
 
-/// Deletes the account and everything synced (the `delete-account` function), then signs out
-/// and forgets `sync.userId`, so this Mac may sign in to any account. This Mac's data stays.
+/// Deletes the account and everything synced (the `delete-account` function), then signs out,
+/// forgets `sync.userId` and this Mac's sync progress (`sync_state`, `sync_blobs`,
+/// `sync_outbox`), so this Mac may sign in to any account. This Mac's data stays.
 /// Error `confirmation` when the typed phrase doesn't match.
 pub async fn delete_cloud_data(app: &AppHandle, confirmation: &str) -> AppResult<()> {
     if !data::phrase_ok(confirmation, &CLOUD_PHRASES) {
@@ -69,7 +71,9 @@ pub async fn delete_cloud_data(app: &AppHandle, confirmation: &str) -> AppResult
     delete_account(&b, &token).await?;
     auth::forget_session(app).await?;
     settings::set(app, "sync.userId", &Value::Null)?;
+    sync::forget(app).await?;
     events::account_changed(app, None);
+    sync::poke(app);
     Ok(())
 }
 

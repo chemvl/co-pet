@@ -172,10 +172,11 @@ fn apply(
     Ok(Some(add_event(tx, id, actor, action, Some(&before), Some(&after), now)?))
 }
 
-/// Emits `tasks-changed` for `ids`, then `counts-changed`.
+/// Emits `tasks-changed` for `ids`, then `counts-changed`, and wakes sync.
 pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
     events::tasks_changed(app, ids);
     items::emit_counts(app);
+    crate::sync::poke(app);
 }
 
 // ---------- validation ----------

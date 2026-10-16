@@ -5,7 +5,7 @@ import type {
   AiStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
-  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus,
+  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus,
 } from './types';
 
 // Step 3 — storage
@@ -199,6 +199,11 @@ export const saveTextFile = (defaultName: string, text: string) =>
   invoke<string | null>('save_text_file', { defaultName, text });
 /** Copies a secret marked concealed and transient, so clipboard capture and managers skip it. */
 export const copyConcealedText = (text: string) => invoke<void>('copy_concealed_text', { text });
+
+// Phase 2 M9 — sync
+export const syncStatus = () => invoke<SyncStatus>('sync_status');
+/** Runs a sync (after one in progress) and resolves with the status it ended in. */
+export const syncNow = () => invoke<SyncStatus>('sync_now');
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

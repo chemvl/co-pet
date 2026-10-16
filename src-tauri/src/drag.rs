@@ -71,6 +71,8 @@ pub async fn paste_items(app: &AppHandle, ids: Vec<String>) -> AppResult<&'stati
 /// - only file/image/screenshot items, no Alt → their files
 /// - one url or text item, no Alt → typed data
 /// - Alt, or any other selection → files, with text as `.md` and links as `.webloc`
+///
+/// `fileElsewhere` when an item's library file isn't on this Mac (it synced from another one).
 fn plan(paths: &Paths, rows: &[ItemRow], as_files: bool) -> AppResult<DragPlan> {
     if rows.is_empty() {
         return Err(AppError::Code("invalid"));
@@ -86,7 +88,12 @@ fn plan(paths: &Paths, rows: &[ItemRow], as_files: bool) -> AppResult<DragPlan> 
         .iter()
         .map(|row| {
             let path = match row.kind.as_str() {
-                "file" | "image" | "screenshot" => library::dragout_path(paths, row)?,
+                "file" | "image" | "screenshot" => {
+                    if row.file_path.as_deref().is_some_and(|rel| !paths.abs(rel).exists()) {
+                        return Err(AppError::Code("fileElsewhere"));
+                    }
+                    library::dragout_path(paths, row)?
+                }
                 "url" => library::temp_text_file(paths, &slug(&row.title), "webloc", &webloc(url_of(row)))?,
                 _ => library::temp_text_file(paths, &slug(&row.title), "md", &markdown(row))?,
             };
@@ -299,5 +306,19 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&f[2]).unwrap(), "hello");
         // Two links can't share one typed-data item either.
         assert_eq!(files(plan(&paths, &[url_row(), url_row()], false).unwrap()).len(), 2);
+    }
+
+    #[test]
+    fn missing_library_file_is_elsewhere() {
+        let (_d, paths) = paths();
+        let mut row = file_row(&paths, "synced.pdf", "file");
+        row.file_path = Some("ab/not-downloaded.pdf".into());
+        let present = file_row(&paths, "here.pdf", "file");
+        for rows in [vec![row.clone()], vec![present, row]] {
+            match plan(&paths, &rows, false) {
+                Err(AppError::Code(code)) => assert_eq!(code, "fileElsewhere"),
+                other => panic!("expected fileElsewhere, got {other:?}"),
+            }
+        }
     }
 }

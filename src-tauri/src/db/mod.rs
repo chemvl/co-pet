@@ -11,7 +11,9 @@ pub mod undo;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::Connection;
+use rusqlite::types::ValueRef;
+use rusqlite::{Connection, Row};
+use serde_json::{Map, Value};
 
 use crate::error::AppResult;
 
@@ -52,4 +54,21 @@ pub fn now_ms() -> i64 {
 
 pub fn new_id() -> String {
     uuid::Uuid::now_v7().to_string()
+}
+
+/// One row as a JSON object keyed by column name (`names`, in column order). Blobs become hex
+/// strings.
+pub fn row_to_json(row: &Row, names: &[String]) -> AppResult<Map<String, Value>> {
+    let mut obj = Map::with_capacity(names.len());
+    for (i, name) in names.iter().enumerate() {
+        let v = match row.get_ref(i)? {
+            ValueRef::Null => Value::Null,
+            ValueRef::Integer(n) => Value::from(n),
+            ValueRef::Real(f) => Value::from(f),
+            ValueRef::Text(t) => Value::String(String::from_utf8_lossy(t).into_owned()),
+            ValueRef::Blob(b) => Value::String(hex::encode(b)),
+        };
+        obj.insert(name.clone(), v);
+    }
+    Ok(obj)
 }

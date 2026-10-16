@@ -12,6 +12,8 @@ const VERSION: u8 = 0x01;
 const NONCE_LEN: usize = 24;
 const TAG_LEN: usize = 16;
 const HEADER_LEN: usize = 1 + NONCE_LEN;
+/// Bytes [`seal`] adds to the plaintext (version, nonce, tag): 41.
+pub const SEAL_OVERHEAD: usize = HEADER_LEN + TAG_LEN;
 
 /// Crockford base32: no `I`, `L`, `O`, `U`.
 const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";

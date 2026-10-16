@@ -197,6 +197,7 @@ export function TrayPanel(p: {
                   item.kind === 'url' ? hostOf(item.url) : extOf(item.fileName),
                   formatTime(item.capturedAt),
                   pending && t('common.sorting'),
+                  !item.fileAvailable && t('item.fileElsewhere'),
                 ])}
                 category={cat && categoryColor(cat)}
                 categoryLabel={cat && categoryLabel(cat, t)}
@@ -210,14 +211,17 @@ export function TrayPanel(p: {
                 labels={item.addedBy ? { ...labels, agent: addedBy(item.addedBy) } : labels}
                 className={copied.includes(item.id) ? 'pt-card is-copied' : 'pt-card'}
                 onClick={(e) => onCardClick(e, item)}
-                onPointerDown={(e) =>
+                onPointerDown={(e) => {
+                  const dragged = items.filter((i) => dragIds.includes(i.id));
+                  // A file still on another Mac can't be dragged out.
+                  if (dragged.some((i) => !i.fileAvailable)) return;
                   armDragOut(e, {
-                    items: items.filter((i) => dragIds.includes(i.id)),
+                    items: dragged,
                     onStart: p.onDragStart,
                     onEnd: p.onDragEnd,
                     onError: (err) => console.error('drag-out failed', err),
-                  })
-                }
+                  });
+                }}
                 onCopy={() => copy([item.id])}
                 onPaste={() => p.onPaste([item.id])}
               />

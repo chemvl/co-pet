@@ -45,10 +45,13 @@ pub fn put(conn: &Connection, key: &str, value: &Value) -> AppResult<()> {
     Ok(())
 }
 
-/// Writes and emits `settings-changed {key}`.
+/// Writes and emits `settings-changed {key}`; a key that syncs also wakes sync.
 pub fn set(app: &AppHandle, key: &str, value: &Value) -> AppResult<()> {
     put(&app.state::<Db>().conn(), key, value)?;
     events::emit(app, events::SETTINGS_CHANGED, SettingsChanged { key: key.to_string() });
+    if crate::sync::SYNCED_SETTINGS.contains(&key) {
+        crate::sync::poke(app);
+    }
     Ok(())
 }
 

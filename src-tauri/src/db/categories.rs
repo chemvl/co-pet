@@ -1,9 +1,11 @@
 //! Category rows: the nine built-ins plus the user's own. Deletes are soft; `unsorted` can't be
 //! deleted and always sorts last.
 use rusqlite::{params, Connection, OptionalExtension, Row};
+use tauri::AppHandle;
 
 use crate::db::{items, new_id, now_ms, search};
 use crate::error::{AppError, AppResult};
+use crate::events;
 use crate::i18n::{tr, Lang};
 use crate::model::{Actor, Category, CategoryPatch, BUILTIN_CATEGORY_IDS};
 
@@ -263,6 +265,12 @@ pub fn reorder(conn: &mut Connection, ids: &[String]) -> AppResult<()> {
     }
     tx.commit()?;
     Ok(())
+}
+
+/// After a write to categories, rules or examples: emits `categories-changed` and wakes sync.
+pub fn notify_changed(app: &AppHandle) {
+    events::categories_changed(app);
+    crate::sync::poke(app);
 }
 
 #[cfg(test)]

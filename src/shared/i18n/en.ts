@@ -97,6 +97,7 @@ export const en = {
   'error.keyExists': 'Sync was just turned on from another Mac. Enter that recovery key instead.',
   'error.signedOut': 'You were signed out. Sign in again to keep syncing.',
   'error.decrypt': "Co-pet couldn't decrypt that data.",
+  'error.fileElsewhere': "This file is on another Mac. It downloads when sync finishes, or stays there if it's over the size limit.",
 
   'kind.file': 'File',
   'kind.image': 'Image',
@@ -228,6 +229,7 @@ export const en = {
   'item.changeCategory': 'Change category',
   'item.notFound': "This item isn't available anymore.",
   'item.trayHint': 'Open the tray from the pet to drag this into any app.',
+  'item.fileElsewhere': 'File is on another Mac',
   'item.why.domain': 'Rule: URL domain is {value}',
   'item.why.extension': 'Rule: file type is .{value}',
   'item.why.kind': 'Rule: item kind is {value}',

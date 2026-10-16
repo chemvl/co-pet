@@ -98,6 +98,7 @@ export const vi: Record<keyof typeof en, string> = {
   'error.keyExists': 'Đồng bộ vừa được bật từ máy Mac khác. Hãy nhập khoá khôi phục đó.',
   'error.signedOut': 'Bạn đã bị đăng xuất. Đăng nhập lại để tiếp tục đồng bộ.',
   'error.decrypt': 'Co-pet không giải mã được dữ liệu này.',
+  'error.fileElsewhere': 'File này đang ở máy Mac khác. File sẽ tải về khi đồng bộ xong, hoặc ở lại máy đó nếu vượt giới hạn dung lượng.',
 
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',
@@ -229,6 +230,7 @@ export const vi: Record<keyof typeof en, string> = {
   'item.changeCategory': 'Đổi danh mục',
   'item.notFound': 'Mục này không còn nữa.',
   'item.trayHint': 'Mở khay từ thú cưng để kéo mục này vào bất kỳ ứng dụng nào.',
+  'item.fileElsewhere': 'File đang ở máy Mac khác',
   'item.why.domain': 'Quy tắc: tên miền URL là {value}',
   'item.why.extension': 'Quy tắc: loại file là .{value}',
   'item.why.kind': 'Quy tắc: loại mục là {value}',

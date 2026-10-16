@@ -521,7 +521,9 @@ fn abs_string(paths: &Paths, rel: &str) -> String {
 
 fn to_summary(row: ItemRow, paths: &Paths) -> ItemSummary {
     let sensitive = row.sensitive;
+    let file_available = row.file_path.as_deref().is_none_or(|rel| paths.abs(rel).exists());
     ItemSummary {
+        file_available,
         summary: if sensitive { None } else { row.summary },
         thumb_path: if sensitive {
             None
@@ -684,10 +686,11 @@ pub fn counts(conn: &Connection) -> AppResult<Counts> {
     Ok(c)
 }
 
-/// Emits `items-changed {ids}` then `counts-changed` with fresh counts.
+/// Emits `items-changed {ids}` then `counts-changed` with fresh counts, and wakes sync.
 pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
     events::items_changed(app, ids);
     emit_counts(app);
+    crate::sync::poke(app);
 }
 
 /// Emits `counts-changed` with fresh counts; a failure to read them is logged.

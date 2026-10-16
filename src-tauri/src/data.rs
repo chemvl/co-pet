@@ -5,15 +5,14 @@ use std::path::{Path, PathBuf};
 
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSBundle, NSString};
-use rusqlite::types::ValueRef;
 use rusqlite::Connection;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::account;
-use crate::db::{settings, Db};
+use crate::db::{self, settings, Db};
 use crate::error::{AppError, AppResult};
 use crate::llm::LlmServer;
 use crate::model::ExcludedApp;
@@ -140,18 +139,7 @@ fn rows_json(conn: &Connection, sql: &str) -> AppResult<Vec<Value>> {
     let mut rows = stmt.query([])?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
-        let mut obj = Map::new();
-        for (i, name) in names.iter().enumerate() {
-            let v = match row.get_ref(i)? {
-                ValueRef::Null => Value::Null,
-                ValueRef::Integer(n) => Value::from(n),
-                ValueRef::Real(f) => Value::from(f),
-                ValueRef::Text(t) => Value::String(String::from_utf8_lossy(t).into_owned()),
-                ValueRef::Blob(b) => Value::String(hex::encode(b)),
-            };
-            obj.insert(name.clone(), v);
-        }
-        out.push(Value::Object(obj));
+        out.push(Value::Object(db::row_to_json(row, &names)?));
     }
     Ok(out)
 }

@@ -157,6 +157,7 @@ fn store(app: &AppHandle, user_id: &str, mk: &[u8; 32]) -> AppResult<()> {
     secrets::set(&key_account(user_id), &STANDARD.encode(mk))?;
     forget_pending(app);
     events::account_changed(app, None);
+    crate::sync::poke(app);
     Ok(())
 }
 

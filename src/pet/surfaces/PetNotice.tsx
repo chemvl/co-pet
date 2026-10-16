@@ -17,9 +17,9 @@ export function PetNotice(p: { notice: Notice; onAction(): void; onClose(): void
   return (
     <div className="pt-notice" role="status">
       <span className="label">{p.notice.message}</span>
-      {p.notice.permission ? (
+      {p.notice.permission || p.notice.home !== undefined ? (
         <Button variant="quiet" size="sm" onClick={p.onAction}>
-          {t('common.openSettings')}
+          {p.notice.permission ? t('common.openSettings') : t('common.openHome')}
         </Button>
       ) : null}
     </div>

@@ -7,8 +7,10 @@ export type PermissionKind = 'screenRecording' | 'accessibility';
 
 export interface Notice {
   message: string;
-  /** the one quiet action: opens the privacy pane for a missing permission */
+  /** the one quiet action: opens the privacy pane for a missing permission… */
   permission?: PermissionKind;
+  /** …or opens Home at this route */
+  home?: string;
 }
 
 const PERMISSION_OF: Partial<Record<string, PermissionKind>> = {

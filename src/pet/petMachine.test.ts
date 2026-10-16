@@ -79,6 +79,20 @@ describe('petMachine interrupt rules', () => {
     expect(body()).toBe('idle');
   });
 
+  it('celebrate_waits_behind_p1', () => {
+    const { clock, machine, body } = setup();
+    machine.fire('catch');
+    clock.advance(100);
+    machine.fire('celebrate');
+    expect(body()).toBe('catch');
+    clock.advance(500);
+    expect(machine.output()).toMatchObject({ body: 'celebrate', fx: null });
+    clock.advance(799);
+    expect(body()).toBe('celebrate');
+    clock.advance(1);
+    expect(body()).toBe('idle');
+  });
+
   it('drops a P3 while a reaction is playing', () => {
     const { clock, machine, body } = setup();
     machine.fire('catch');
@@ -117,6 +131,23 @@ describe('petMachine loops', () => {
     expect(machine.output()).toMatchObject({ body: 'thinking', fx: { kind: 'cloud' } });
     machine.set('thinking', false);
     machine.set('thinking', true);
+    expect(body()).toBe('idle');
+  });
+
+  it('holdSign_loops_until_cleared', () => {
+    const { clock, machine, body } = setup();
+    machine.set('thinking', true);
+    machine.set('holdSign', true);
+    expect(machine.output()).toMatchObject({ body: 'holdSign', fx: null });
+    clock.advance(10_000);
+    expect(body()).toBe('holdSign');
+    machine.fire('gesture');
+    expect(body()).toBe('gesture');
+    clock.advance(300);
+    expect(body()).toBe('holdSign');
+    machine.set('holdSign', false);
+    expect(body()).toBe('thinking');
+    machine.set('thinking', false);
     expect(body()).toBe('idle');
   });
 

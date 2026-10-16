@@ -237,6 +237,7 @@ fn card(c: &Candidate, picked_by: &str) -> NextCard {
         due_time: t.due_time.clone(),
         category_id: t.category_id.clone(),
         source_title: t.source_title.clone(),
+        created_at: t.created_at,
         picked_by: picked_by.to_owned(),
     }
 }
@@ -307,13 +308,18 @@ fn check(trigger: &str, action: &str) -> AppResult<()> {
     }
 }
 
-/// Records one card interaction. `invalid` for an unknown trigger or action.
+/// Records one card interaction. `invalid` for an unknown trigger or action, `notFound` for an
+/// unknown or deleted task.
 pub fn record(conn: &Connection, task_id: &str, trigger: &str, action: &str) -> AppResult<()> {
     check(trigger, action)?;
-    conn.execute(
-        "INSERT INTO next_feedback (id, task_id, trigger, action, at) VALUES (?1, ?2, ?3, ?4, ?5)",
+    let inserted = conn.execute(
+        "INSERT INTO next_feedback (id, task_id, trigger, action, at)
+           SELECT ?1, id, ?3, ?4, ?5 FROM tasks WHERE id = ?2 AND deleted_at IS NULL",
         params![new_id(), task_id, trigger, action, now_ms()],
     )?;
+    if inserted == 0 {
+        return Err(AppError::Code("notFound"));
+    }
     Ok(())
 }
 
@@ -658,6 +664,18 @@ mod tests {
         assert!(matches!(record(&conn, &id, "home", "open"), Err(AppError::Code("invalid"))));
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM next_feedback", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn record_unknown_or_deleted_task_is_not_found() {
+        let db = db();
+        let conn = db.conn();
+        assert!(matches!(record(&conn, "missing", "bubble", "shown"), Err(AppError::Code("notFound"))));
+        let id = task(&conn, "A", None, 0);
+        conn.execute("UPDATE tasks SET deleted_at = 1 WHERE id = ?1", [&id]).unwrap();
+        assert!(matches!(record(&conn, &id, "bubble", "skip"), Err(AppError::Code("notFound"))));
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM next_feedback", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
     }
 
     #[test]

@@ -62,7 +62,7 @@ export function groupTasks(tasks: readonly TaskSummary[], now: Date): TaskGroups
 }
 
 /** Open, not snoozed, with a due time within the next 30 minutes (the pet's due-soon badge rule). */
-export function isDueSoon(task: TaskSummary, now: Date): boolean {
+export function isDueSoon(task: Pick<TaskSummary, 'status' | 'snoozedUntil' | 'dueDate' | 'dueTime'>, now: Date): boolean {
   if (task.status !== 'open' || !task.dueTime) return false;
   if (task.snoozedUntil != null && task.snoozedUntil >= now.getTime()) return false;
   const at = dueAt(task);
@@ -70,7 +70,7 @@ export function isDueSoon(task: TaskSummary, now: Date): boolean {
 }
 
 /** Today → `14:00` (or "Today" without a time); other days → `Fri 17 Oct` plus the time if set. */
-export function dueText(task: TaskSummary, now: Date, lang: Lang, t: TFunction): string | undefined {
+export function dueText(task: Pick<TaskSummary, 'dueDate' | 'dueTime'>, now: Date, lang: Lang, t: TFunction): string | undefined {
   const at = dueAt(task);
   if (!at) return undefined;
   if (startOfDay(at).getTime() === startOfDay(now).getTime()) return task.dueTime ?? t('tasks.dueToday');

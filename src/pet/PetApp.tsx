@@ -10,14 +10,17 @@ import {
 } from 'react';
 import { PetDock, type IconName } from '../ds';
 import { categoryColor, categoryIcon, categoryLabelOf } from '../shared/categories';
+import { errorMessage } from '../shared/errors';
 import { useT, type I18nKey } from '../shared/i18n';
 import {
   captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
-  counts as fetchCounts, focusPetPanel, getPlacement, on, openHome, pasteItems, petStatus, quitApp,
-  requestPermission, resignPetPanel, setHitRegions, setPetMoving,
+  counts as fetchCounts, focusPetPanel, getPlacement, nextAction, on, openHome, pasteItems, petStatus, quitApp,
+  requestPermission, resignPetPanel, setHitRegions, setPetMoving, whatsNext,
 } from '../shared/ipc';
 import { useCategories, useSetSetting, useSettings } from '../shared/queries';
-import type { CaptureResult, EventPayloads, HitRegion, HotkeyAction, Placement } from '../shared/types';
+import type {
+  CaptureResult, EventPayloads, HitRegion, HotkeyAction, NextCard, NextTrigger, Placement,
+} from '../shared/types';
 import { CatArt, LOOKS, type CatLook, type CatSkin } from './CatArt';
 import { noticeFor, type Notice } from './notices';
 import {
@@ -27,16 +30,18 @@ import {
 import { poseFor } from './pose';
 import { Floating } from './surfaces/Floating';
 import { PetMenu } from './surfaces/PetMenu';
+import { NextPanel, type CardAction } from './surfaces/NextPanel';
 import { PetNotice } from './surfaces/PetNotice';
 import { QuickNotePanel } from './surfaces/QuickNotePanel';
 import { COUNTS_KEY, TRAY_KEY, TrayPanel } from './surfaces/TrayPanel';
 import { usePetMachine } from './usePetMachine';
 import './pet.css';
 
-type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice';
+type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice' | 'next';
 type Region = 'pet' | 'panel' | 'halo' | null;
 
 const BUBBLES: { icon: IconName; label: I18nKey }[] = [
+  { icon: 'whats-next', label: 'pet.bubble.whatsNext' },
   { icon: 'screenshot', label: 'pet.bubble.captureScreen' },
   { icon: 'clipboard', label: 'pet.bubble.saveClipboard' },
   { icon: 'home', label: 'pet.bubble.openHome' },
@@ -123,6 +128,7 @@ export function PetApp() {
   const [petFocused, setPetFocused] = useState(false);
   const [focusIndex, setFocusIndex] = useState<number | undefined>(undefined);
   const [announcement, setAnnouncement] = useState('');
+  const [next, setNext] = useState<{ card: NextCard; trigger: NextTrigger; userInitiated: boolean } | null>(null);
 
   const petRef = useRef<HTMLButtonElement>(null);
   const bubbleEls = useRef<(HTMLButtonElement | null)[]>([]);
@@ -136,8 +142,8 @@ export function PetApp() {
 
   // Latest values for event handlers subscribed once. Handlers also write the
   // fields they change, so back-to-back events see them before the next render.
-  const live = useRef({ surface, region, halo, placement });
-  live.current = { surface, region, halo, placement };
+  const live = useRef({ surface, region, halo, placement, hidden });
+  live.current = { surface, region, halo, placement, hidden };
 
   const clear = (timer: { current: number | null }) => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -148,13 +154,18 @@ export function PetApp() {
   const unsorted = counts?.unsorted ?? 0;
 
   // ---------- surfaces ----------
+  // The What's Next card holds the surface until one of its actions closes it (`onNextAction`).
   const openSurface = useCallback((next: Exclude<Surface, null>) => {
+    if (live.current.surface === 'next') return;
+    live.current.surface = next;
     setSurface(next);
     setOut(true);
     if (KEYED.includes(next)) void focusPetPanel();
   }, []);
 
   const closeSurface = useCallback(() => {
+    if (live.current.surface === 'next') return;
+    live.current.surface = null;
     setSurface(null);
     setFocusIndex(undefined);
     void resignPetPanel();
@@ -217,7 +228,51 @@ export function PetApp() {
     [closeSurface],
   );
 
+  // ---------- What's Next ----------
+  /** User-initiated cards take keyboard focus; proactive ones never do. */
+  const openNext = (card: NextCard, trigger: NextTrigger, userInitiated: boolean) => {
+    setNext({ card, trigger, userInitiated });
+    live.current.surface = 'next';
+    setSurface('next');
+    setOut(true);
+    if (userInitiated) void focusPetPanel();
+    void nextAction(card.taskId, 'shown', trigger);
+  };
+
+  const onNextAction = (action: CardAction) => {
+    if (!next || live.current.surface !== 'next') return;
+    live.current.surface = null;
+    setSurface(null);
+    void resignPetPanel();
+    nextAction(next.card.taskId, action, next.trigger).catch((e: unknown) =>
+      showNotice({ message: errorMessage(t, e) }),
+    );
+  };
+
+  const askNext = async () => {
+    closeSurface();
+    machine.set('thinking', true);
+    let card: NextCard | null;
+    try {
+      card = await whatsNext('bubble');
+    } catch (e) {
+      showNotice({ message: errorMessage(t, e) });
+      return;
+    } finally {
+      machine.set('thinking', false);
+    }
+    if (card) openNext(card, 'bubble', true);
+    else showNotice({ message: t('notice.nextEmpty'), home: 'tasks' });
+  };
+
+  // The pet holds up its sign while the card is open.
+  useEffect(() => machine.set('holdSign', surface === 'next'), [machine, surface]);
+
   const onBubble = (icon: IconName) => {
+    if (icon === 'whats-next') {
+      void askNext();
+      return;
+    }
     if (icon === 'note') {
       openSurface('quicknote');
       return;
@@ -230,12 +285,21 @@ export function PetApp() {
 
   // ---------- Rust events ----------
   const applyVisibility = (isHidden: boolean) => {
+    live.current.hidden = isHidden;
     setHidden(isHidden);
     machine.setHidden(isHidden);
     if (isHidden) {
+      live.current.surface = null;
       setSurface(null);
       setOut(false);
     }
+  };
+
+  /** A proactive card: only onto an idle, visible, awake pet; otherwise nothing is recorded. */
+  const onWhatsNext = (e: EventPayloads['whats-next']) => {
+    if (live.current.surface !== null || live.current.hidden || machine.output().body === 'sleep') return;
+    machine.fire('wake');
+    openNext(e.card, e.trigger, false);
   };
 
   const endHalo = () => {
@@ -318,8 +382,8 @@ export function PetApp() {
   };
 
   // The subscriptions live for the window's lifetime and call the latest handlers.
-  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction, onDropResult });
-  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction, onDropResult };
+  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext });
+  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext };
 
   useEffect(() => {
     const h = handlers;
@@ -336,6 +400,7 @@ export function PetApp() {
       on('pointer-region', (e) => h.current.onRegion(e.region, e.dragging)),
       on('hotkey', (e) => h.current.onHotkey(e.action)),
       on('capture-result', (r) => h.current.onDropResult(r)),
+      on('whats-next', (e) => h.current.onWhatsNext(e)),
       getCurrentWindow().onFocusChanged(({ payload: focused }) => {
         // A click outside (another app became key) closes the keyboard surfaces.
         if (!focused && KEYED.includes(live.current.surface)) setSurface(null);
@@ -374,15 +439,19 @@ export function PetApp() {
     return () => window.clearTimeout(timer);
   }, [out, region, surface, halo, petFocused, moving]);
 
-  // Badge changes are announced.
-  const lastUnsorted = useRef<number | null>(null);
+  // Badge changes are announced: the due-soon dot when it appears, else the unsorted count.
+  const dueSoon = counts?.taskDueSoon ?? false;
+  const lastBadge = useRef<{ dueSoon: boolean; unsorted: number } | null>(null);
   useEffect(() => {
     if (counts === undefined) return;
-    if (lastUnsorted.current !== null && lastUnsorted.current !== unsorted && unsorted > 0) {
+    const last = lastBadge.current;
+    if (last && dueSoon && !last.dueSoon) {
+      announce(t('pet.badge.dueSoon'));
+    } else if (last && !dueSoon && last.unsorted !== unsorted && unsorted > 0) {
       announce(t('pet.badge.unsorted', { n: unsorted }));
     }
-    lastUnsorted.current = unsorted;
-  }, [counts, unsorted, t]);
+    lastBadge.current = { dueSoon, unsorted };
+  }, [counts, dueSoon, unsorted, t]);
 
   // ---------- geometry ----------
   const size = applied?.size ?? 80;
@@ -426,7 +495,7 @@ export function PetApp() {
         if (Math.hypot(ev.clientX - x0, ev.clientY - y0) <= MOVE_THRESHOLD) return;
         dragging = true;
         clear(restTimer);
-        setSurface(null);
+        if (live.current.surface !== 'next') setSurface(null);
         void setPetMoving(true);
       }
       setMoving({ x: ev.clientX, y: ev.clientY });
@@ -575,9 +644,11 @@ export function PetApp() {
             bubbleEls.current[i] = el;
           }}
           badge={
-            !hidden && !asleep && unsorted > 0
-              ? { count: unsorted, label: t('pet.badge.unsorted', { n: unsorted }), className: 'cp-pet__badge' }
-              : undefined
+            hidden || asleep ? undefined
+              : dueSoon ? { dot: true, label: t('pet.badge.dueSoon'), className: 'cp-pet__badge' }
+                : unsorted > 0
+                  ? { count: unsorted, label: t('pet.badge.unsorted', { n: unsorted }), className: 'cp-pet__badge' }
+                  : undefined
           }
           petProps={{
             'aria-label': t('pet.a11y', { name }),
@@ -650,6 +721,12 @@ export function PetApp() {
         </Floating>
       ) : null}
 
+      {!hidden && surface === 'next' && next ? (
+        <Floating place={placeNextToPet} onRect={setPanelRect}>
+          <NextPanel card={next.card} autoFocus={next.userInitiated} onAction={onNextAction} />
+        </Floating>
+      ) : null}
+
       {!hidden && surface === 'notice' && notice ? (
         <Floating place={placeNextToPet} onRect={setPanelRect}>
           <PetNotice
@@ -657,7 +734,8 @@ export function PetApp() {
             onClose={closeNotice}
             onAction={() => {
               if (notice.permission) void requestPermission(notice.permission);
-              closeSurface();
+              if (notice.home !== undefined) goHome(notice.home);
+              else closeSurface();
             }}
           />
         </Floating>

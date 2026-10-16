@@ -5,7 +5,7 @@ import type { IconName } from '../ds';
 import type { BuiltinCategoryId, PetInput } from '../shared/types';
 
 export type Trigger = PetInput;
-export type Flag = 'dragOver' | 'thinking' | 'sleep';
+export type Flag = 'dragOver' | 'holdSign' | 'thinking' | 'sleep';
 export type Body = Trigger | 'idle' | Flag;
 export type Fx =
   | null
@@ -40,6 +40,7 @@ export const TRIGGERS: Readonly<Record<Trigger, { priority: Priority; ms: number
   camera: { priority: 1, ms: 400 },
   confused: { priority: 2, ms: 600 },
   idea: { priority: 2, ms: 500 },
+  celebrate: { priority: 2, ms: 800 },
   tilt: { priority: 2, ms: 500 },
   gesture: { priority: 3, ms: 300 },
   fidget: { priority: 3, ms: 1200 },
@@ -90,7 +91,7 @@ const noop = () => {};
 
 export function createPetMachine(deps: MachineDeps): PetMachine {
   const random = deps.random ?? Math.random;
-  const flags = { dragOver: false, thinking: false, sleep: false };
+  const flags = { dragOver: false, holdSign: false, thinking: false, sleep: false };
   let thinkingSince = 0;
   let awakeUntil = -Infinity;
   let hidden = false;
@@ -109,6 +110,8 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
 
   function resolveLoop(): Body {
     if (flags.dragOver) return 'dragOver';
+    // The What's Next card is open: the pet holds up its sign.
+    if (flags.holdSign) return 'holdSign';
     // `thinking` counts only after it has been on for 400 ms, so quick jobs don't flicker.
     if (flags.thinking && deps.now() - thinkingSince >= LOOP_DELAY_MS) return 'thinking';
     if (flags.sleep && deps.now() >= awakeUntil) return 'sleep';

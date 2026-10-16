@@ -85,6 +85,9 @@ html, body { background: transparent; }
 }
 .pt-notice .cp-btn { margin-left: calc(var(--space-2) * -1); }
 
+/* What's Next: the card's own buttons show focus; the wrapper only takes the keys. */
+.pt-next:focus { outline: none; }
+
 /* Visually hidden live region. */
 .pt-sr {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;

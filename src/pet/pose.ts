@@ -54,6 +54,10 @@ export function poseFor(body: Body, variant = 0): CatPose {
       return { parts: parts({ eyes: 'happy' }), motion: 'hop', ms: triggerMs('idea') };
     case 'tilt':
       return { parts: parts({ eyes: 'up' }), motion: 'tilt', ms: triggerMs('tilt') };
+    case 'celebrate':
+      return { parts: parts({ eyes: 'happy', mouth: 'open' }), motion: 'hop', ms: triggerMs('celebrate') };
+    case 'holdSign':
+      return { parts: parts({ eyes: 'happy', item: true }), motion: 'breathe', ms: BREATHE_MS };
     case 'fidget':
       if (variant === 3) return { parts: parts({ eyes: 'wink' }), motion: null, ms: triggerMs('fidget', 3) };
       return {

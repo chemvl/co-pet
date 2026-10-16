@@ -470,6 +470,8 @@ pub struct NextCard {
     pub due_time: Option<String>,
     pub category_id: String,
     pub source_title: Option<String>,
+    /// Task creation time (epoch ms): the `waiting` reason's date.
+    pub created_at: i64,
     /// `"ai" | "rank"`
     pub picked_by: String,
 }

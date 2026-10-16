@@ -212,6 +212,8 @@ export interface NextCard {
   dueTime: string | null;
   categoryId: CategoryId;
   sourceTitle: string | null;
+  /** epoch ms: the `waiting` reason's date */
+  createdAt: number;
   pickedBy: 'ai' | 'rank';
 }
 
@@ -271,7 +273,8 @@ export type HotkeyAction = 'focusPet' | 'sendSelection' | 'captureScreen' | 'qui
 // ---------- events ----------
 
 export type PetInput =
-  | 'poof' | 'wake' | 'catch' | 'handOver' | 'camera' | 'confused' | 'idea' | 'tilt' | 'gesture' | 'fidget';
+  | 'poof' | 'wake' | 'catch' | 'handOver' | 'camera' | 'confused' | 'idea' | 'tilt' | 'gesture' | 'fidget'
+  | 'celebrate';
 
 export interface EventPayloads {
   'items-changed': { ids: string[] };

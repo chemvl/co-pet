@@ -212,7 +212,7 @@ where
 /// whose title is not a file name.
 pub(crate) fn into_update(item: ItemRow, extract_status: &'static str, d: Decision) -> TriageUpdate {
     let mut title = item.title;
-    let (mut summary, mut tags) = (None, None);
+    let (mut summary, mut tags, mut task_suggestion) = (None, None, None);
     if let Some(out) = d.ai {
         let ai_titled = matches!(item.kind.as_str(), "text" | "richtext" | "code" | "url" | "screenshot");
         if ai_titled && !out.title.trim().is_empty() {
@@ -220,6 +220,9 @@ pub(crate) fn into_update(item: ItemRow, extract_status: &'static str, d: Decisi
         }
         summary = Some(out.summary.trim().to_owned()).filter(|s| !s.is_empty());
         tags = Some(out.tags);
+        if d.source == "ai" {
+            task_suggestion = Some(out.task.trim().to_owned()).filter(|t| !t.is_empty());
+        }
     }
     TriageUpdate {
         title: Some(title),
@@ -234,6 +237,7 @@ pub(crate) fn into_update(item: ItemRow, extract_status: &'static str, d: Decisi
         triage_reason: d.reason,
         suggestions: d.suggestions,
         sensitive: d.sensitive,
+        task_suggestion,
     }
 }
 
@@ -247,6 +251,7 @@ async fn triage_item(app: &AppHandle, id: &str) -> AppResult<()> {
         }
         (item, crate::db::rules::list_active(&conn)?, Policy::read(&conn)?)
     };
+    let categories = crate::db::categories::list(&db.conn())?;
     policy.model_ready = llm::active_model_path(app).is_some();
     let paths = app.state::<Paths>().inner().clone();
     let ex = extract::extract(&paths, &item, policy.local_only).await;
@@ -254,7 +259,7 @@ async fn triage_item(app: &AppHandle, id: &str) -> AppResult<()> {
 
     let decision = decide(&item, &rules, &policy, || async {
         let examples = crate::db::rules::recent_examples(&db.conn(), EXAMPLES)?;
-        ai::classify(app, &item, &examples).await
+        ai::classify(app, &item, &examples, &categories).await
     })
     .await;
     let reaction = match decision.category_id.as_str() {
@@ -322,6 +327,7 @@ mod tests {
             summary: "Fix the login bug before the Friday release.".into(),
             tags: vec!["bug".into(), "login".into()],
             confidence,
+            task: "Send the fix to QA".into(),
         }
     }
 

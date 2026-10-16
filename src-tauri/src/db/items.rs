@@ -191,7 +191,7 @@ pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppRe
            extracted_text = COALESCE(?5, extracted_text), extract_status = ?6,
            thumb_path = COALESCE(?7, thumb_path), category_id = ?8, triage_status = 'done',
            triage_source = ?9, triage_confidence = ?10, triage_reason = ?11, suggestions = ?12,
-           sensitive = ?13, updated_at = ?14
+           sensitive = ?13, updated_at = ?14, task_suggestion = ?15
          WHERE id = ?1",
         params![
             id,
@@ -207,7 +207,8 @@ pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppRe
             u.triage_reason,
             serde_json::to_string(&u.suggestions)?,
             u.sensitive,
-            now
+            now,
+            u.task_suggestion
         ],
     )?;
     let after = triage_state(&reindex(&tx, id)?);

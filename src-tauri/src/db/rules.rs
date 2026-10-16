@@ -72,7 +72,8 @@ pub fn recent_examples(conn: &Connection, limit: usize) -> AppResult<Vec<(String
         "SELECT e.title, e.category_id FROM category_examples e
          JOIN categories c ON c.id = e.category_id
          JOIN items i ON i.id = e.item_id
-         WHERE e.deleted_at IS NULL AND c.exclude_from_ai = 0
+         WHERE e.deleted_at IS NULL AND c.deleted_at IS NULL
+           AND (c.exclude_from_ai = 0 OR c.id = 'unsorted')
            AND i.sensitive = 0 AND i.deleted_at IS NULL
          ORDER BY e.created_at DESC, e.id DESC LIMIT ?1",
     )?;
@@ -104,5 +105,31 @@ mod tests {
         );
         assert!(rules[2].builtin);
         assert_eq!(rules[2].pattern, "note");
+    }
+
+    #[test]
+    fn examples_only_name_categories_the_model_may_answer() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.conn();
+        for (i, cat) in ["read", "meeting", "code", "unsorted"].into_iter().enumerate() {
+            let new = crate::model::NewItem {
+                kind: "text".into(),
+                title: cat.into(),
+                payload_text: Some(cat.into()),
+                source_kind: "drop".into(),
+                content_hash: format!("h{i}"),
+                ..Default::default()
+            };
+            let id = crate::db::items::insert_item(&mut conn, &new).unwrap();
+            crate::db::items::recategorize(&mut conn, &[id], cat, "user").unwrap();
+        }
+        conn.execute_batch(
+            "UPDATE categories SET deleted_at = 1 WHERE id = 'meeting';
+             UPDATE categories SET exclude_from_ai = 1 WHERE id IN ('code', 'unsorted');",
+        )
+        .unwrap();
+        let mut cats: Vec<String> = recent_examples(&conn, 8).unwrap().into_iter().map(|(_, c)| c).collect();
+        cats.sort();
+        assert_eq!(cats, ["read", "unsorted"]);
     }
 }

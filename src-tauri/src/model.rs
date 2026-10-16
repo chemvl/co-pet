@@ -85,6 +85,8 @@ pub struct TriageUpdate {
     pub triage_reason: String,
     pub suggestions: Vec<String>,
     pub sensitive: bool,
+    /// AI-suggested task title; `None` for rule-decided or non-actionable items.
+    pub task_suggestion: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

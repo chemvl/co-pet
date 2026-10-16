@@ -6,12 +6,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
-  type CSSProperties, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent,
+  type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { PetDock, type IconName } from '../ds';
 import { useT, type I18nKey } from '../shared/i18n';
 import {
-  captureClipboard, captureDrop, captureNote, captureScreenshot, captureSelection, commitPetPosition,
+  captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
   counts as fetchCounts, focusPetPanel, getPlacement, on, openHome, pasteItems, petStatus, quitApp,
   requestPermission, resignPetPanel, setHitRegions, setPetMoving,
 } from '../shared/ipc';
@@ -315,8 +315,8 @@ export function PetApp() {
   };
 
   // The subscriptions live for the window's lifetime and call the latest handlers.
-  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction });
-  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction };
+  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction, onDropResult });
+  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction, onDropResult };
 
   useEffect(() => {
     const h = handlers;
@@ -332,6 +332,7 @@ export function PetApp() {
       on('items-changed', () => void qc.invalidateQueries({ queryKey: TRAY_KEY })),
       on('pointer-region', (e) => h.current.onRegion(e.region, e.dragging)),
       on('hotkey', (e) => h.current.onHotkey(e.action)),
+      on('capture-result', (r) => h.current.onDropResult(r)),
       getCurrentWindow().onFocusChanged(({ payload: focused }) => {
         // A click outside (another app became key) closes the keyboard surfaces.
         if (!focused && KEYED.includes(live.current.surface)) setSurface(null);
@@ -505,24 +506,11 @@ export function PetApp() {
   };
 
   // ---------- drop ----------
-  const acceptDrag = (e: DragEvent) => {
-    if (dragOutActive.current) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-  const onDrop = (e: DragEvent) => {
-    if (dragOutActive.current) return;
-    e.preventDefault();
-    const dt = e.dataTransfer;
-    const payload = {
-      uriList: dt.getData('text/uri-list'),
-      plain: dt.getData('text/plain'),
-      html: dt.getData('text/html'),
-      fileNames: [...dt.files].map((f) => f.name),
-    };
+  // The native drop target in Rust takes the drop and captures it; the page only gets the result.
+  function onDropResult(r: CaptureResult) {
     if (live.current.halo === 'on') endHalo();
-    runCapture(() => captureDrop(payload));
-  };
+    handleResult(r);
+  }
 
   // ---------- render ----------
   const pose = poseFor(output.body, output.variant);
@@ -555,7 +543,7 @@ export function PetApp() {
   const box = dockBox(edge, point, area);
 
   return (
-    <div className="pt-root" onDragEnter={acceptDrag} onDragOver={acceptDrag} onDrop={onDrop}>
+    <div className="pt-root">
       {moving ? (
         <div className="pt-moving" style={{ left: moving.x - size / 2, top: moving.y - size / 2, width: size, height: size }}>
           {art}

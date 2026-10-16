@@ -5,7 +5,7 @@ import { useAiAction } from '../home/settings/ModelCards';
 import { asLook, asSkin, errorText } from '../home/settings/parts';
 import type { CatLook } from '../pet/CatArt';
 import { useLang, useT, type I18nKey } from '../shared/i18n';
-import { aiDownload, finishOnboarding } from '../shared/ipc';
+import { aiDownload, aiSelectModel, finishOnboarding } from '../shared/ipc';
 import { useAiStatus, useSetSetting, useSetting } from '../shared/queries';
 import { AiStep, DownloadStrip, HotkeysStep, PermissionsStep, PetStep } from './steps';
 import './onboarding.css';
@@ -28,6 +28,7 @@ export function OnboardingApp() {
   const savedLook = asLook(useSetting<string>('pet.style', 'soft'));
   const skin = asSkin(useSetting<string>('pet.skin', 'peach'));
   const localOnly = useSetting<boolean>('privacy.localOnly', false);
+  const activeModel = useSetting<string | null>('ai.modelId', null);
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState<string | null>(null);
@@ -52,9 +53,14 @@ export function OnboardingApp() {
       if (step === 0) {
         await set('pet.name', (name ?? savedName).trim() || 'Miso');
         await set('pet.style', petLook);
-        // Start the recommended model as early as possible, once.
-        if (!localOnly && ai && ai.state === 'none' && !ai.models.some((m) => m.downloaded)) {
-          await runAi(() => aiDownload(ai.recommendedId));
+        // Start the recommended model as early as possible, once. A model already on disk
+        // (Delete everything keeps models/) only needs selecting.
+        if (!localOnly && ai && ai.state === 'none') {
+          const onDisk =
+            ai.models.find((m) => m.id === ai.recommendedId && m.downloaded) ??
+            ai.models.find((m) => m.downloaded);
+          if (!onDisk) await runAi(() => aiDownload(ai.recommendedId));
+          else if (!activeModel) await runAi(() => aiSelectModel(onDisk.id));
         }
       }
       if (step === LAST) {

@@ -264,16 +264,6 @@ pub struct CaptureResult {
     pub message_params: BTreeMap<String, String>,
 }
 
-/// What the pet frontend read from the DOM `DataTransfer` on drop.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DropPayload {
-    pub uri_list: String,
-    pub plain: String,
-    pub html: String,
-    pub file_names: Vec<String>,
-}
-
 /// Matches `@crabnebula/tauri-plugin-drag`'s `DragItem`: a list of file paths or typed data.
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]

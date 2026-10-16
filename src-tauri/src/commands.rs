@@ -79,11 +79,6 @@ pub fn resign_pet_panel(app: AppHandle) -> AppResult<()> {
 // ---------- Step 6: capture ----------
 
 #[tauri::command]
-pub async fn capture_drop(app: AppHandle, p: crate::model::DropPayload) -> crate::model::CaptureResult {
-    crate::capture::drop::run(&app, p).await
-}
-
-#[tauri::command]
 pub async fn capture_clipboard(app: AppHandle) -> crate::model::CaptureResult {
     crate::capture::clipboard::run(&app, "clipboard").await
 }

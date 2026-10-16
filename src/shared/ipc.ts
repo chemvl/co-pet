@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-  AiStatus, CaptureResult, CategoryId, Counts, DragPlan, DropPayload, EventPayloads, HitRegion,
+  AiStatus, CaptureResult, CategoryId, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, PermissionsStatus, PetStatus, Placement, Rule, Edge,
 } from './types';
 
@@ -23,7 +23,6 @@ export const focusPetPanel = () => invoke<void>('focus_pet_panel');
 export const resignPetPanel = () => invoke<void>('resign_pet_panel');
 
 // Step 6 — capture
-export const captureDrop = (p: DropPayload) => invoke<CaptureResult>('capture_drop', { p });
 export const captureClipboard = () => invoke<CaptureResult>('capture_clipboard');
 export const captureScreenshot = () => invoke<CaptureResult>('capture_screenshot');
 /** Send selection (hotkey): copies the frontmost app's selection, then captures it. */

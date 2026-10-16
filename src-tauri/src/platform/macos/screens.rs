@@ -75,6 +75,11 @@ pub fn mouse_location(mtm: MainThreadMarker) -> (f64, f64) {
     (p.x, primary_height(mtm) - p.y)
 }
 
+/// An AppKit screen point (bottom-left origin) in global top-left points.
+pub fn point_to_top_left(mtm: MainThreadMarker, p: NSPoint) -> (f64, f64) {
+    (p.x, primary_height(mtm) - p.y)
+}
+
 pub fn contains(r: &Rect, x: f64, y: f64) -> bool {
     x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
 }

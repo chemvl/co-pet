@@ -2,7 +2,9 @@
    (menu, notice, quick note). Tokens only. */
 /* The design system paints `body` with `surface`; the pet window must stay transparent. */
 html, body { background: transparent; }
-.pt-root { position: fixed; inset: 0; overflow: hidden; }
+/* No text selection anywhere in the pet window: a card drag must never turn into a selection drag. */
+.pt-root { position: fixed; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
+.pt-root input, .pt-root textarea { user-select: text; -webkit-user-select: text; }
 
 /* The 360×360 PetDock box, one side on the edge. Hidden slides it fully off over `dur-wake`. */
 .pt-dock { position: absolute; transition: transform var(--dur-wake) var(--ease-out); }

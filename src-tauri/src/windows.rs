@@ -102,8 +102,9 @@ fn build_pet_window(app: &AppHandle, mtm: MainThreadMarker) -> AppResult<()> {
         // The app is never active, so the first click must reach the page.
         .accept_first_mouse(true)
         .visible(false)
-        // DOM drag events fire only without the native drop handler (Step 6).
+        // Drops go to the native drop target (platform::macos::drop_target), never to the page.
         .disable_drag_drop_handler()
+        .on_navigation(is_app_url)
         .build()?;
 
     let panel = window.to_panel::<PetPanel>()?;
@@ -115,6 +116,7 @@ fn build_pet_window(app: &AppHandle, mtm: MainThreadMarker) -> AppResult<()> {
         CollectionBehavior::new().can_join_all_spaces().stationary().ignores_cycle().into(),
     );
     panel.as_panel().setIgnoresMouseEvents(true);
+    crate::platform::macos::drop_target::install(app, mtm, panel.as_panel());
     app.state::<PointerState>().reset_for_new_window();
 
     let current = resolve(app, &screens::screens(mtm))?;
@@ -263,10 +265,17 @@ pub fn focus_pet_panel(app: &AppHandle) -> AppResult<()> {
     on_main_sync(app, move |_| panel.show_and_make_key())
 }
 
-/// Gives keyboard focus back to the app the user was typing in.
+/// Gives keyboard focus back to the app the user was typing in. `resignKeyWindow` must not be
+/// sent directly (AppKit then picks an arbitrary next key window and activates its app); ordering
+/// the key panel out returns key to the active app, and ordering it back in keeps it visible.
 pub fn resign_pet_panel(app: &AppHandle) -> AppResult<()> {
     let panel = pet_panel(app).ok_or_else(|| AppError::msg("no pet window"))?;
-    on_main_sync(app, move |_| panel.resign_key_window())
+    on_main_sync(app, move |_| {
+        if panel.as_panel().isKeyWindow() {
+            panel.hide();
+            panel.show();
+        }
+    })
 }
 
 /// Opens Home at `route` (e.g. `settings/general`; default the inbox), or focuses it and emits
@@ -317,6 +326,7 @@ pub fn open_onboarding(app: &AppHandle) -> AppResult<()> {
 /// the page's own 44 px title bar.
 fn overlay_window<'a>(app: &'a AppHandle, label: &str, url: &str) -> WebviewWindowBuilder<'a, Wry, AppHandle> {
     WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+        .on_navigation(is_app_url)
         .title("Co-pet")
         .title_bar_style(TitleBarStyle::Overlay)
         .hidden_title(true)
@@ -335,4 +345,18 @@ fn track_activation_policy(window: &WebviewWindow) {
             }
         }
     });
+}
+
+/// Webviews only ever show the app's own pages: a stray file drop or link must not replace them
+/// (WebKit's default drop navigates to the dropped file).
+fn is_app_url(url: &tauri::Url) -> bool {
+    let allowed = match url.scheme() {
+        "tauri" => true,
+        "http" | "https" => matches!(url.host_str(), Some("localhost" | "tauri.localhost" | "127.0.0.1")),
+        _ => false,
+    };
+    if !allowed {
+        eprintln!("[windows] blocked navigation to {url}");
+    }
+    allowed
 }

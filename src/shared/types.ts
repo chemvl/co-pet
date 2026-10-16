@@ -120,8 +120,6 @@ export interface CaptureResult {
   messageParams: Record<string, string>;
 }
 
-export interface DropPayload { uriList: string; plain: string; html: string; fileNames: string[] }
-
 export type DragPlan = string[] | { data: Record<string, string>; types: string[] };
 
 export interface PermissionsStatus { screenRecording: boolean; accessibility: boolean }
@@ -157,4 +155,6 @@ export interface EventPayloads {
   'settings-changed': { key: string };
   hotkey: { action: HotkeyAction };
   navigate: { route: string };
+  /** Pet window only: the outcome of a native drop on the pet. */
+  'capture-result': CaptureResult;
 }

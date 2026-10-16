@@ -126,11 +126,6 @@ pub(crate) fn failed(app: &AppHandle, reason: String) -> CaptureResult {
     CaptureResult { status: "failed", message: Some(reason), ..CaptureResult::default() }
 }
 
-pub(crate) fn is_http_url(s: &str) -> bool {
-    !s.contains(char::is_whitespace)
-        && url::Url::parse(s).is_ok_and(|u| matches!(u.scheme(), "http" | "https"))
-}
-
 // ---------- preparing rows ----------
 
 fn prepare_file(

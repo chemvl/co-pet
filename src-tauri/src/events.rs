@@ -2,7 +2,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, Counts, Placement};
+use crate::model::{AiStatus, CaptureResult, Counts, Placement};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -16,6 +16,8 @@ pub const SETTINGS_CHANGED: &str = "settings-changed";
 pub const HOTKEY: &str = "hotkey";
 /// Home window only.
 pub const NAVIGATE: &str = "navigate";
+/// Pet window only: the outcome of a native drop on the pet.
+pub const CAPTURE_RESULT: &str = "capture-result";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,4 +115,11 @@ pub fn pet_placement(app: &AppHandle, p: Placement) {
 
 pub fn ai_status(app: &AppHandle, s: AiStatus) {
     emit(app, AI_STATUS, s);
+}
+
+/// Sent to the pet window only; it shows the notice or announcement for the drop.
+pub fn capture_result(app: &AppHandle, r: CaptureResult) {
+    if let Err(e) = app.emit_to(crate::windows::PET, CAPTURE_RESULT, r) {
+        eprintln!("[events] emit {CAPTURE_RESULT} failed: {e}");
+    }
 }

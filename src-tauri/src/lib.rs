@@ -37,6 +37,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_nspanel::init())
+        .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -88,7 +89,6 @@ pub fn run() {
             commands::resign_pet_panel,
             commands::request_permission,
             commands::permissions_status,
-            commands::capture_drop,
             commands::capture_clipboard,
             commands::capture_screenshot,
             commands::capture_selection,

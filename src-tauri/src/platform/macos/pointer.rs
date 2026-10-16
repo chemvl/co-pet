@@ -1,31 +1,31 @@
 //! Click-through for the pet panel. The panel covers the whole work area but only its hit regions
 //! take the mouse: a 50 ms loop hit-tests the cursor against the regions the frontend reports and
 //! flips `ignoresMouseEvents` on transitions. It also detects OS drags (left button down while the
-//! drag pasteboard changed since the last button-up) to grow the pet region into the drop halo.
+//! drag pasteboard changed since the last button-up) so the pet region grows into the drop halo,
+//! and keeps the native drop target's catcher panel over the pet and its halo.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSEvent;
 use tauri::{AppHandle, Manager};
 
-use super::{pasteboard, screens};
+use super::{drop_target, pasteboard, screens};
 use crate::events::{self, PointerRegion};
-use crate::model::HitRegion;
+use crate::model::{HitRegion, Rect};
 use crate::windows;
 
 const TICK: Duration = Duration::from_millis(50);
-/// Monitor-set poll every 2 s.
-const SCREEN_POLL_TICKS: u32 = 40;
-/// `drop-halo`: how far the pet region grows while something is being dragged.
+const SCREEN_POLL: Duration = Duration::from_secs(2);
+/// `drop-halo`: how far the pet region grows while something is being dragged; the drop
+/// target accepts within it.
 const HALO: f64 = 48.0;
 
 #[derive(Default)]
 pub struct PointerState {
     inner: Mutex<Inner>,
     started: AtomicBool,
-    /// A tick is queued on the main thread; never queue a second one behind it.
     queued: AtomicBool,
 }
 
@@ -40,7 +40,7 @@ struct Inner {
     button_down: bool,
     /// Drag pasteboard change count at the last left-button-up.
     drag_baseline: Option<isize>,
-    ticks: u32,
+    last_screen_poll: Option<Instant>,
 }
 
 impl PointerState {
@@ -107,8 +107,11 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
 
     let poll_screens = {
         let mut s = state.lock();
-        s.ticks = s.ticks.wrapping_add(1);
-        s.ticks % SCREEN_POLL_TICKS == 0
+        let due = s.last_screen_poll.is_none_or(|t| t.elapsed() >= SCREEN_POLL);
+        if due {
+            s.last_screen_poll = Some(Instant::now());
+        }
+        due
     };
     if poll_screens {
         windows::refresh_screens(app, mtm);
@@ -121,6 +124,9 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
             s.passthrough = true;
         }
         emit_if_changed(app, &mut s, PointerRegion { region: None, dragging: false });
+        drop(s);
+        drop_target::place_catcher(mtm, window, None);
+        drop_target::set_dragging(mtm, false, windows_closed(app));
         return;
     }
 
@@ -139,11 +145,8 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
 
     let (mx, my) = screens::mouse_location(mtm);
     let frame = screens::window_frame(mtm, window);
-    let region = if screens::contains(&frame, mx, my) {
-        hit(&s.regions, mx - frame.x, my - frame.y, dragging)
-    } else {
-        None
-    };
+    let local = screens::contains(&frame, mx, my).then(|| (mx - frame.x, my - frame.y));
+    let region = local.and_then(|(x, y)| hit(&s.regions, x, y, dragging));
 
     if s.moving {
         drop(s);
@@ -157,6 +160,46 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
         s.passthrough = !inside;
     }
     emit_if_changed(app, &mut s, PointerRegion { region, dragging });
+    // The catcher covers pet + halo in global points; it steps aside while the pet is moved.
+    let catcher = if s.moving { None } else { pet_bounds(&s.regions, HALO) };
+    drop(s);
+    let catcher = catcher.map(|r| Rect { x: r.x + frame.x, y: r.y + frame.y, ..r });
+    drop_target::place_catcher(mtm, window, catcher);
+    drop_target::set_dragging(mtm, dragging, windows_closed(app));
+}
+
+/// Neither Home nor Onboarding is open: Co-pet has no reason to be the active app.
+fn windows_closed(app: &AppHandle) -> bool {
+    app.get_webview_window(windows::HOME).is_none() && app.get_webview_window(windows::ONBOARDING).is_none()
+}
+
+/// Whether a global top-left point is within the drop halo of the pet.
+pub(crate) fn in_drop_halo(app: &AppHandle, mtm: MainThreadMarker, x: f64, y: f64) -> bool {
+    let Some(panel) = windows::pet_panel(app) else { return false };
+    let frame = screens::window_frame(mtm, panel.as_panel());
+    let state = app.state::<PointerState>();
+    let s = state.lock();
+    !s.hidden && near_pet(&s.regions, x - frame.x, y - frame.y, HALO)
+}
+
+/// The union of the pet regions grown by `pad` (window CSS px).
+fn pet_bounds(regions: &[HitRegion], pad: f64) -> Option<Rect> {
+    let (x0, y0, x1, y1) = regions.iter().filter(|r| r.kind == "pet").fold(None, |acc, r| {
+        let (a, b, c, d) = (r.x - pad, r.y - pad, r.x + r.w + pad, r.y + r.h + pad);
+        Some(match acc {
+            None => (a, b, c, d),
+            Some((x0, y0, x1, y1)) => (f64::min(x0, a), f64::min(y0, b), f64::max(x1, c), f64::max(y1, d)),
+        })
+    })?;
+    Some(Rect { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })
+}
+
+fn near_pet(regions: &[HitRegion], x: f64, y: f64, pad: f64) -> bool {
+    regions.iter().any(|r| r.kind == "pet" && inside(r, x, y, pad))
+}
+
+fn inside(r: &HitRegion, x: f64, y: f64, pad: f64) -> bool {
+    x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad
 }
 
 fn emit_if_changed(app: &AppHandle, s: &mut Inner, next: PointerRegion) {
@@ -171,12 +214,9 @@ fn emit_if_changed(app: &AppHandle, s: &mut Inner, next: PointerRegion) {
 
 /// Panels win over the pet; while dragging the pet grows by the halo and reports `halo`.
 fn hit(regions: &[HitRegion], x: f64, y: f64, dragging: bool) -> Option<&'static str> {
-    let inside = |r: &HitRegion, pad: f64| {
-        x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad
-    };
-    if regions.iter().any(|r| r.kind == "panel" && inside(r, 0.0)) {
+    if regions.iter().any(|r| r.kind == "panel" && inside(r, x, y, 0.0)) {
         return Some("panel");
     }
     let (pad, name) = if dragging { (HALO, "halo") } else { (0.0, "pet") };
-    regions.iter().any(|r| r.kind == "pet" && inside(r, pad)).then_some(name)
+    near_pet(regions, x, y, pad).then_some(name)
 }

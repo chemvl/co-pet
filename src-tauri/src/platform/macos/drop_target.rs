@@ -62,6 +62,10 @@ thread_local! {
     static WAS_ACTIVE: Cell<bool> = const { Cell::new(false) };
     /// The catcher panel (the pet panel's drop view is retained by its content view).
     static CATCHER: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) };
+    /// The last frame given to the catcher and the primary display height it was converted
+    /// with. The pointer loop places the catcher every tick and AppKit's stored frame need not
+    /// equal the fractional CSS-px rect, so comparing against `frame()` re-set it every tick.
+    static CATCHER_FRAME: Cell<Option<(Rect, f64)>> = const { Cell::new(None) };
 }
 
 const DRAGGED_TYPES: [&str; 7] = [
@@ -234,13 +238,16 @@ pub fn place_catcher(mtm: MainThreadMarker, pet: &NSWindow, rect: Option<Rect>) 
         let Some(catcher) = catcher else { return };
         match rect {
             None => {
+                CATCHER_FRAME.set(None);
                 if catcher.isVisible() {
                     catcher.orderOut(None);
                 }
             }
             Some(rect) => {
-                if screens::window_frame(mtm, catcher) != rect {
+                let key = (rect, screens::primary_height(mtm));
+                if CATCHER_FRAME.get() != Some(key) {
                     screens::set_window_frame(mtm, catcher, rect);
+                    CATCHER_FRAME.set(Some(key));
                 }
                 if !catcher.isVisible() {
                     catcher.orderWindow_relativeTo(NSWindowOrderingMode::Below, pet.windowNumber());
@@ -265,7 +272,7 @@ static OWN_MARK: Mutex<Option<(Instant, Option<i32>)>> = Mutex::new(None);
 /// pet panel left frontmost.
 pub fn mark_own_drag() {
     let own = std::process::id() as i32;
-    let front = frontmost::frontmost_app().map(|a| a.pid).filter(|&pid| pid != own);
+    let front = frontmost::frontmost_pid().filter(|&pid| pid != own);
     *OWN_MARK.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), front));
 }
 

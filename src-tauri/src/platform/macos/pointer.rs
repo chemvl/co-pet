@@ -34,6 +34,9 @@ struct Inner {
     regions: Vec<HitRegion>,
     moving: bool,
     hidden: bool,
+    /// Hidden and the hidden-state housekeeping is done: the loop skips its main-thread hop
+    /// until the pet shows again.
+    parked: bool,
     /// Whether the panel currently ignores the mouse (it starts ignoring).
     passthrough: bool,
     last: Option<PointerRegion>,
@@ -59,13 +62,16 @@ impl PointerState {
 
     /// While hidden the panel ignores the mouse and region checks stop.
     pub fn set_hidden(&self, hidden: bool) {
-        self.lock().hidden = hidden;
+        let mut s = self.lock();
+        s.hidden = hidden;
+        s.parked = false;
     }
 
     /// Records that the pet window was just created with mouse events ignored.
     pub(crate) fn reset_for_new_window(&self) {
         let mut s = self.lock();
         s.passthrough = true;
+        s.parked = false;
         s.last = None;
     }
 }
@@ -83,7 +89,7 @@ pub fn start(app: &AppHandle) {
         loop {
             interval.tick().await;
             let state = app.state::<PointerState>();
-            if state.queued.swap(true, Ordering::AcqRel) {
+            if state.lock().parked || state.queued.swap(true, Ordering::AcqRel) {
                 continue;
             }
             let handle = app.clone();
@@ -124,6 +130,7 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
             s.passthrough = true;
         }
         emit_if_changed(app, &mut s, PointerRegion { region: None, dragging: false });
+        s.parked = true;
         drop(s);
         drop_target::place_catcher(mtm, window, None);
         drop_target::set_dragging(mtm, false, windows_closed(app));

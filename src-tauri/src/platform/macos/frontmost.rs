@@ -17,3 +17,8 @@ pub fn frontmost_app() -> Option<FrontApp> {
         pid: app.processIdentifier(),
     })
 }
+
+/// Just the frontmost app's pid: no LaunchServices round trips for its name and bundle id.
+pub fn frontmost_pid() -> Option<i32> {
+    Some(NSWorkspace::sharedWorkspace().frontmostApplication()?.processIdentifier())
+}

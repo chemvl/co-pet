@@ -20,7 +20,7 @@ pub struct Screen {
 }
 
 /// Height of the primary display, which anchors the AppKit ↔ top-left flip.
-fn primary_height(mtm: MainThreadMarker) -> f64 {
+pub(crate) fn primary_height(mtm: MainThreadMarker) -> f64 {
     NSScreen::screens(mtm).iter().next().map_or(0.0, |s| s.frame().size.height)
 }
 

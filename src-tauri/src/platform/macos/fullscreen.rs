@@ -63,10 +63,12 @@ pub fn start(app: &AppHandle) {
             interval.tick().await;
             let Some(frame) = windows::pet_screen_frame(&app) else { continue };
             let user = user_hidden(&app);
-            let full = match on_main(&app, move |mtm| frontmost_fullscreen_on(mtm, frame)).await {
-                Ok(full) => full,
-                Err(_) => break, // the event loop is gone: the app is exiting
-            };
+            // A user hide wins over full screen, so the window list isn't needed meanwhile.
+            let full = user
+                || match on_main(&app, move |mtm| frontmost_fullscreen_on(mtm, frame)).await {
+                    Ok(full) => full,
+                    Err(_) => break, // the event loop is gone: the app is exiting
+                };
             let next = match (user, full) {
                 (true, _) => PetVisibility { hidden: true, reason: Some("user") },
                 (false, true) => PetVisibility { hidden: true, reason: Some("fullscreen") },
@@ -119,8 +121,8 @@ fn update(app: &AppHandle, next: PetVisibility) {
 /// Whether some on-screen, layer-0 window of the frontmost app covers `frame` (global top-left
 /// points, the space `CGWindowListCopyWindowInfo` reports bounds in), or all of it below the notch.
 fn frontmost_fullscreen_on(mtm: MainThreadMarker, frame: Rect) -> bool {
-    let Some(front) = frontmost::frontmost_app() else { return false };
-    if front.pid == std::process::id() as i32 {
+    let Some(front_pid) = frontmost::frontmost_pid() else { return false };
+    if front_pid == std::process::id() as i32 {
         return false;
     }
     // SAFETY: the function follows the Create rule (+1, released by `Retained`); it returns a
@@ -146,7 +148,7 @@ fn frontmost_fullscreen_on(mtm: MainThreadMarker, frame: Rect) -> bool {
     let near = |a: f64, b: f64| (a - b).abs() <= TOLERANCE;
     let notch = notch_height(mtm, frame);
     list.iter().any(|w| {
-        if number(&w, layer_key) != Some(0) || number(&w, pid_key) != Some(front.pid as isize) {
+        if number(&w, layer_key) != Some(0) || number(&w, pid_key) != Some(front_pid as isize) {
             return false;
         }
         let Some(bounds) = w.objectForKey(bounds_key) else { return false };

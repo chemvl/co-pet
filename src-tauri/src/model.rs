@@ -451,3 +451,22 @@ pub struct TaskQuery {
     pub view: String,
     pub search: Option<String>,
 }
+
+/// The What's Next card. `reason` is the model's sentence; `reason_key` the ranking reason
+/// (`overdue | dueSoon | dueToday | dueTomorrow | dueThisWeek | highPriority | waiting`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NextCard {
+    pub task_id: String,
+    pub title: String,
+    pub reason: Option<String>,
+    pub reason_key: Option<String>,
+    pub first_step: Option<String>,
+    pub estimate_min: Option<i64>,
+    pub due_date: Option<String>,
+    pub due_time: Option<String>,
+    pub category_id: String,
+    pub source_title: Option<String>,
+    /// `"ai" | "rank"`
+    pub picked_by: String,
+}

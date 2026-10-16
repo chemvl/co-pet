@@ -468,6 +468,16 @@ pub fn for_item(conn: &Connection, item_id: &str) -> AppResult<Vec<TaskSummary>>
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
+/// Live open tasks not snoozed at `now_ms` (`snoozed_until` NULL or ≤ now), unordered.
+pub fn open_unsnoozed(conn: &Connection, now_ms: i64) -> AppResult<Vec<TaskSummary>> {
+    let mut stmt = conn.prepare(&format!(
+        "{SUMMARY_SELECT} WHERE t.deleted_at IS NULL AND t.status = 'open'
+           AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?1)"
+    ))?;
+    let rows = stmt.query_map([now_ms], map_summary)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
 /// Epoch ms of a local calendar date + `HH:MM`; `None` if unparsable or skipped by DST.
 fn local_ms(date: &str, time: &str) -> Option<i64> {
     let d = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;

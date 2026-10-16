@@ -9,6 +9,7 @@ mod paths;
 mod extract;
 mod llm;
 mod triage;
+mod next;
 mod platform;
 mod windows;
 mod capture;

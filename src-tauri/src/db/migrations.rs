@@ -197,5 +197,21 @@ CREATE TABLE task_events (
 CREATE INDEX task_events_task ON task_events(task_id, at DESC);
 "#;
 
+/// Schema v4: What's Next feedback and its settings.
+const V4: &str = r#"
+CREATE TABLE next_feedback (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
+  trigger TEXT NOT NULL CHECK (trigger IN ('bubble','return','afterDone','agent','home')),
+  action TEXT NOT NULL CHECK (action IN ('shown','start','done','snooze','skip')),
+  at INTEGER NOT NULL);
+CREATE INDEX next_feedback_at ON next_feedback(at DESC);
+INSERT INTO settings (key, value, updated_at) VALUES
+  ('whatsNext.onReturn', 'true', 0),
+  ('whatsNext.afterDone', 'true', 0),
+  ('whatsNext.idleMinutes', '10', 0),
+  ('whatsNext.workHours', '{"start":"09:00","end":"18:00","days":[1,2,3,4,5]}', 0),
+  ('whatsNext.maxPerHour', '2', 0);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> =
-    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3)]));
+    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4)]));

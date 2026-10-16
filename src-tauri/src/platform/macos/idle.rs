@@ -50,8 +50,7 @@ pub fn start(app: &AppHandle) {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
-            // SAFETY: plain C call with constant arguments.
-            let idle = unsafe { CGEventSourceSecondsSinceLastEventType(HID_SYSTEM_STATE, ANY_INPUT_EVENT) };
+            let idle = seconds_since_input();
             let sleep = idle >= IDLE_SECS || in_sleep_hours(&app);
             let state = app.state::<Sleep>();
             let mut last = state.lock();
@@ -65,7 +64,13 @@ pub fn start(app: &AppHandle) {
     });
 }
 
-fn in_sleep_hours(app: &AppHandle) -> bool {
+/// Seconds since the last keyboard/mouse input from any source.
+pub fn seconds_since_input() -> f64 {
+    // SAFETY: plain C call with constant arguments.
+    unsafe { CGEventSourceSecondsSinceLastEventType(HID_SYSTEM_STATE, ANY_INPUT_EVENT) }
+}
+
+pub fn in_sleep_hours(app: &AppHandle) -> bool {
     let Ok(hours) = settings::read::<SleepHours>(app, "pet.sleepHours") else { return false };
     let (Some(start), Some(end)) = (minutes(&hours.start), minutes(&hours.end)) else { return false };
     let now = chrono::Local::now();

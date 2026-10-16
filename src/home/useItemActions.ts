@@ -3,11 +3,13 @@
 // "Make it a rule".
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
+import { categoryLabelOf } from '../shared/categories';
 import { useT } from '../shared/i18n';
 import { archive, makeRuleFromItem, recategorize, setPinned, trash, undoEvent } from '../shared/ipc';
+import { useCategories } from '../shared/queries';
 import { useToast } from '../shared/Toast';
 import type { CategoryId, ItemSummary } from '../shared/types';
-import { categoryKey, ruleTargetOf } from './itemText';
+import { ruleTargetOf } from './itemText';
 
 export interface ItemActions {
   moveTo(items: ItemSummary[], categoryId: CategoryId): Promise<void>;
@@ -21,6 +23,7 @@ export function useItemActions(): ItemActions {
   const t = useT();
   const { show } = useToast();
   const qc = useQueryClient();
+  const { data: categories } = useCategories();
 
   const refresh = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ['items'] });
@@ -65,7 +68,7 @@ export function useItemActions(): ItemActions {
     () => ({
       async moveTo(items, categoryId) {
         if (!items.length) return;
-        const category = t(categoryKey(categoryId));
+        const category = categoryLabelOf(categories, categoryId, t);
         let message = t('toast.movedTo', { category });
         let action: { label: string; run: () => void } | undefined;
         const target = items.length === 1 && categoryId !== 'unsorted' ? ruleTargetOf(items[0]) : null;
@@ -93,6 +96,6 @@ export function useItemActions(): ItemActions {
         withUndo(() => setPinned(item.id, !item.pinned), t(item.pinned ? 'toast.unpinned' : 'toast.pinned')),
       undo,
     }),
-    [fail, show, t, undo, withUndo],
+    [categories, fail, show, t, undo, withUndo],
   );
 }

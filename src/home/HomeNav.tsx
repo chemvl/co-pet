@@ -1,14 +1,14 @@
-// Home sidebar: pet avatar + model status, Inbox, the nine categories with counts (Unsorted's
-// is a red badge), Settings at the bottom.
+// Home sidebar: pet avatar + model status, Inbox, the live categories with counts (Unsorted's
+// is a red badge and stays last), Settings at the bottom.
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { Icon, type IconName } from '../ds';
 import { CatArt, LOOKS, type CatSkin } from '../pet/CatArt';
 import { poseFor } from '../pet/pose';
+import { categoryColor, categoryIcon, categoryLabel } from '../shared/categories';
 import { useT, type TFunction } from '../shared/i18n';
-import { useAiStatus, useSettings } from '../shared/queries';
-import { CATEGORY_IDS, type AiStatus } from '../shared/types';
-import { categoryKey } from './itemText';
+import { useAiStatus, useCategories, useSettings } from '../shared/queries';
+import type { AiStatus } from '../shared/types';
 import { countsQuery } from './queries';
 
 /** `inbox`, `settings` or a category id; empty for none. */
@@ -40,6 +40,7 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
   const { data: c } = useQuery(countsQuery);
   const { data: settings } = useSettings();
   const { data: ai } = useAiStatus();
+  const { data: categories } = useCategories();
   const petName = typeof settings?.['pet.name'] === 'string' && settings['pet.name'] ? settings['pet.name'] : 'Miso';
   const look = LOOKS.find((l) => l === settings?.['pet.style']) ?? 'soft';
   const skin = SKINS.find((s) => s === settings?.['pet.skin']) ?? 'peach';
@@ -64,23 +65,23 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
         count={<span className="hm-nav__count">{c?.inbox ?? ''}</span>}
       />
       <div className="hm-nav__heading">{t('home.categories')}</div>
-      {CATEGORY_IDS.map((id) => (
+      {categories?.map((cat) => (
         <NavLink
-          key={id}
-          href={id === 'unsorted' ? '#/inbox/unsorted' : `#/category/${id}`}
-          active={active === id}
-          icon={id}
-          iconClass={`hm-c-${id}`}
-          label={t(categoryKey(id))}
+          key={cat.id}
+          href={cat.id === 'unsorted' ? '#/inbox/unsorted' : `#/category/${cat.id}`}
+          active={active === cat.id}
+          icon={categoryIcon(cat)}
+          iconClass={`hm-c-${categoryColor(cat)}`}
+          label={categoryLabel(cat, t)}
           count={
-            id === 'unsorted' ? (
+            cat.id === 'unsorted' ? (
               unsorted > 0 ? (
                 <span className="hm-nav__count is-attn" aria-label={t('pet.badge.unsorted', { n: unsorted })}>
                   {unsorted > 99 ? '99+' : unsorted}
                 </span>
               ) : null
             ) : (
-              <span className="hm-nav__count">{c?.byCategory[id] ?? ''}</span>
+              <span className="hm-nav__count">{c?.byCategory[cat.id] ?? ''}</span>
             )
           }
         />

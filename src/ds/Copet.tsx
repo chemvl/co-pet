@@ -81,7 +81,7 @@ export function CategoryChip(p: CategoryChipProps): ReactElement {
   const label = p.label || (p.lang === 'vi' ? c.vi : c.label);
   return (
     <span className={cx('cp-chip', 'cp-chip--' + (known ? p.category : 'unsorted'), p.size === 'sm' && 'cp-chip--sm', p.className)}>
-      <Icon name={c.icon} size={p.size === 'sm' ? 14 : 16} />
+      <Icon name={p.icon || c.icon} size={p.size === 'sm' ? 14 : 16} />
       {p.iconOnly ? null : <span>{label}</span>}
       {p.count != null ? <span className="cp-chip__count">{p.count}</span> : null}
     </span>
@@ -240,7 +240,7 @@ export function Switch(p: SwitchProps): ReactElement {
 export function TrayCard(p: TrayCardProps): ReactElement {
   const {
     kind, title, meta, category, thumbnail, pinned, selected, sensitive, agent, dragging, lang,
-    onCopy, onPaste, labels, className, ...rest
+    onCopy, onPaste, labels, categoryLabel, categoryIcon, className, ...rest
   } = p;
   const kindIcon = KIND_ICON[kind] || 'file';
   return (
@@ -255,7 +255,7 @@ export function TrayCard(p: TrayCardProps): ReactElement {
         </div>
         {meta ? <div className="cp-card__meta">{meta}</div> : null}
         <div className="cp-card__tags">
-          {category ? <CategoryChip category={category} size="sm" lang={lang} /> : null}
+          {category ? <CategoryChip category={category} size="sm" lang={lang} label={categoryLabel} icon={categoryIcon} /> : null}
           {sensitive ? <StatusPill status="sensitive" label={labels?.sensitive} /> : null}
           {agent ? <StatusPill status="agent" label={labels?.agent} /> : null}
         </div>
@@ -289,7 +289,7 @@ export function WhatsNextCard(p: WhatsNextCardProps): ReactElement {
       <div className="cp-next__meta">
         {p.estimate ? <span><Icon name="clock" size={14} />{p.estimate}</span> : null}
         {p.due ? <span className={p.dueSoon ? 'is-due' : undefined}><Icon name="calendar" size={14} />{p.due}</span> : null}
-        {p.category ? <CategoryChip category={p.category} size="sm" lang={p.lang} /> : null}
+        {p.category ? <CategoryChip category={p.category} size="sm" lang={p.lang} label={p.categoryLabel} icon={p.categoryIcon} /> : null}
       </div>
       {p.reason ? <p className="cp-next__reason">{p.reason}</p> : null}
       {p.firstStep ? <div className="cp-next__step"><span className="cp-next__step-label">{L.firstStep}</span><span>{p.firstStep}</span></div> : null}

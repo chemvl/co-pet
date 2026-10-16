@@ -1,7 +1,7 @@
 // Hash router for the Home window: `#/inbox`, `#/inbox/pinned`, `#/inbox/unsorted`,
 // `#/category/<id>`, `#/item/<id>`, `#/settings/<section>`.
 import { useEffect, useState } from 'react';
-import { CATEGORY_IDS, type CategoryId } from '../shared/types';
+import type { CategoryId } from '../shared/types';
 
 export type InboxView = 'all' | 'pinned' | 'unsorted';
 
@@ -13,11 +13,10 @@ export type Route =
 
 const DEFAULT_SETTINGS_SECTION = 'general';
 
-function isCategory(s: string): s is CategoryId {
-  return (CATEGORY_IDS as readonly string[]).includes(s);
-}
-
-/** Unknown paths fall back to the inbox. `#/category/unsorted` is the Unsorted queue. */
+/**
+ * Unknown paths fall back to the inbox. `#/category/unsorted` is the Unsorted queue; any other
+ * non-empty `#/category/<id>` is a category page (InboxPage shows the Inbox when it isn't live).
+ */
 export function parseRoute(hash: string): Route {
   const [head, arg] = hash
     .replace(/^#?\/?/, '')
@@ -29,7 +28,7 @@ export function parseRoute(hash: string): Route {
       return { page: 'inbox', view: arg === 'pinned' || arg === 'unsorted' ? arg : 'all' };
     case 'category':
       if (arg === 'unsorted') return { page: 'inbox', view: 'unsorted' };
-      if (arg && isCategory(arg)) return { page: 'category', categoryId: arg };
+      if (arg) return { page: 'category', categoryId: arg };
       break;
     case 'item':
       if (arg) return { page: 'item', id: arg };

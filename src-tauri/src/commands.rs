@@ -288,3 +288,58 @@ pub fn finish_onboarding(app: AppHandle) -> AppResult<()> {
     }
     Ok(())
 }
+
+// ---------- Phase 2 M1: categories ----------
+
+#[tauri::command]
+pub fn list_categories(db: State<'_, Db>) -> AppResult<Vec<crate::model::Category>> {
+    crate::db::categories::list(&db.conn())
+}
+
+/// Rejects with `invalid` or `duplicate`.
+#[tauri::command]
+pub fn create_category(
+    app: AppHandle,
+    db: State<'_, Db>,
+    name: String,
+    icon: String,
+    color: String,
+) -> AppResult<crate::model::Category> {
+    let category = crate::db::categories::create(&mut db.conn(), &name, &icon, &color)?;
+    crate::events::categories_changed(&app);
+    Ok(category)
+}
+
+/// Rejects with `invalid`, `duplicate`, `notEditable` or `notFound`.
+#[tauri::command]
+pub fn update_category(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: String,
+    patch: crate::model::CategoryPatch,
+) -> AppResult<crate::model::Category> {
+    let category = crate::db::categories::update(&mut db.conn(), &id, &patch)?;
+    crate::events::categories_changed(&app);
+    Ok(category)
+}
+
+/// Moves the category's items to Unsorted; rejects with `notDeletable` or `notFound`.
+#[tauri::command]
+pub fn delete_category(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: String,
+) -> AppResult<crate::model::EventIds> {
+    let (moved, event_ids) = crate::db::categories::delete(&mut db.conn(), &id)?;
+    crate::events::categories_changed(&app);
+    crate::db::items::notify_changed(&app, moved);
+    Ok(crate::model::EventIds { event_ids })
+}
+
+/// Rejects with `invalid` unless `ids` is every live category once.
+#[tauri::command]
+pub fn reorder_categories(app: AppHandle, db: State<'_, Db>, ids: Vec<String>) -> AppResult<()> {
+    crate::db::categories::reorder(&mut db.conn(), &ids)?;
+    crate::events::categories_changed(&app);
+    Ok(())
+}

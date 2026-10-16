@@ -5,9 +5,11 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { Button, ICONS, SearchField, SegmentedControl, Tray, TrayCard, type TrayCardLabels } from '../../ds';
 import { extOf, hostOf } from '../../home/itemText';
+import { categoryColor, categoryIcon, categoryLabel } from '../../shared/categories';
 import { formatTime, joinMeta } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
 import { copyItems, counts as fetchCounts, listItems } from '../../shared/ipc';
+import { useCategories } from '../../shared/queries';
 import type { ItemSummary } from '../../shared/types';
 import { armDragOut } from '../dragOut';
 
@@ -49,6 +51,7 @@ export function TrayPanel(p: {
     placeholderData: keepPreviousData,
   });
   const { data: counts } = useQuery({ queryKey: COUNTS_KEY, queryFn: fetchCounts });
+  const { data: categories } = useCategories();
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
 
   // Selection only covers what is listed.
@@ -180,6 +183,8 @@ export function TrayPanel(p: {
         {query.isSuccess && items.length === 0 ? <p className="pt-tray__empty caption">{empty}</p> : null}
         {items.map((item) => {
           const pending = item.triageStatus === 'pending';
+          // No chip while sorting or for a category that is gone.
+          const cat = pending ? undefined : categories?.find((c) => c.id === item.categoryId);
           const dragIds = selected.includes(item.id) ? selected : [item.id];
           return (
             <div key={item.id} role="listitem" data-item-id={item.id} className="pt-tray__row">
@@ -192,7 +197,9 @@ export function TrayPanel(p: {
                   formatTime(item.capturedAt),
                   pending && t('common.sorting'),
                 ])}
-                category={pending ? undefined : item.categoryId}
+                category={cat && categoryColor(cat)}
+                categoryLabel={cat && categoryLabel(cat, t)}
+                categoryIcon={cat && categoryIcon(cat)}
                 thumbnail={item.thumbPath && !item.sensitive ? convertFileSrc(item.thumbPath) : undefined}
                 pinned={item.pinned}
                 sensitive={item.sensitive}

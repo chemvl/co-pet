@@ -68,6 +68,12 @@ export const en = {
   'category.meeting': 'Meeting',
   'category.unsorted': 'Unsorted',
 
+  'error.invalid': "That value isn't valid.",
+  'error.duplicate': 'A category with this name already exists.',
+  'error.notDeletable': "Unsorted can't be deleted.",
+  'error.notEditable': 'Only the name of Unsorted can change.',
+  'error.notFound': "It's no longer here.",
+
   'kind.file': 'File',
   'kind.image': 'Image',
   'kind.url': 'Link',

@@ -50,13 +50,19 @@ function setup() {
 describe('petMachine interrupt rules', () => {
   it('P1 interrupts a playing P2 at once', () => {
     const { clock, machine, body } = setup();
-    machine.fire('idea', { category: 'code' });
-    expect(machine.output()).toMatchObject({ body: 'idea', fx: { kind: 'category', category: 'code' } });
+    machine.fire('idea', { icon: 'link', color: 'code' });
+    expect(machine.output()).toMatchObject({ body: 'idea', fx: { kind: 'category', icon: 'link', color: 'code' } });
     clock.advance(100);
     machine.fire('catch');
     expect(machine.output()).toMatchObject({ body: 'catch', fx: null });
     clock.advance(600);
     expect(body()).toBe('idle');
+  });
+
+  it('an idea without a category shows the Idea icon and colour', () => {
+    const { machine } = setup();
+    machine.fire('idea');
+    expect(machine.output().fx).toEqual({ kind: 'category', icon: 'idea', color: 'idea' });
   });
 
   it('queues a P2 behind a playing P1 and plays it afterwards', () => {
@@ -88,7 +94,7 @@ describe('petMachine interrupt rules', () => {
   it('discards a queued reaction after 2 s', () => {
     const { clock, machine, body } = setup();
     machine.fire('catch');
-    machine.fire('idea', { category: 'read' }); // queued at t=0
+    machine.fire('idea', { icon: 'read', color: 'read' }); // queued at t=0
     // Keep P1s cutting each other until the queued idea is older than 2 s.
     for (const at of [500, 1000, 1500]) {
       clock.advance(at - clock.t);
@@ -153,7 +159,7 @@ describe('petMachine loops', () => {
   it('drops a queued reaction when the pet resolves into sleep', () => {
     const { clock, machine, body } = setup();
     machine.fire('catch');
-    machine.fire('idea', { category: 'code' });
+    machine.fire('idea', { icon: 'code', color: 'code' });
     machine.set('sleep', true);
     clock.advance(600);
     expect(body()).toBe('sleep');
@@ -171,7 +177,7 @@ describe('petMachine loops', () => {
       machine.fire('poof');
     }
     clock.advance(100);
-    machine.fire('idea', { category: 'code' }); // stale catch must not block this P2
+    machine.fire('idea', { icon: 'code', color: 'code' }); // stale catch must not block this P2
     clock.advance(400); // last poof ends at 2500
     expect(body()).toBe('idea');
   });

@@ -2,13 +2,14 @@
 // Rust events and follows `navigate` events from the pet, tray and menu bar.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { categoryLabel, categoryLabelOf } from '../shared/categories';
 import { useT } from '../shared/i18n';
 import { on } from '../shared/ipc';
+import { useCategories } from '../shared/queries';
 import type { Counts } from '../shared/types';
 import { HomeNav, type NavKey } from './HomeNav';
 import { InboxPage } from './InboxPage';
 import { ItemDetail } from './ItemDetail';
-import { categoryKey } from './itemText';
 import { itemQuery } from './queries';
 import { navigate, routePath, useRoute, type Route } from './router';
 import { SettingsPage } from './settings/SettingsPage';
@@ -57,6 +58,9 @@ export function HomeApp(): ReactElement {
   const lastList = useRef('inbox');
   if (route.page === 'inbox' || route.page === 'category') lastList.current = routePath(route);
   const item = useQuery({ ...itemQuery(route.page === 'item' ? route.id : ''), enabled: route.page === 'item' }).data;
+  const { data: categories } = useCategories();
+  // A category route whose id isn't live shows the Inbox (see InboxPage).
+  const category = route.page === 'category' ? categories?.find((c) => c.id === route.categoryId) : undefined;
 
   useLiveQueries();
 
@@ -88,11 +92,11 @@ export function HomeApp(): ReactElement {
       page = <InboxPage route={route} search={query} onClearSearch={() => setSearch('')} />;
       break;
     case 'category':
-      pageName = t(categoryKey(route.categoryId));
+      pageName = category ? categoryLabel(category, t) : t('home.inbox');
       page = <InboxPage route={route} search={query} onClearSearch={() => setSearch('')} />;
       break;
     case 'item':
-      pageName = item ? `${t(categoryKey(item.categoryId))} · ${item.title}` : t('common.item');
+      pageName = item ? `${categoryLabelOf(categories, item.categoryId, t)} · ${item.title}` : t('common.item');
       page = <ItemDetail key={route.id} id={route.id} mode="page" onBack={() => navigate(lastList.current)} />;
       break;
     case 'settings':

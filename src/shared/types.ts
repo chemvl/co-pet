@@ -1,8 +1,36 @@
 // Mirrors src-tauri/src/model.rs and src-tauri/src/events.rs field for field.
-export type CategoryId =
-  | 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted';
-export const CATEGORY_IDS: readonly CategoryId[] =
+import type { CategoryId as DsCategoryId } from '../ds';
+
+/** A live category id: one of the built-ins or a user category's UUID. */
+export type CategoryId = string;
+export type BuiltinCategoryId = DsCategoryId;
+/** Built-in ids in design-system order; `unsorted` is last. */
+export const BUILTIN_CATEGORY_IDS: readonly BuiltinCategoryId[] =
   ['todo', 'read', 'reference', 'code', 'design', 'idea', 'contact', 'meeting', 'unsorted'];
+
+/**
+ * A live `categories` row. `null` name/icon/color: the built-in name `category.<id>`, the icon
+ * named like the id, the colour of the id. `color` is otherwise a built-in id.
+ */
+export interface Category {
+  id: CategoryId;
+  name: string | null;
+  icon: string | null;
+  color: string | null;
+  position: number;
+  excludeFromAi: boolean;
+  excludeFromMcp: boolean;
+  builtin: boolean;
+}
+
+/** `update_category`: omitted fields keep their value. */
+export interface CategoryPatch {
+  name?: string;
+  icon?: string;
+  color?: string;
+  excludeFromAi?: boolean;
+  excludeFromMcp?: boolean;
+}
 
 export type ItemKind = 'file' | 'image' | 'url' | 'text' | 'richtext' | 'code' | 'screenshot';
 export type SourceKind = 'drop' | 'clipboard' | 'screenshot' | 'note' | 'selection';
@@ -39,6 +67,10 @@ export interface ItemSummary {
   extractStatus: ExtractStatus;
   capturedAt: number;
   updatedAt: number;
+  /** `mcp_clients.id` of the agent that added the item; null = the user. */
+  addedBy: string | null;
+  /** AI-suggested task title; null for rule-decided or non-actionable items. */
+  taskSuggestion: string | null;
 }
 
 export type EventAction =
@@ -82,7 +114,7 @@ export interface Counts {
   inbox: number;
   unsorted: number;
   pinned: number;
-  byCategory: Partial<Record<CategoryId, number>>;
+  byCategory: Record<string, number>;
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -130,7 +162,7 @@ export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | nu
 export interface Rule {
   id: string;
   categoryId: CategoryId;
-  kind: 'domain' | 'extension' | 'item_kind' | 'source_kind' | 'regex';
+  kind: 'domain' | 'extension' | 'item_kind' | 'source_kind' | 'source_app' | 'regex';
   pattern: string;
   builtin: boolean;
   position: number;
@@ -153,6 +185,7 @@ export interface EventPayloads {
   'pet-placement': Placement;
   'ai-status': AiStatus;
   'settings-changed': { key: string };
+  'categories-changed': Record<string, never>;
   hotkey: { action: HotkeyAction };
   navigate: { route: string };
   /** Pet window only: the outcome of a native drop on the pet. */

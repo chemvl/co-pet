@@ -49,6 +49,10 @@ pub struct ItemRow {
     pub captured_at: i64,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
+    /// `mcp_clients.id` of the agent that added the item; `None` = the user.
+    pub added_by: Option<String>,
+    /// AI-suggested task title; `None` for rule-decided or non-actionable items.
+    pub task_suggestion: Option<String>,
 }
 
 /// Values for a new row; everything else takes the column default.
@@ -119,7 +123,6 @@ pub struct Category {
 /// `update_category`: `None` fields keep their value.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // built by `update_category` (Task 1.4)
 pub struct CategoryPatch {
     pub name: Option<String>,
     pub icon: Option<String>,
@@ -159,6 +162,8 @@ pub struct ItemSummary {
     pub extract_status: String,
     pub captured_at: i64,
     pub updated_at: i64,
+    pub added_by: Option<String>,
+    pub task_suggestion: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

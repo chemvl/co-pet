@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Icon, Switch } from '../../../ds';
+import { errorText } from '../../../shared/errors';
 import { useT } from '../../../shared/i18n';
 import { listExcludedApps, pickExcludedApp } from '../../../shared/ipc';
 import { SETTINGS_KEY, useSetSetting, useSetting } from '../../../shared/queries';
 import { useToast } from '../../../shared/Toast';
-import { errorText, Group } from '../parts';
+import { Group } from '../parts';
 
 export function CaptureSection() {
   const t = useT();

@@ -2,8 +2,9 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button, SegmentedControl } from '../ds';
 import { useAiAction } from '../home/settings/ModelCards';
-import { asLook, asSkin, errorText } from '../home/settings/parts';
+import { asLook, asSkin } from '../home/settings/parts';
 import type { CatLook } from '../pet/CatArt';
+import { errorText } from '../shared/errors';
 import { useLang, useT, type I18nKey } from '../shared/i18n';
 import { aiDownload, aiSelectModel, finishOnboarding } from '../shared/ipc';
 import { useAiStatus, useSetSetting, useSetting } from '../shared/queries';

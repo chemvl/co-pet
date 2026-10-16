@@ -13,6 +13,7 @@ pub const PET_VISIBILITY: &str = "pet-visibility";
 pub const PET_PLACEMENT: &str = "pet-placement";
 pub const AI_STATUS: &str = "ai-status";
 pub const SETTINGS_CHANGED: &str = "settings-changed";
+pub const CATEGORIES_CHANGED: &str = "categories-changed";
 pub const HOTKEY: &str = "hotkey";
 /// Home window only.
 pub const NAVIGATE: &str = "navigate";
@@ -86,6 +87,11 @@ pub struct Navigate {
     pub route: String,
 }
 
+/// Payload `{}`: listeners re-read `list_categories`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoriesChanged {}
+
 /// Emits to every webview; a failure to emit is logged, never fatal.
 pub fn emit<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     if let Err(e) = app.emit(event, payload) {
@@ -115,6 +121,10 @@ pub fn pet_placement(app: &AppHandle, p: Placement) {
 
 pub fn ai_status(app: &AppHandle, s: AiStatus) {
     emit(app, AI_STATUS, s);
+}
+
+pub fn categories_changed(app: &AppHandle) {
+    emit(app, CATEGORIES_CHANGED, CategoriesChanged {});
 }
 
 /// Sent to the pet window only; it shows the notice or announcement for the drop.

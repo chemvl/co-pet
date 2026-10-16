@@ -123,7 +123,6 @@ fn check_unique(conn: &Connection, name: &str, except: Option<&str>) -> AppResul
 }
 
 /// Adds a category before `unsorted`.
-#[allow(dead_code)] // called by the category commands (Task 1.4)
 pub fn create(conn: &mut Connection, name: &str, icon: &str, color: &str) -> AppResult<Category> {
     let name = clean_name(name)?;
     check_icon(icon)?;
@@ -153,7 +152,6 @@ pub fn create(conn: &mut Connection, name: &str, icon: &str, color: &str) -> App
 
 /// Applies `patch`. `unsorted` may only be renamed (`notEditable`); a built-in renamed to its
 /// own English or Vietnamese name goes back to `NULL` (follows the UI language).
-#[allow(dead_code)] // called by the category commands (Task 1.4)
 pub fn update(conn: &mut Connection, id: &str, patch: &CategoryPatch) -> AppResult<Category> {
     let tx = conn.transaction()?;
     let mut c = get(&tx, id)?;
@@ -204,9 +202,9 @@ pub fn update(conn: &mut Connection, id: &str, patch: &CategoryPatch) -> AppResu
 }
 
 /// Soft-deletes the category and its rules after moving its live items to `unsorted` (a user
-/// move that teaches the model nothing). Returns the move events, for Undo per item.
-#[allow(dead_code)] // called by the category commands (Task 1.4)
-pub fn delete(conn: &mut Connection, id: &str) -> AppResult<Vec<String>> {
+/// move that teaches the model nothing). Returns the moved item ids and their move events (for
+/// Undo per item).
+pub fn delete(conn: &mut Connection, id: &str) -> AppResult<(Vec<String>, Vec<String>)> {
     if id == UNSORTED {
         return Err(AppError::Code("notDeletable"));
     }
@@ -231,12 +229,11 @@ pub fn delete(conn: &mut Connection, id: &str) -> AppResult<Vec<String>> {
         params![id, now],
     )?;
     tx.commit()?;
-    Ok(events)
+    Ok((ids, events))
 }
 
 /// Rewrites positions 0..n in the order of `ids`, which must be every live id once; `unsorted`
 /// is put last wherever it appears.
-#[allow(dead_code)] // called by the category commands (Task 1.4)
 pub fn reorder(conn: &mut Connection, ids: &[String]) -> AppResult<()> {
     let tx = conn.transaction()?;
     let mut live: Vec<String> = list(&tx)?.into_iter().map(|c| c.id).collect();
@@ -318,8 +315,9 @@ mod tests {
         let rule = insert_user_rule(&mut conn, "design", "domain", "dribbble.com").unwrap();
         let examples = count(&conn, "SELECT COUNT(*) FROM category_examples");
 
-        let events = delete(&mut conn, "design").unwrap();
+        let (moved, events) = delete(&mut conn, "design").unwrap();
 
+        assert_eq!(moved, vec![item.clone()]);
         assert_eq!(events.len(), 1);
         assert_eq!(get_row(&conn, &item).unwrap().category_id, "unsorted");
         let (actor, action, item_id): (String, String, String) = conn

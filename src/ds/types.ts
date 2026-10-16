@@ -22,7 +22,17 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 export interface KbdProps { keys: string[]; className?: string }
 
-export interface CategoryChipProps { category: CategoryId; label?: string; lang?: Lang; size?: 'md' | 'sm'; count?: number; iconOnly?: boolean; className?: string }
+export interface CategoryChipProps {
+  category: CategoryId;
+  label?: string;
+  lang?: Lang;
+  size?: 'md' | 'sm';
+  count?: number;
+  iconOnly?: boolean;
+  className?: string;
+  /** Co-pet addition: overrides the category's icon (user categories pick their own). */
+  icon?: IconName;
+}
 
 export interface StatusPillProps { status: Status; label?: string; icon?: IconName; className?: string }
 
@@ -94,6 +104,10 @@ export interface TrayCardProps
   onPaste?: () => void;
   /** Co-pet addition: localized aria-labels and pill labels. */
   labels?: TrayCardLabels;
+  /** Co-pet addition: the category chip's label and icon (user categories). */
+  categoryLabel?: string;
+  /** Co-pet addition: see `categoryLabel`. */
+  categoryIcon?: IconName;
   className?: string;
 }
 
@@ -106,6 +120,10 @@ export interface WhatsNextCardProps {
   due?: string;
   dueSoon?: boolean;
   category?: CategoryId;
+  /** Co-pet addition: the category chip's label and icon (user categories). */
+  categoryLabel?: string;
+  /** Co-pet addition: see `categoryLabel`. */
+  categoryIcon?: IconName;
   firstStep?: string;
   lang?: Lang;
   labels?: Partial<{ eyebrow: string; start: string; done: string; snooze: string; skip: string; firstStep: string }>;

@@ -1,14 +1,15 @@
 // Pet animation state machine (plan Step 5.1; guidelines "Interrupt rules";
 // docs/design/canvas/Inputs.dc.html). Pure logic: no React, no DOM. Time and
 // timers are injected so tests can drive them.
-import type { CategoryId, PetInput } from '../shared/types';
+import type { IconName } from '../ds';
+import type { BuiltinCategoryId, PetInput } from '../shared/types';
 
 export type Trigger = PetInput;
 export type Flag = 'dragOver' | 'thinking' | 'sleep';
 export type Body = Trigger | 'idle' | Flag;
 export type Fx =
   | null
-  | { kind: 'category'; category: CategoryId }
+  | { kind: 'category'; icon: IconName; color: BuiltinCategoryId }
   | { kind: 'question' }
   | { kind: 'cloud' }
   | { kind: 'zzz' };
@@ -23,7 +24,9 @@ export interface PetOutput {
 }
 
 export interface TriggerOptions {
-  category?: CategoryId;
+  /** `idea`: the saved item's category icon and colour (default: the Idea category's). */
+  icon?: IconName;
+  color?: BuiltinCategoryId;
   variant?: number;
 }
 
@@ -131,7 +134,7 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
     } else if (playing) {
       const { trigger, opts } = playing;
       let fx: Fx = null;
-      if (trigger === 'idea') fx = { kind: 'category', category: opts.category ?? 'idea' };
+      if (trigger === 'idea') fx = { kind: 'category', icon: opts.icon ?? 'idea', color: opts.color ?? 'idea' };
       else if (trigger === 'tilt') fx = { kind: 'question' };
       emit({ body: trigger, fx, variant: trigger === 'fidget' ? (opts.variant ?? 0) : 0, seq });
     } else {

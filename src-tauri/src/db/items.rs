@@ -18,14 +18,14 @@ const COLS: &str = "id, kind, title, summary, tags, payload_text, payload_html, 
     file_name, mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, \
     extracted_text, extract_status, category_id, triage_status, triage_source, triage_confidence, \
     triage_reason, suggestions, sensitive, status, pinned, content_hash, captured_at, updated_at, \
-    deleted_at";
+    deleted_at, added_by, task_suggestion";
 
 /// Same shape as `COLS` without the large text columns (lists never show them).
 const LIST_COLS: &str = "id, kind, title, summary, tags, NULL, NULL, url, file_path, \
     file_name, mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, \
     NULL, extract_status, category_id, triage_status, triage_source, triage_confidence, \
     triage_reason, suggestions, sensitive, status, pinned, content_hash, captured_at, updated_at, \
-    deleted_at";
+    deleted_at, added_by, task_suggestion";
 
 /// Columns `undo_event` may restore from `before_json`.
 const UNDOABLE: [&str; 6] = [
@@ -75,6 +75,8 @@ fn map_row(r: &Row<'_>) -> rusqlite::Result<ItemRow> {
         captured_at: r.get(28)?,
         updated_at: r.get(29)?,
         deleted_at: r.get(30)?,
+        added_by: r.get(31)?,
+        task_suggestion: r.get(32)?,
     })
 }
 
@@ -515,6 +517,8 @@ fn to_summary(row: ItemRow, paths: &Paths) -> ItemSummary {
         extract_status: row.extract_status,
         captured_at: row.captured_at,
         updated_at: row.updated_at,
+        added_by: row.added_by,
+        task_suggestion: row.task_suggestion,
     }
 }
 
@@ -860,5 +864,24 @@ mod tests {
         }
         // UUIDv7 ids created in one ms still sort by creation, so newest-first is reversed.
         assert_eq!(seen, ids.into_iter().rev().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn summary_carries_task_suggestion_and_added_by() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Deck", "send the deck", "h1")).unwrap();
+        let mut u = sensitive_update("todo");
+        u.sensitive = false;
+        u.task_suggestion = Some("Send the deck".into());
+        update_triage(&mut conn, &id, &u).unwrap();
+        conn.execute("UPDATE items SET added_by = 'client-1' WHERE id = ?1", [&id]).unwrap();
+        let paths = Paths::new("/tmp/copet-test".into());
+        let listed = list_items(&conn, &query(""), &paths).unwrap().items.remove(0);
+        let detail = get_item_detail(&conn, &id, &paths).unwrap().item;
+        for s in [listed, detail] {
+            assert_eq!(s.task_suggestion.as_deref(), Some("Send the deck"));
+            assert_eq!(s.added_by.as_deref(), Some("client-1"));
+        }
     }
 }

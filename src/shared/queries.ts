@@ -1,19 +1,21 @@
-// Shared react-query hooks for settings and the local-model status.
-// Each hook keeps its cache live from Rust events: `settings-changed` invalidates
-// the settings query; `ai-status` replaces the AI status in place.
+// Shared react-query hooks for settings, categories and the local-model status.
+// Each hook keeps its cache live from Rust events: `settings-changed` and `categories-changed`
+// invalidate their query; `ai-status` replaces the AI status in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
-import { aiStatus, getSettings, on, setSetting } from './ipc';
+import { aiStatus, getSettings, listCategories, on, setSetting } from './ipc';
 import type { AiStatus, Json } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
 export const AI_STATUS_KEY = ['aiStatus'] as const;
+export const CATEGORIES_KEY = ['categories'] as const;
 
 export type Settings = Record<string, Json>;
 
 // One event subscription per QueryClient, however many components use the hooks.
 const settingsSubscribed = new WeakSet<QueryClient>();
 const aiSubscribed = new WeakSet<QueryClient>();
+const categoriesSubscribed = new WeakSet<QueryClient>();
 
 export function useSettings() {
   const qc = useQueryClient();
@@ -48,6 +50,19 @@ export function useSetSetting(): (key: string, value: Json) => Promise<void> {
     },
     [qc],
   );
+}
+
+/** Live categories in display order (Unsorted last). */
+export function useCategories() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (categoriesSubscribed.has(qc)) return;
+    categoriesSubscribed.add(qc);
+    void on('categories-changed', () => {
+      void qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
+    });
+  }, [qc]);
+  return useQuery({ queryKey: CATEGORIES_KEY, queryFn: listCategories, staleTime: Infinity });
 }
 
 export function useAiStatus() {

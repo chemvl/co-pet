@@ -4,15 +4,15 @@
 import { useInfiniteQuery, useQuery, type InfiniteData } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Button, Icon, Kbd, SegmentedControl } from '../ds';
+import { categoryLabel, categoryLabelOf } from '../shared/categories';
 import { useT } from '../shared/i18n';
 import { captureNote, listItems } from '../shared/ipc';
-import { useSetting } from '../shared/queries';
+import { useCategories, useSetting } from '../shared/queries';
 import { useToast } from '../shared/Toast';
 import type { CategoryId, Cursor, ItemPage, ItemSummary } from '../shared/types';
 import { isTypingTarget, useDelayed, useMediaQuery } from './hooks';
 import { ItemDetail } from './ItemDetail';
-import { ItemRow, UnsortedRow } from './ItemRow';
-import { categoryKey } from './itemText';
+import { ItemRow, quickPicks, UnsortedRow } from './ItemRow';
 import { categoryMenuItems, MenuButton } from './Menu';
 import { countsQuery } from './queries';
 import { navigate, type InboxView, type Route } from './router';
@@ -36,8 +36,11 @@ export function InboxPage({ route, search, onClearSearch }: InboxPageProps): Rea
   const t = useT();
   const actions = useItemActions();
   const wide = useMediaQuery('(min-width: 1100px)');
+  const { data: categories } = useCategories();
+  // A category route whose id isn't live (deleted, mistyped) shows the Inbox.
+  const category = route.page === 'category' ? categories?.find((x) => x.id === route.categoryId) : undefined;
   const view: InboxView = route.page === 'inbox' ? route.view : 'all';
-  const categoryId = route.page === 'category' ? route.categoryId : undefined;
+  const categoryId = route.page === 'category' && (!categories || category) ? route.categoryId : undefined;
   const queue = view === 'unsorted';
   const [sort, setSort] = useState<Sort>('newest');
   const { data: c } = useQuery(countsQuery);
@@ -116,7 +119,7 @@ export function InboxPage({ route, search, onClearSearch }: InboxPageProps): Rea
         break;
       case '1':
       case '2': {
-        const cat = active?.suggestions.filter((s) => s !== 'unsorted')[Number(e.key) - 1];
+        const cat = active ? quickPicks(active, categories)[Number(e.key) - 1] : undefined;
         if (!queue || !active || !cat) return;
         pick(active, cat);
         break;
@@ -145,13 +148,13 @@ export function InboxPage({ route, search, onClearSearch }: InboxPageProps): Rea
         : view === 'unsorted'
           ? (c?.unsorted ?? 0)
           : (c?.inbox ?? 0);
-  const title = categoryId ? t(categoryKey(categoryId)) : t('home.inbox');
+  const title = category ? categoryLabel(category, t) : t('home.inbox');
   const showDetail = wide && !queue && items.length > 0;
 
   const header = queue ? (
     <div className="hm-bar hm-bar--queue">
       <div className="hm-bar__lead">
-        <h1 className="title hm-bar__title">{t('category.unsorted')}</h1>
+        <h1 className="title hm-bar__title">{categoryLabelOf(categories, 'unsorted', t)}</h1>
         <div className="label hm-muted hm-bar__sub">{t('home.unsortedLead', { n: total })}</div>
       </div>
       <div className="hm-keys">
@@ -297,7 +300,7 @@ export function InboxPage({ route, search, onClearSearch }: InboxPageProps): Rea
             size="sm"
             iconEnd="chevron-down"
             menuLabel={t('common.moveTo')}
-            items={categoryMenuItems(t, (cat) => {
+            items={categoryMenuItems(t, categories ?? [], (cat) => {
               void actions.moveTo(selectedItems, cat);
               clearSelection();
             })}

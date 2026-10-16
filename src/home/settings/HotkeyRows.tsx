@@ -3,12 +3,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Button, Kbd } from '../../ds';
+import { errorText } from '../../shared/errors';
 import { useT, type I18nKey } from '../../shared/i18n';
 import { setHotkey, suspendHotkeys } from '../../shared/ipc';
 import { SETTINGS_KEY, useSetting } from '../../shared/queries';
 import type { HotkeyAction, Json } from '../../shared/types';
 import { acceleratorFromEvent, acceleratorKeys } from './accelerator';
-import { errorText } from './parts';
 
 const ACTIONS: readonly { action: HotkeyAction; label: I18nKey }[] = [
   { action: 'focusPet', label: 'settings.hotkeys.focusPet' },

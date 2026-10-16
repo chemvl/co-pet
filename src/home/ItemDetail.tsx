@@ -4,16 +4,18 @@ import { useQuery } from '@tanstack/react-query';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { openPath, openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { Button, CategoryChip, Icon, SegmentedControl, StatusPill, type ButtonProps } from '../ds';
+import { Button, Icon, SegmentedControl, StatusPill, type ButtonProps } from '../ds';
+import { categoryLabelOf } from '../shared/categories';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
 import { copyItems } from '../shared/ipc';
-import { useAiStatus, useSetting } from '../shared/queries';
+import { useAiStatus, useCategories, useSetting } from '../shared/queries';
 import { useToast } from '../shared/Toast';
 import type { ItemDetail as Item } from '../shared/types';
+import { CategoryTag } from './CategoryTag';
 import { useDelayed } from './hooks';
 import { KindTile } from './ItemRow';
-import { categoryKey, detailMeta, extOf, historyText, hostOf, whenShort, whyText } from './itemText';
+import { detailMeta, extOf, historyText, hostOf, whenShort, whyText } from './itemText';
 import { categoryMenuItems, Menu, MenuButton } from './Menu';
 import { itemQuery } from './queries';
 import { useItemActions } from './useItemActions';
@@ -126,7 +128,7 @@ function ItemPane({ item }: { item: Item }): ReactElement {
         {item.triageStatus === 'pending' ? (
           <span className="caption hm-muted">{t('common.sorting')}</span>
         ) : (
-          <CategoryChip category={item.categoryId} label={t(categoryKey(item.categoryId))} />
+          <CategoryTag id={item.categoryId} />
         )}
         {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
         <Tags item={item} />
@@ -349,6 +351,7 @@ function Summary({ item }: { item: Item }): ReactElement | null {
 function CategoryTrigger({ item, variant }: { item: Item; variant: 'select' | 'link' }): ReactElement {
   const t = useT();
   const actions = useItemActions();
+  const { data: categories } = useCategories();
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   return (
@@ -359,12 +362,12 @@ function CategoryTrigger({ item, variant }: { item: Item; variant: 'select' | 'l
         className={variant === 'select' ? 'hm-select' : 'hm-link'}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={variant === 'select' ? `${t('item.category')}: ${t(categoryKey(item.categoryId))}` : undefined}
+        aria-label={variant === 'select' ? `${t('item.category')}: ${categoryLabelOf(categories, item.categoryId, t)}` : undefined}
         onClick={() => setOpen((o) => !o)}
       >
         {variant === 'select' ? (
           <>
-            <CategoryChip category={item.categoryId} label={t(categoryKey(item.categoryId))} />
+            <CategoryTag id={item.categoryId} />
             <span className="hm-grow" />
             <Icon name="chevron-down" size={16} />
           </>
@@ -376,7 +379,7 @@ function CategoryTrigger({ item, variant }: { item: Item; variant: 'select' | 'l
         <Menu
           anchor={anchor}
           label={t('common.moveTo')}
-          items={categoryMenuItems(t, (cat) => void actions.moveTo([item], cat), item.categoryId)}
+          items={categoryMenuItems(t, categories ?? [], (cat) => void actions.moveTo([item], cat), item.categoryId)}
           onClose={(refocus) => {
             setOpen(false);
             if (refocus) anchor.current?.focus();
@@ -453,6 +456,7 @@ function History({ item }: { item: Item }): ReactElement {
   const t = useT();
   const lang = useLang();
   const actions = useItemActions();
+  const { data: categories } = useCategories();
   // Events arrive newest first; only the latest live user change can be undone here.
   const undoable = item.events.find((e) => e.actor === 'user' && e.action !== 'captured' && e.undoneAt == null);
   return (
@@ -460,7 +464,7 @@ function History({ item }: { item: Item }): ReactElement {
       {item.events.map((ev) => (
         <li key={ev.id} className={`hm-hist__row${ev.undoneAt != null ? ' is-undone' : ''}`}>
           <span className="hm-grow">
-            {historyText(ev, item, t)} · {whenShort(ev.at, lang, true)}
+            {historyText(ev, item, t, categories)} · {whenShort(ev.at, lang, true)}
           </span>
           {ev.undoneAt != null ? (
             <span className="caption hm-muted">{t('item.history.undone')}</span>

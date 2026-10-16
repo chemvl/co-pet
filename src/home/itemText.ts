@@ -1,9 +1,8 @@
 // Display text derived from items: metadata lines, "Why it's here" and history entries.
-import type { I18nKey, Lang, TFunction } from '../shared/i18n';
+import { categoryLabelOf } from '../shared/categories';
+import type { Lang, TFunction } from '../shared/i18n';
 import { formatDate, formatSize, formatTime, joinMeta } from '../shared/format';
-import { CATEGORY_IDS, type CategoryId, type ItemDetail, type ItemEvent, type ItemKind, type ItemSummary, type Json, type SourceKind } from '../shared/types';
-
-export const categoryKey = (id: CategoryId): I18nKey => `category.${id}`;
+import type { Category, ItemDetail, ItemEvent, ItemKind, ItemSummary, Json, SourceKind } from '../shared/types';
 
 const FILE_KINDS: readonly ItemKind[] = ['file', 'image', 'screenshot'];
 
@@ -135,8 +134,8 @@ function jsonField(j: Json | null, key: string): string | null {
   return null;
 }
 
-/** One history line, e.g. "Sorted into Reference by the local model". */
-export function historyText(ev: ItemEvent, item: ItemDetail, t: TFunction): string {
+/** One history line, e.g. "Sorted into Reference by the local model". A deleted category shows its id. */
+export function historyText(ev: ItemEvent, item: ItemDetail, t: TFunction, categories: readonly Category[] | undefined): string {
   switch (ev.action) {
     case 'captured': {
       const source = item.sourceApp ?? sourceKindLabel(item.sourceKind, t);
@@ -144,7 +143,7 @@ export function historyText(ev: ItemEvent, item: ItemDetail, t: TFunction): stri
     }
     case 'recategorize': {
       const cat = jsonField(ev.afterJson, 'category_id');
-      const category = cat && (CATEGORY_IDS as readonly string[]).includes(cat) ? t(categoryKey(cat as CategoryId)) : (cat ?? '');
+      const category = cat ? categoryLabelOf(categories, cat, t) : '';
       if (ev.actor === 'user') return t('item.history.moved', { category });
       const src = jsonField(ev.afterJson, 'triage_source');
       if (src === 'rule') return t('item.history.sortedRule', { category });

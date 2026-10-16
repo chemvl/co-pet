@@ -1,10 +1,13 @@
 // List rows: the Inbox row (Home.dc.html) and the Unsorted queue row (Unsorted.dc.html).
 import { convertFileSrc } from '@tauri-apps/api/core';
 import type { ReactElement, Ref } from 'react';
-import { CategoryChip, Icon, KIND_ICON, Kbd, StatusPill } from '../ds';
+import { Icon, KIND_ICON, Kbd, StatusPill } from '../ds';
+import { categoryLabelOf } from '../shared/categories';
 import { useLang, useT } from '../shared/i18n';
-import type { CategoryId, ItemSummary } from '../shared/types';
-import { categoryKey, rowMeta } from './itemText';
+import { useCategories } from '../shared/queries';
+import type { Category, CategoryId, ItemSummary } from '../shared/types';
+import { CategoryTag } from './CategoryTag';
+import { rowMeta } from './itemText';
 import { categoryMenuItems, MenuButton } from './Menu';
 
 export function KindTile({ item, large }: { item: ItemSummary; large?: boolean }): ReactElement {
@@ -71,7 +74,7 @@ export function ItemRow(p: RowProps): ReactElement {
           {item.triageStatus === 'pending' ? (
             <span className="caption hm-muted">{t('common.sorting')}</span>
           ) : (
-            <CategoryChip category={item.categoryId} size="sm" label={t(categoryKey(item.categoryId))} />
+            <CategoryTag id={item.categoryId} size="sm" />
           )}
           {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
           {item.kind === 'screenshot' ? <StatusPill status="local" label={t('common.localOnly')} /> : null}
@@ -87,11 +90,17 @@ export function ItemRow(p: RowProps): ReactElement {
   );
 }
 
+/** The queue's quick picks (keys 1 and 2): the first two live suggestions other than Unsorted. */
+export function quickPicks(item: ItemSummary, categories: readonly Category[] | undefined): CategoryId[] {
+  return item.suggestions.filter((id) => id !== 'unsorted' && categories?.some((c) => c.id === id)).slice(0, 2);
+}
+
 export function UnsortedRow(p: RowProps & { onPick: (id: CategoryId) => void }): ReactElement {
   const t = useT();
   const lang = useLang();
+  const { data: categories } = useCategories();
   const { item } = p;
-  const suggestions = item.suggestions.filter((c) => c !== 'unsorted').slice(0, 2);
+  const suggestions = quickPicks(item, categories);
   return (
     <div
       ref={p.rowRef}
@@ -110,7 +119,7 @@ export function UnsortedRow(p: RowProps & { onPick: (id: CategoryId) => void }):
       </div>
       {suggestions.length ? <span className="hm-sug__lead">{t('home.suggested')}</span> : null}
       {suggestions.map((cat, i) => {
-        const category = t(categoryKey(cat));
+        const category = categoryLabelOf(categories, cat, t);
         return (
           <button
             key={cat}
@@ -124,7 +133,7 @@ export function UnsortedRow(p: RowProps & { onPick: (id: CategoryId) => void }):
             }}
             onDoubleClick={(e) => e.stopPropagation()}
           >
-            <CategoryChip category={cat} size="sm" label={category} />
+            <CategoryTag id={cat} size="sm" />
             <Kbd keys={[String(i + 1)]} />
           </button>
         );
@@ -136,7 +145,7 @@ export function UnsortedRow(p: RowProps & { onPick: (id: CategoryId) => void }):
           iconEnd="chevron-down"
           menuLabel={t('common.moveTo')}
           align="end"
-          items={categoryMenuItems(t, p.onPick, item.categoryId)}
+          items={categoryMenuItems(t, categories ?? [], p.onPick, item.categoryId)}
         >
           {t('common.other')}
         </MenuButton>

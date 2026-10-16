@@ -1,13 +1,14 @@
 // Settings › Triage model cards: one card per registry model, live from `ai-status`.
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, StatusPill } from '../../ds';
+import { errorText } from '../../shared/errors';
 import { formatSize } from '../../shared/format';
 import { useLang, useT, type Lang, type TFunction } from '../../shared/i18n';
 import { aiDownload, aiPause, aiSelectModel } from '../../shared/ipc';
 import { AI_STATUS_KEY, SETTINGS_KEY, useAiStatus, useSetting } from '../../shared/queries';
 import { useToast } from '../../shared/Toast';
 import type { AiStatus, ModelInfo } from '../../shared/types';
-import { errorText, ProgressBar } from './parts';
+import { ProgressBar } from './parts';
 
 /** The registry model whose label carries a memory requirement. */
 const NEEDS_16GB = 'qwen3-4b-instruct-2507-q4km';

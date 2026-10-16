@@ -1,8 +1,8 @@
 // React port of docs/design/canvas/Cat.dc.html (viewBox 0 0 160 160, same
 // paths). Feet sit on the bottom edge; the top 22% is the FX zone.
 import { useSyncExternalStore, type CSSProperties, type ReactElement } from 'react';
-import { Icon } from '../ds';
-import type { CategoryId, Edge } from '../shared/types';
+import { Icon, type IconName } from '../ds';
+import type { BuiltinCategoryId, Edge } from '../shared/types';
 import type { CatMotion, CatParts } from './pose';
 import { isPixelSpecies, PixelPet, PIXEL_SPECIES, type PixelSpecies } from './PixelPets';
 import './cat.css';
@@ -11,7 +11,7 @@ import './cat.css';
 export type CatLook = 'soft' | 'sticker' | 'pixel' | PixelSpecies;
 export const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel', ...PIXEL_SPECIES];
 export type CatSkin = 'peach' | 'tabby' | 'midnight';
-export type CatFx = null | { kind: 'category'; category: CategoryId } | { kind: 'question' };
+export type CatFx = null | { kind: 'category'; icon: IconName; color: BuiltinCategoryId } | { kind: 'question' };
 
 interface SkinColors { body: string; belly: string; ear: string; blush: string; eye: string; glint: string }
 
@@ -101,8 +101,8 @@ export function CatArt(props: CatArtProps): ReactElement {
       {fx && (
         <span className="cp-cat__fx" key={`${fx.kind}-${props.motionKey ?? 0}`} aria-hidden="true">
           {fx.kind === 'category' ? (
-            <span style={{ color: `var(--cat-${fx.category})`, display: 'flex' }}>
-              <Icon name={fx.category} size={16} />
+            <span style={{ color: `var(--cat-${fx.color})`, display: 'flex' }}>
+              <Icon name={fx.icon} size={16} />
             </span>
           ) : (
             <span className="cp-cat__fx-q">?</span>

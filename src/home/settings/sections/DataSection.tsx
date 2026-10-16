@@ -2,10 +2,11 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../ds';
+import { errorText } from '../../../shared/errors';
 import { useT } from '../../../shared/i18n';
 import { deleteEverything, exportAll } from '../../../shared/ipc';
 import { useToast } from '../../../shared/Toast';
-import { errorText, Group, SettingRow } from '../parts';
+import { Group, SettingRow } from '../parts';
 
 export function DataSection() {
   const t = useT();

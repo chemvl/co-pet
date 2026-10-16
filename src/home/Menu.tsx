@@ -5,9 +5,9 @@ import {
   useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement, type RefObject,
 } from 'react';
 import { Button, Icon, type ButtonProps, type IconName } from '../ds';
+import { categoryColor, categoryIcon, categoryLabel } from '../shared/categories';
 import type { TFunction } from '../shared/i18n';
-import { CATEGORY_IDS, type CategoryId } from '../shared/types';
-import { categoryKey } from './itemText';
+import type { Category, CategoryId } from '../shared/types';
 
 export interface MenuItem {
   key: string;
@@ -142,14 +142,19 @@ export function MenuButton(p: ButtonProps & { items: MenuItem[]; menuLabel: stri
   );
 }
 
-/** All nine categories, each in its own colour; `current` gets a check. */
-export function categoryMenuItems(t: TFunction, onPick: (id: CategoryId) => void, current?: CategoryId): MenuItem[] {
-  return CATEGORY_IDS.map((id) => ({
-    key: id,
-    label: t(categoryKey(id)),
-    icon: id,
-    iconClass: `hm-c-${id}`,
-    checked: id === current,
-    onSelect: () => onPick(id),
+/** Every live category, each in its own colour; `current` gets a check. */
+export function categoryMenuItems(
+  t: TFunction,
+  categories: readonly Category[],
+  onPick: (id: CategoryId) => void,
+  current?: CategoryId,
+): MenuItem[] {
+  return categories.map((c) => ({
+    key: c.id,
+    label: categoryLabel(c, t),
+    icon: categoryIcon(c),
+    iconClass: `hm-c-${categoryColor(c)}`,
+    checked: c.id === current,
+    onSelect: () => onPick(c.id),
   }));
 }

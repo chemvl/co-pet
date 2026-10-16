@@ -9,14 +9,15 @@ import {
   type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { PetDock, type IconName } from '../ds';
+import { categoryColor, categoryIcon, categoryLabelOf } from '../shared/categories';
 import { useT, type I18nKey } from '../shared/i18n';
 import {
   captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
   counts as fetchCounts, focusPetPanel, getPlacement, on, openHome, pasteItems, petStatus, quitApp,
   requestPermission, resignPetPanel, setHitRegions, setPetMoving,
 } from '../shared/ipc';
-import { useSetSetting, useSettings } from '../shared/queries';
-import type { CaptureResult, CategoryId, EventPayloads, HitRegion, HotkeyAction, Placement } from '../shared/types';
+import { useCategories, useSetSetting, useSettings } from '../shared/queries';
+import type { CaptureResult, EventPayloads, HitRegion, HotkeyAction, Placement } from '../shared/types';
 import { CatArt, LOOKS, type CatLook, type CatSkin } from './CatArt';
 import { noticeFor, type Notice } from './notices';
 import {
@@ -169,7 +170,7 @@ export function PetApp() {
 
   const announce = (text: string) => setAnnouncement(text);
 
-  const categoryName = useCallback((id: CategoryId) => t(`category.${id}`), [t]);
+  const { data: categories } = useCategories();
 
   const handleResult = useCallback(
     (r: CaptureResult) => {
@@ -308,9 +309,12 @@ export function PetApp() {
   };
 
   const onReaction = (e: EventPayloads['pet-reaction']) => {
-    machine.fire(e.input, { category: e.category, variant: e.variant });
-    if (e.input === 'idea' && e.category) announce(t('pet.announce.savedTo', { category: categoryName(e.category) }));
-    if (e.input === 'tilt') announce(t('pet.announce.savedTo', { category: categoryName('unsorted') }));
+    const c = e.category ? categories?.find((x) => x.id === e.category) : undefined;
+    machine.fire(e.input, { icon: c && categoryIcon(c), color: c && categoryColor(c), variant: e.variant });
+    if (e.input === 'idea' && e.category) {
+      announce(t('pet.announce.savedTo', { category: categoryLabelOf(categories, e.category, t) }));
+    }
+    if (e.input === 'tilt') announce(t('pet.announce.savedTo', { category: categoryLabelOf(categories, 'unsorted', t) }));
   };
 
   // The subscriptions live for the window's lifetime and call the latest handlers.

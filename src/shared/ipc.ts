@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-  AiStatus, CaptureResult, CategoryId, Counts, DragPlan, EventPayloads, HitRegion,
+  AiStatus, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, PermissionsStatus, PetStatus, Placement, Rule, Edge,
 } from './types';
 
@@ -77,6 +77,19 @@ export const deleteEverything = (confirmation: string) =>
 
 // Step 13 — Onboarding
 export const finishOnboarding = () => invoke<void>('finish_onboarding');
+
+// Phase 2 M1 — categories. Writes emit `categories-changed`.
+export const listCategories = () => invoke<Category[]>('list_categories');
+/** Rejects with `"invalid"` or `"duplicate"`. */
+export const createCategory = (name: string, icon: string, color: string) =>
+  invoke<Category>('create_category', { name, icon, color });
+/** Rejects with `"invalid"`, `"duplicate"`, `"notEditable"` or `"notFound"`. */
+export const updateCategory = (id: CategoryId, patch: CategoryPatch) =>
+  invoke<Category>('update_category', { id, patch });
+/** Moves the category's items to Unsorted. Rejects with `"notDeletable"` or `"notFound"`. */
+export const deleteCategory = (id: CategoryId) => invoke<{ eventIds: string[] }>('delete_category', { id });
+/** `ids` is every live category once; Unsorted stays last. Rejects with `"invalid"`. */
+export const reorderCategories = (ids: CategoryId[]) => invoke<void>('reorder_categories', { ids });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

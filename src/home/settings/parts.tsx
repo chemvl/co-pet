@@ -118,13 +118,6 @@ export function SkinSwatches(props: { value: CatSkin; onChange: (skin: CatSkin) 
   );
 }
 
-/** Rust commands reject with the AppError message string. */
-export function errorText(e: unknown): string {
-  if (typeof e === 'string') return e;
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
 export function asLook(v: unknown): CatLook {
   return LOOKS.find((l) => l === v) ?? 'soft';
 }

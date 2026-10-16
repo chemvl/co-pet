@@ -69,6 +69,12 @@ export const vi: Record<keyof typeof en, string> = {
   'category.meeting': 'Cuộc họp',
   'category.unsorted': 'Chưa phân loại',
 
+  'error.invalid': 'Giá trị này không hợp lệ.',
+  'error.duplicate': 'Đã có danh mục trùng tên.',
+  'error.notDeletable': 'Không thể xoá Chưa phân loại.',
+  'error.notEditable': 'Chỉ có thể đổi tên Chưa phân loại.',
+  'error.notFound': 'Mục này không còn nữa.',
+
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',
   'kind.url': 'Liên kết',

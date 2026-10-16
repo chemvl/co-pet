@@ -1,7 +1,7 @@
 // Home › Agents (screen 12, Agents.dc.html): the MCP server state, one card per client (Add,
 // Approve writes, Manage), the stdio command and local HTTP address, and the activity log
 // with Undo. Every query lives under `AGENTS_KEY`, refreshed by `agents-changed`.
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Button, Icon, SegmentedControl, StatusPill } from '../../ds';
@@ -17,6 +17,8 @@ import { useToast } from '../../shared/Toast';
 import type { ActivityRow, KnownMcpClient, McpClientView } from '../../shared/types';
 import { PROVIDER_NAME } from '../integrations/model';
 import { MenuButton } from '../Menu';
+import { useDelayed } from '../hooks';
+import { Skeleton } from '../InboxPage';
 import { activityAction, activityText, relativeTime } from './activityText';
 import '../settings/settings.css';
 import './agents.css';
@@ -31,10 +33,12 @@ const ACTIVITY_LIMIT = 100;
 /** "last call 2 min ago" follows the clock between data changes. */
 const CLOCK_TICK_MS = 60_000;
 const COPIED_MS = 1500;
+const SKELETON_DELAY_MS = 400;
 
 type Show = 'all' | 'writes';
 
-/** Runs one action at a time: failures toast, every Agents query refreshes after. */
+/** Runs an action and marks it busy; a failure toasts and re-reads the Agents queries (a success
+ *  refreshes them through `agents-changed`). */
 function useAgentsRun(): { busy: string | null; run: <T>(key: string, op: () => Promise<T>) => Promise<T | undefined> } {
   const t = useT();
   const qc = useQueryClient();
@@ -46,13 +50,31 @@ function useAgentsRun(): { busy: string | null; run: <T>(key: string, op: () => 
       return await op();
     } catch (e) {
       show({ message: errorMessage(t, e) });
+      void qc.invalidateQueries({ queryKey: AGENTS_KEY });
       return undefined;
     } finally {
       setBusy(null);
-      void qc.invalidateQueries({ queryKey: AGENTS_KEY });
     }
   };
   return { busy, run };
+}
+
+/** A failed query's message with Try again, or a delayed skeleton while it loads; null once loaded. */
+function QueryState({ q, loading }: { q: UseQueryResult<unknown>; loading: string }): ReactElement | null {
+  const t = useT();
+  const slow = useDelayed(q.isPending, SKELETON_DELAY_MS);
+  if (q.isError) {
+    return (
+      <div className="hm-listmsg">
+        <span className="body">{errorMessage(t, q.error)}</span>
+        <Button variant="secondary" size="sm" onClick={() => void q.refetch()}>
+          {t('common.retry')}
+        </Button>
+      </div>
+    );
+  }
+  if (q.isPending) return slow ? <Skeleton label={loading} /> : null;
+  return null;
 }
 
 function useNow(): number {
@@ -86,8 +108,10 @@ function useCopied(): [boolean, (text: string) => void] {
 export function AgentsPage(): ReactElement {
   const t = useT();
   const otherId = useId();
-  const { data: clients } = useMcpClients();
-  const { data: status } = useQuery({ queryKey: [...AGENTS_KEY, 'status'], queryFn: mcpStatus });
+  const clientsQuery = useMcpClients();
+  const statusQuery = useQuery({ queryKey: [...AGENTS_KEY, 'status'], queryFn: mcpStatus, staleTime: Infinity });
+  const clients = clientsQuery.data;
+  const status = statusQuery.data;
   const { busy, run } = useAgentsRun();
   const now = useNow();
   const [token, setToken] = useState<{ name: string; token: string } | null>(null);
@@ -119,7 +143,9 @@ export function AgentsPage(): ReactElement {
             {t(paused ? 'agents.resume' : 'agents.pause')}
           </Button>
         </div>
-
+        {/* The status loads with the clients; only its failure needs its own line. */}
+        {statusQuery.isError ? <QueryState q={statusQuery} loading={t('agents.loading')} /> : null}
+        <QueryState q={clientsQuery} loading={t('agents.loading')} />
         <section className="ag-grid" aria-label={t('agents.clients')}>
           {clients?.map((c) => (
             <ClientCard
@@ -281,10 +307,12 @@ function Activity(): ReactElement {
   const t = useT();
   const headId = useId();
   const [show, setShow] = useState<Show>('all');
-  const { data: rows } = useQuery({
+  const activity = useQuery({
     queryKey: [...AGENTS_KEY, 'activity', show],
     queryFn: () => listAgentActivity(show === 'writes', ACTIVITY_LIMIT),
+    staleTime: Infinity,
   });
+  const rows = activity.data;
   const { data: categories } = useCategories();
   const { busy, run } = useAgentsRun();
   const { show: toast } = useToast();
@@ -366,6 +394,7 @@ function Activity(): ReactElement {
           ) : null}
         </tbody>
       </table>
+      <QueryState q={activity} loading={t('agents.loadingActivity')} />
       <div className="caption ag-muted ag-foot">{t('agents.footer')}</div>
     </section>
   );
@@ -453,7 +482,6 @@ function RemoveDialog(p: {
 /** "Create HTTP token": a name, then the token dialog. */
 function NameDialog(p: { onClose: () => void; onCreated: (name: string, token: string) => void }): ReactElement {
   const t = useT();
-  const qc = useQueryClient();
   const inputId = useId();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -467,10 +495,9 @@ function NameDialog(p: { onClose: () => void; onCreated: (name: string, token: s
       const created = await createHttpClient(name.trim());
       p.onCreated(created.client.name, created.token);
     } catch (e) {
+      // Nothing was created; a success refreshes the cards through `agents-changed`.
       setError(errorMessage(t, e));
       setBusy(false);
-    } finally {
-      void qc.invalidateQueries({ queryKey: AGENTS_KEY });
     }
   };
 

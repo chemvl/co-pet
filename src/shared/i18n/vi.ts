@@ -593,6 +593,8 @@ export const vi: Record<keyof typeof en, string> = {
   'agents.read': 'Đọc',
   'agents.undone': 'Đã hoàn tác',
   'agents.empty': 'Chưa có agent nào dùng Co-pet. Hãy thêm một ứng dụng ở trên.',
+  'agents.loading': 'Đang tải agent',
+  'agents.loadingActivity': 'Đang tải hoạt động',
   'agents.footer': 'Mục nhạy cảm và danh mục được đánh dấu “Ẩn khỏi agent” không bao giờ hiện với bất kỳ ứng dụng nào.',
   'agents.justNow': 'vừa xong',
   'agents.minAgo': '{n} phút trước',

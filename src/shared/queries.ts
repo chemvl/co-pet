@@ -117,7 +117,7 @@ export function useMcpClients() {
       void qc.invalidateQueries({ queryKey: AGENTS_KEY });
     });
   }, [qc]);
-  return useQuery({ queryKey: MCP_CLIENTS_KEY, queryFn: listMcpClients });
+  return useQuery({ queryKey: MCP_CLIENTS_KEY, queryFn: listMcpClients, staleTime: Infinity });
 }
 
 /** "Added by {name}" for an `addedBy` client id; an id unknown on this Mac reads "Added by agent". */

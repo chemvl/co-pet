@@ -592,6 +592,8 @@ export const en = {
   'agents.read': 'Read',
   'agents.undone': 'Undone',
   'agents.empty': 'No agent has used Co-pet yet. Add a client above.',
+  'agents.loading': 'Loading agents',
+  'agents.loadingActivity': 'Loading activity',
   'agents.footer': 'Sensitive items and categories marked “Hide from agents” never appear to any client.',
   'agents.justNow': 'just now',
   'agents.minAgo': '{n} min ago',

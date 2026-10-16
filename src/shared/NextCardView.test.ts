@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { translate, type TFunction } from '../../shared/i18n';
-import type { NextCard } from '../../shared/types';
+import { translate, type TFunction } from './i18n';
+import type { NextCard } from './types';
 import { reasonText } from './NextCardView';
 
 // Local constructor: Wednesday 15 Oct 2025, 10:00 in every timezone.

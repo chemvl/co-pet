@@ -30,7 +30,7 @@ import {
 import { poseFor } from './pose';
 import { Floating } from './surfaces/Floating';
 import { PetMenu } from './surfaces/PetMenu';
-import type { CardAction } from '../home/tasks/NextCardView';
+import type { CardAction } from '../shared/NextCardView';
 import { NextPanel } from './surfaces/NextPanel';
 import { PetNotice } from './surfaces/PetNotice';
 import { QuickNotePanel } from './surfaces/QuickNotePanel';

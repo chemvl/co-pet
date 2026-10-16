@@ -15,7 +15,7 @@ import { Menu, type MenuItem } from '../Menu';
 import { countsQuery, nextQuery, tasksQuery } from '../queries';
 import { navigate, type Route } from '../router';
 import { dueText, GROUP_KEYS, groupTasks, isDueSoon, type GroupKey } from './groups';
-import { NextCardView, type CardAction } from './NextCardView';
+import { NextCardView, type CardAction } from '../../shared/NextCardView';
 import { TaskEditor } from './TaskEditor';
 import { useTaskActions } from './useTaskActions';
 import './tasks.css';
@@ -256,8 +256,19 @@ function NextColumn(): ReactElement | null {
   const t = useT();
   const qc = useQueryClient();
   const { fail } = useTaskActions();
-  const { data: card, isSuccess } = useQuery(nextQuery);
-  if (!isSuccess) return null;
+  const next = useQuery(nextQuery);
+  if (next.isError) {
+    return (
+      <div className="hm-listmsg">
+        <span className="body">{errorMessage(t, next.error)}</span>
+        <Button variant="secondary" size="sm" onClick={() => void next.refetch()}>
+          {t('common.retry')}
+        </Button>
+      </div>
+    );
+  }
+  if (!next.isSuccess) return null;
+  const card = next.data;
   if (!card) return <p className="body hm-muted tk-msg">{t('next.empty')}</p>;
   const onAction = (action: CardAction) => {
     nextAction(card.taskId, action, 'home')

@@ -2,13 +2,12 @@ import { Button, Switch } from '../../../ds';
 import { formatWeekday } from '../../../shared/format';
 import { useLang, useT } from '../../../shared/i18n';
 import { useSetSetting, useSetting } from '../../../shared/queries';
-import { Group, SettingRow } from '../parts';
+import { Group, SettingRow, TimeRange } from '../parts';
 
 // A type alias (not an interface) so it is assignable to `Json`.
 /** `days` are ISO weekdays (1 = Monday … 7 = Sunday), as the scheduler reads them. */
 type WorkHours = { start: string; end: string; days: number[] };
 
-const TIME = /^\d{2}:\d{2}$/;
 const AWAY_MINUTES = [5, 10, 15, 30];
 const PER_HOUR = [1, 2, 3, 4];
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
@@ -23,12 +22,11 @@ export function WhatsNextSection() {
   const hours = useSetting<WorkHours>('whatsNext.workHours', { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] });
   const maxPerHour = useSetting<number>('whatsNext.maxPerHour', 2);
 
-  const update = (patch: Partial<WorkHours>) => {
-    const next = { ...hours, ...patch };
-    if (TIME.test(next.start) && TIME.test(next.end)) void set('whatsNext.workHours', next);
-  };
   const toggleDay = (day: number) =>
-    update({ days: hours.days.includes(day) ? hours.days.filter((d) => d !== day) : [...hours.days, day].sort((a, b) => a - b) });
+    void set('whatsNext.workHours', {
+      ...hours,
+      days: hours.days.includes(day) ? hours.days.filter((d) => d !== day) : [...hours.days, day].sort((a, b) => a - b),
+    });
 
   return (
     <>
@@ -75,27 +73,8 @@ export function WhatsNextSection() {
           </select>
         </SettingRow>
       </Group>
-      <Group title={t('settings.whatsnext.workHours')} desc={t('settings.whatsnext.caption')}>
-        <div className="st-row" style={{ justifyContent: 'flex-start' }}>
-          <label className="st-field">
-            {t('settings.notifications.from')}
-            <input
-              type="time"
-              className="st-input st-input--time"
-              value={hours.start}
-              onChange={(e) => update({ start: e.target.value })}
-            />
-          </label>
-          <label className="st-field">
-            {t('settings.notifications.to')}
-            <input
-              type="time"
-              className="st-input st-input--time"
-              value={hours.end}
-              onChange={(e) => update({ end: e.target.value })}
-            />
-          </label>
-        </div>
+      <Group title={t('settings.whatsnext.workHours')}>
+        <TimeRange start={hours.start} end={hours.end} onChange={(range) => void set('whatsNext.workHours', { ...hours, ...range })} />
         <div className="st-row__control" role="group" aria-label={t('settings.whatsnext.days')}>
           {WEEKDAYS.map((day) => {
             const on = hours.days.includes(day);
@@ -107,6 +86,7 @@ export function WhatsNextSection() {
           })}
         </div>
       </Group>
+      <p className="st-body">{t('settings.whatsnext.caption')}</p>
     </>
   );
 }

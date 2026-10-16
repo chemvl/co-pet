@@ -37,6 +37,29 @@ export function SettingRow(props: { label: string; desc?: string; htmlFor?: stri
   );
 }
 
+const TIME = /^\d{2}:\d{2}$/;
+
+/** From/To `HH:MM` inputs; `onChange` fires only when both values are valid. */
+export function TimeRange(props: { start: string; end: string; onChange: (range: { start: string; end: string }) => void }) {
+  const t = useT();
+  const update = (patch: { start?: string; end?: string }) => {
+    const next = { start: props.start, end: props.end, ...patch };
+    if (TIME.test(next.start) && TIME.test(next.end)) props.onChange(next);
+  };
+  return (
+    <div className="st-row" style={{ justifyContent: 'flex-start' }}>
+      <label className="st-field">
+        {t('settings.notifications.from')}
+        <input type="time" className="st-input st-input--time" value={props.start} onChange={(e) => update({ start: e.target.value })} />
+      </label>
+      <label className="st-field">
+        {t('settings.notifications.to')}
+        <input type="time" className="st-input st-input--time" value={props.end} onChange={(e) => update({ end: e.target.value })} />
+      </label>
+    </div>
+  );
+}
+
 /** `value` 0..1; null shows an indeterminate strip. */
 export function ProgressBar({ value, label }: { value: number | null; label: string }) {
   const pct = value == null ? null : Math.max(0, Math.min(1, value)) * 100;

@@ -1,11 +1,11 @@
 // A What's Next card (NextCard) rendered as the design-system WhatsNextCard. Shared by the pet
 // panel and the Tasks page right column.
-import { WhatsNextCard } from '../../ds';
-import { categoryColor, categoryIcon, categoryLabel, useCategory } from '../../shared/categories';
-import { formatDate, formatEstimate } from '../../shared/format';
-import { useLang, useT, type Lang, type TFunction } from '../../shared/i18n';
-import type { NextAction, NextCard } from '../../shared/types';
-import { dueAt, dueText, isDueSoon } from './groups';
+import { WhatsNextCard } from '../ds';
+import { categoryColor, categoryIcon, categoryLabel, useCategory } from './categories';
+import { formatDate, formatEstimate } from './format';
+import { useLang, useT, type Lang, type TFunction } from './i18n';
+import type { NextAction, NextCard } from './types';
+import { dueAt, dueText, isDueSoon } from '../home/tasks/groups';
 
 export type CardAction = Exclude<NextAction, 'shown'>;
 

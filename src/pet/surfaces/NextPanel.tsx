@@ -1,7 +1,7 @@
 // The What's Next card on the pet (plan Task 3.3; docs/design/canvas/Desk.dc.html). Closes only
 // through its four actions: Enter Start, D Done, S Snooze, K Skip; Esc snoozes.
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { NextCardView, type CardAction } from '../../home/tasks/NextCardView';
+import { NextCardView, type CardAction } from '../../shared/NextCardView';
 import type { NextCard } from '../../shared/types';
 
 const KEYS: Record<string, CardAction> = { Enter: 'start', d: 'done', s: 'snooze', k: 'skip', Escape: 'snooze' };

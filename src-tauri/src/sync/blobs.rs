@@ -45,7 +45,7 @@ fn too_large(size: u64, max_mb: u64) -> bool {
 }
 
 /// After `item_ids` were pushed: each of their files that is on this Mac and has no
-/// `sync_blobs` row gets one, `up` or `tooLarge`.
+/// `sync_blobs` row gets one, `up` or `tooLarge`. Paths outside the library are left alone.
 pub(crate) fn register(conn: &Connection, paths: &Paths, item_ids: &[String], now: i64) -> AppResult<()> {
     if item_ids.is_empty() {
         return Ok(());
@@ -59,6 +59,10 @@ pub(crate) fn register(conn: &Connection, paths: &Paths, item_ids: &[String], no
             .optional()?;
         let Some((file, thumb)) = found else { continue };
         for rel in [file, thumb].into_iter().flatten() {
+            if !inside_library(&rel) {
+                eprintln!("[sync] not a library path: {rel}");
+                continue;
+            }
             let Ok(meta) = std::fs::metadata(paths.abs(&rel)) else { continue };
             let state = if too_large(meta.len(), max_mb) { "tooLarge" } else { "up" };
             insert.execute(params![rel, state, now])?;
@@ -116,7 +120,14 @@ fn set_state(conn: &Connection, rel: &str, state: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Seals and stores the file. A path outside the library (only a forged pulled row could hold
+/// one) is never read: the row becomes `missing`.
 async fn upload<R: Remote>(cx: &Ctx<'_>, remote: &R, rel: &str) -> Result<(), SyncError> {
+    if !inside_library(rel) {
+        eprintln!("[sync] not a library path: {rel}");
+        set_state(&cx.db.conn(), rel, "missing")?;
+        return Ok(());
+    }
     let (path, key, aad) = (cx.paths.abs(rel), cx.keys.blob, rel.to_owned());
     let sealed = blocking(move || std::fs::read(path).map(|plain| seal(&key, aad.as_bytes(), &plain))).await?;
     let state = match sealed {
@@ -355,6 +366,29 @@ mod tests {
         for bad in ["", "/etc/hosts", "../x", "ab/../../x", "./ab/x"] {
             assert!(!inside_library(bad), "{bad}");
         }
+    }
+
+    #[tokio::test]
+    async fn files_outside_the_library_are_never_read() {
+        let (a, keys, remote) = (device("aaaa"), keys(), MemoryRemote::default());
+        // Real files outside the library, named by an absolute and a `..` path.
+        let secret = a.paths.root.join("secret.txt");
+        std::fs::write(&secret, b"outside secret").unwrap();
+        let (absolute, dotdot) = (secret.to_string_lossy().into_owned(), "../secret.txt".to_string());
+        assert!(a.paths.abs(&absolute).exists() && a.paths.abs(&dotdot).exists());
+        let (id, _) = file_item(&a, b"inside", "txt");
+        a.db.conn()
+            .execute("UPDATE items SET file_path = ?2, thumb_path = ?3 WHERE id = ?1", params![id, absolute, dotdot])
+            .unwrap();
+        // A row already queued (e.g. by an older build) is never read either.
+        a.db.conn()
+            .execute("INSERT INTO sync_blobs (rel, state, updated_at) VALUES ('../secret.txt', 'up', 0)", [])
+            .unwrap();
+        sync(&a, &remote, &keys).await;
+        assert!(remote.blobs().is_empty(), "nothing was uploaded");
+        assert_eq!(state(&a.db.conn(), &dotdot).0, "missing");
+        let rows: i64 = a.db.conn().query_row("SELECT count(*) FROM sync_blobs WHERE rel = ?1", [&absolute], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "register skips paths outside the library");
     }
 
     #[tokio::test]

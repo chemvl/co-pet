@@ -258,17 +258,26 @@ where
     Some(card(top, "rank"))
 }
 
+/// Whether `trigger` may ask the model, per settings: not `home`, `ai.enabled`, and not
+/// `privacy.localOnly` (same policy as triage). The caller still needs a downloaded model.
+fn ai_allowed(conn: &Connection, trigger: &str) -> AppResult<bool> {
+    Ok(trigger != "home"
+        && settings::get::<bool>(conn, "ai.enabled")?
+        && !settings::get::<bool>(conn, "privacy.localOnly")?)
+}
+
 /// The What's Next card for `trigger`, or `None` when nothing is eligible. `home` always uses
-/// the ranking; other triggers ask the local model when AI is on and a model is downloaded.
+/// the ranking; other triggers ask the local model when AI is on, local-only mode is off and a
+/// model is downloaded.
 #[allow(dead_code)] // Task 3.2: called by `whats_next` and the scheduler.
 pub async fn pick(app: &AppHandle, trigger: &str) -> AppResult<Option<NextCard>> {
     let now = Local::now();
     let db = app.state::<Db>().inner();
-    let (cands, ai_enabled) = {
+    let (cands, ai_allowed) = {
         let conn = db.conn();
-        (rank(&conn, now)?, settings::get::<bool>(&conn, "ai.enabled")?)
+        (rank(&conn, now)?, ai_allowed(&conn, trigger)?)
     };
-    let use_ai = trigger != "home" && ai_enabled && llm::active_model_path(app).is_some();
+    let use_ai = ai_allowed && llm::active_model_path(app).is_some();
     Ok(pick_with(cands, use_ai, |tasks| async move {
         let msg = user_message(&db.conn(), &tasks, now)?;
         let llm = app.state::<LlmServer>();
@@ -507,6 +516,30 @@ mod tests {
         assert_eq!(card.reason.as_deref(), Some("Quick win."));
         assert_eq!(card.first_step.as_deref(), Some("Open the doc"));
         assert_eq!(card.estimate_min, Some(45));
+    }
+
+    #[tokio::test]
+    async fn local_only_skips_ai() {
+        let db = db();
+        let (cands, allowed) = {
+            let conn = db.conn();
+            task(&conn, "Write report", None, 0);
+            settings::put(&conn, "ai.enabled", &json!(true)).unwrap();
+            assert!(ai_allowed(&conn, "bubble").unwrap());
+            assert!(!ai_allowed(&conn, "home").unwrap());
+            settings::put(&conn, "privacy.localOnly", &json!(true)).unwrap();
+            (rank(&conn, now()).unwrap(), ai_allowed(&conn, "bubble").unwrap())
+        };
+        assert!(!allowed);
+        let called = Cell::new(false);
+        let card = pick_with(cands, allowed, |_| {
+            called.set(true);
+            async { Ok(Value::Null) }
+        })
+        .await
+        .unwrap();
+        assert!(!called.get());
+        assert_eq!(card.picked_by, "rank");
     }
 
     #[test]

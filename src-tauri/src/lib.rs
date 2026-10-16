@@ -21,6 +21,7 @@ mod tray_icon;
 mod secrets;
 mod backend;
 mod links;
+mod export;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -53,6 +54,7 @@ pub fn run() {
         .manage(platform::macos::idle::Sleep::default())
         .manage(platform::macos::pointer::PointerState::default())
         .manage(windows::PetPlacement::default())
+        .manage(export::oauth::OAuthPending::default())
         .setup(|app| {
             // No Dock icon: the pet and the menu bar icon are the entry points.
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -75,6 +77,7 @@ pub fn run() {
             platform::macos::fullscreen::start(&handle);
             platform::macos::idle::start(&handle);
             next::start(&handle);
+            export::queue::start(&handle);
             system::watch_autostart(&handle);
             if settings_bool(&handle, "onboarding.completed") {
                 windows::create_pet_window(&handle)?;
@@ -152,6 +155,16 @@ pub fn run() {
             commands::whats_next,
             commands::next_action,
             commands::backend_status,
+            commands::integrations_status,
+            commands::connect_oauth,
+            commands::connect_token,
+            commands::disconnect,
+            commands::notion_data_sources,
+            commands::notion_schema,
+            commands::asana_options,
+            commands::set_export_target,
+            commands::export_task,
+            commands::retry_exports,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

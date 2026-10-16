@@ -9,10 +9,7 @@ use crate::db::settings;
 use crate::error::{AppError, AppResult};
 
 pub struct Backend {
-    // Task 4.3: the OAuth function URLs and the `apikey` header.
-    #[allow(dead_code)]
     pub url: &'static str,
-    #[allow(dead_code)]
     pub key: &'static str,
 }
 
@@ -37,15 +34,11 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .expect("static reqwest client")
 });
 
-// Task 4.3: the exporters and the OAuth handoff.
-#[allow(dead_code)]
 pub fn http() -> &'static reqwest::Client {
     &HTTP
 }
 
 /// `localOnly` while `privacy.localOnly` is on.
-// Task 4.3: every export, OAuth and token call.
-#[allow(dead_code)]
 pub fn ensure_network(app: &AppHandle) -> AppResult<()> {
     if settings::read::<bool>(app, "privacy.localOnly")? {
         return Err(AppError::Code("localOnly"));

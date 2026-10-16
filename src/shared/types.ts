@@ -166,6 +166,8 @@ export interface TaskSummary {
   doneAt: number | null;
   createdAt: number;
   updatedAt: number;
+  /** The most recently updated live export job, if any. */
+  export: TaskExportState | null;
 }
 
 export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' | 'trashed' | 'restored';
@@ -262,6 +264,63 @@ export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | nu
 /** `backend_status`: whether this build has a Supabase URL and key. */
 export interface BackendStatus { configured: boolean }
 
+export type ExportProvider = 'notion' | 'asana';
+export type ExportState = 'queued' | 'exporting' | 'exported' | 'failed';
+export type ExportErrorCode = 'rateLimited' | 'network' | 'unauthorized' | 'targetMissing' | 'invalid' | 'disconnected';
+
+export interface TaskExportState {
+  provider: ExportProvider;
+  state: ExportState;
+  error: ExportErrorCode | null;
+  externalUrl: string | null;
+  nextAttemptAt: number | null;
+}
+
+/** `config` is a `NotionConfig` (notion) or `AsanaConfig` (asana). */
+export interface ExportTarget {
+  id: string;
+  provider: ExportProvider;
+  accountLabel: string;
+  targetLabel: string;
+  config: NotionConfig | AsanaConfig;
+}
+
+/** `queued` / `failed` / `nextAttemptAt` / `lastError` cover this device's jobs. */
+export interface ProviderStatus {
+  provider: ExportProvider;
+  connected: boolean;
+  method: 'oauth' | 'token' | null;
+  accountLabel: string | null;
+  needsReconnect: boolean;
+  target: ExportTarget | null;
+  queued: number;
+  failed: number;
+  nextAttemptAt: number | null;
+  lastError: ExportErrorCode | null;
+}
+
+/** A Notion data source or an Asana workspace / project / section. */
+export interface TargetOption { id: string; label: string }
+
+export interface NotionStatusMap { prop: string; kind: 'status' | 'select'; todo: string; done: string }
+
+/** Notion property names; null = not mapped. */
+export interface NotionMapping {
+  title: string;
+  status: NotionStatusMap | null;
+  due: string | null;
+  tags: string | null;
+  source: string | null;
+}
+
+export interface NotionConfig { dataSourceId: string; mapping: NotionMapping }
+
+export interface AsanaConfig { workspaceGid: string; projectGid: string; sectionGid: string | null }
+
+export interface NotionProp { name: string; kind: string; options: string[] }
+
+export interface NotionSchema { title: string; props: NotionProp[]; suggested: NotionMapping }
+
 export interface Rule {
   id: string;
   categoryId: CategoryId;
@@ -283,7 +342,7 @@ export interface EventPayloads {
   'items-changed': { ids: string[] };
   'counts-changed': Counts;
   'pet-reaction': { input: PetInput; category?: CategoryId; variant?: number };
-  'pet-flags': { thinking?: boolean; sleep?: boolean };
+  'pet-flags': { thinking?: boolean; sleep?: boolean; carrying?: boolean };
   'pointer-region': { region: 'pet' | 'panel' | 'halo' | null; dragging: boolean };
   'pet-visibility': { hidden: boolean; reason: 'fullscreen' | 'user' | null };
   'pet-placement': Placement;
@@ -297,4 +356,12 @@ export interface EventPayloads {
   'capture-result': CaptureResult;
   /** Pet window only: a proactive What's Next card. */
   'whats-next': { card: NextCard; trigger: 'return' | 'afterDone' };
+  /** Export jobs changed; task lists show `TaskSummary.export`. */
+  'exports-changed': { taskIds: string[] };
+  /** `provider` is null only for an OAuth handoff this app never started. */
+  'integration-changed': {
+    provider: ExportProvider | null;
+    ok: boolean;
+    error: 'oauthExpired' | 'oauthDenied' | string | null;
+  };
 }

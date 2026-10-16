@@ -36,6 +36,7 @@ function useLiveQueries(): void {
     const subs = [
       on('items-changed', refresh),
       on('tasks-changed', refreshTasks),
+      on('exports-changed', refreshTasks),
       on('settings-changed', refresh),
       on('counts-changed', (c) => qc.setQueryData<Counts>(['counts'], c)),
       on('navigate', ({ route }) => navigate(route)),

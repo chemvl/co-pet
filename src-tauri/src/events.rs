@@ -25,6 +25,10 @@ pub const NAVIGATE: &str = "navigate";
 pub const CAPTURE_RESULT: &str = "capture-result";
 /// Pet window only: a proactive What's Next card.
 pub const WHATS_NEXT: &str = "whats-next";
+/// Export jobs changed; listeners also refresh task lists (`TaskSummary.export`).
+pub const EXPORTS_CHANGED: &str = "exports-changed";
+/// A Notion/Asana connection finished (OAuth or token) or failed.
+pub const INTEGRATION_CHANGED: &str = "integration-changed";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
@@ -59,6 +63,9 @@ pub struct PetFlags {
     pub thinking: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sleep: Option<bool>,
+    /// The export worker is running jobs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub carrying: Option<bool>,
 }
 
 /// `region`: `"pet" | "panel" | "halo"` or `None`.
@@ -115,6 +122,22 @@ pub struct WhatsNextEvent {
     pub trigger: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportsChanged {
+    pub task_ids: Vec<String>,
+}
+
+/// `provider` is `None` only for an OAuth handoff whose state was never issued here.
+/// `error`: `oauthExpired | oauthDenied | <AppError code>`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrationChanged {
+    pub provider: Option<String>,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
 /// Emits to every webview; a failure to emit is logged, never fatal.
 pub fn emit<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     if let Err(e) = app.emit(event, payload) {
@@ -128,6 +151,18 @@ pub fn items_changed(app: &AppHandle, ids: Vec<String>) {
 
 pub fn tasks_changed(app: &AppHandle, ids: Vec<String>) {
     emit(app, TASKS_CHANGED, TasksChanged { ids });
+}
+
+pub fn exports_changed(app: &AppHandle, task_ids: Vec<String>) {
+    emit(app, EXPORTS_CHANGED, ExportsChanged { task_ids });
+}
+
+pub fn integration_changed(app: &AppHandle, provider: Option<&str>, ok: bool, error: Option<&str>) {
+    emit(
+        app,
+        INTEGRATION_CHANGED,
+        IntegrationChanged { provider: provider.map(String::from), ok, error: error.map(String::from) },
+    );
 }
 
 pub fn counts_changed(app: &AppHandle, counts: Counts) {

@@ -71,6 +71,12 @@ fn builtin_names(id: &str) -> [&'static str; 2] {
     [tr(Lang::En, &key), tr(Lang::Vi, &key)]
 }
 
+/// The name a live category shows in `lang`: its own, else the built-in name.
+pub fn display_name(conn: &Connection, id: &str, lang: Lang) -> AppResult<String> {
+    let c = get(conn, id)?;
+    Ok(c.name.unwrap_or_else(|| tr(lang, &format!("category.{}", c.id)).to_string()))
+}
+
 /// The names a category shows: its own, or both languages' built-in names.
 fn display_names(c: &Category) -> Vec<&str> {
     match &c.name {

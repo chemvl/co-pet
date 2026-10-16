@@ -15,7 +15,12 @@ pub fn get_settings(db: State<'_, Db>) -> AppResult<Map<String, Value>> {
 
 #[tauri::command]
 pub fn set_setting(app: AppHandle, key: String, value: Value) -> AppResult<()> {
-    settings::set(&app, &key, &value)
+    settings::set(&app, &key, &value)?;
+    if key == "privacy.localOnly" {
+        // The export worker sleeps on its notify while local-only is on.
+        app.state::<crate::export::queue::ExportQueue>().poke();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -448,4 +453,125 @@ pub fn next_action(app: AppHandle, task_id: String, action: String, trigger: Str
 #[tauri::command]
 pub fn backend_status() -> crate::model::BackendStatus {
     crate::model::BackendStatus { configured: crate::backend::config().is_some() }
+}
+
+fn provider(s: &str) -> AppResult<crate::export::Provider> {
+    s.parse()
+}
+
+/// Every export provider: keychain connection, target and this device's jobs.
+#[tauri::command]
+pub fn integrations_status(db: State<'_, Db>) -> AppResult<Vec<crate::model::ProviderStatus>> {
+    crate::export::Provider::ALL
+        .into_iter()
+        .map(|p| crate::export::status(&db.conn(), p, crate::export::keychain_token(p)?))
+        .collect()
+}
+
+/// Opens the provider's OAuth consent page. Rejects with `localOnly`, `notConfigured`.
+#[tauri::command]
+pub fn connect_oauth(app: AppHandle, provider: String) -> AppResult<()> {
+    crate::export::oauth::start(&app, self::provider(&provider)?)
+}
+
+/// Rejects with `localOnly`, `invalidToken`, `network`, `rateLimited`.
+#[tauri::command]
+pub async fn connect_token(app: AppHandle, provider: String, token: String) -> AppResult<crate::model::ProviderStatus> {
+    let p = self::provider(&provider)?;
+    crate::export::connect_token(&app, p, &token).await?;
+    crate::export::status(&app.state::<Db>().conn(), p, crate::export::keychain_token(p)?)
+}
+
+/// Deletes the keychain token and fails this device's queued jobs; the target is kept.
+#[tauri::command]
+pub fn disconnect(app: AppHandle, db: State<'_, Db>, provider: String) -> AppResult<()> {
+    let p = self::provider(&provider)?;
+    crate::secrets::delete(p.as_str())?;
+    let ids = crate::export::fail_queued_on_disconnect(&db.conn(), p, crate::db::now_ms())?;
+    crate::events::exports_changed(&app, ids);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn notion_data_sources(app: AppHandle) -> AppResult<Vec<crate::model::TargetOption>> {
+    crate::backend::ensure_network(&app)?;
+    let token = crate::export::token(crate::export::Provider::Notion).await?;
+    Ok(crate::export::notion::data_sources(&token, crate::i18n::lang(&app)).await?)
+}
+
+#[tauri::command]
+pub async fn notion_schema(app: AppHandle, id: String) -> AppResult<crate::model::NotionSchema> {
+    crate::backend::ensure_network(&app)?;
+    let token = crate::export::token(crate::export::Provider::Notion).await?;
+    Ok(crate::export::notion::schema(&token, &id).await?)
+}
+
+/// `level`: `workspace | project | section`; `parent` is the workspace / project gid.
+#[tauri::command]
+pub async fn asana_options(
+    app: AppHandle,
+    level: String,
+    parent: Option<String>,
+) -> AppResult<Vec<crate::model::TargetOption>> {
+    use crate::export::asana;
+    crate::backend::ensure_network(&app)?;
+    let parent = || parent.as_deref().filter(|p| !p.is_empty()).ok_or(crate::error::AppError::Code("invalid"));
+    let token = crate::export::token(crate::export::Provider::Asana).await?;
+    Ok(match level.as_str() {
+        "workspace" => asana::workspaces(&token).await?,
+        "project" => asana::projects(&token, parent()?).await?,
+        "section" => asana::sections(&token, parent()?).await?,
+        _ => return Err(crate::error::AppError::Code("invalid")),
+    })
+}
+
+/// Rejects with `invalid` (config shape) or `notConnected`.
+#[tauri::command]
+pub fn set_export_target(
+    app: AppHandle,
+    db: State<'_, Db>,
+    provider: String,
+    config: Value,
+    target_label: String,
+) -> AppResult<crate::model::ExportTarget> {
+    let p = self::provider(&provider)?;
+    let token = crate::export::keychain_token(p)?.ok_or(crate::error::AppError::Code("notConnected"))?;
+    let target =
+        crate::export::set_target(&db.conn(), p, config, &target_label, &token.account_label, crate::db::now_ms())?;
+    crate::events::exports_changed(&app, Vec::new());
+    Ok(target)
+}
+
+/// Queues the task. Rejects with `notConnected`, `noTarget`, `alreadyExported`, `notFound`.
+#[tauri::command]
+pub fn export_task(
+    app: AppHandle,
+    db: State<'_, Db>,
+    task_id: String,
+    provider: String,
+) -> AppResult<crate::model::TaskExportState> {
+    let p = self::provider(&provider)?;
+    if crate::export::keychain_token(p)?.is_none() {
+        return Err(crate::error::AppError::Code("notConnected"));
+    }
+    let state = {
+        let conn = db.conn();
+        if crate::export::target(&conn, p)?.is_none() {
+            return Err(crate::error::AppError::Code("noTarget"));
+        }
+        crate::export::enqueue(&conn, &task_id, p, crate::db::now_ms())?
+    };
+    app.state::<crate::export::queue::ExportQueue>().poke();
+    crate::events::exports_changed(&app, vec![task_id]);
+    Ok(state)
+}
+
+/// Requeues this device's failed and queued jobs (of `provider`, or all) to run now.
+#[tauri::command]
+pub fn retry_exports(app: AppHandle, db: State<'_, Db>, provider: Option<String>) -> AppResult<()> {
+    let p = provider.as_deref().map(self::provider).transpose()?;
+    let ids = crate::export::retry(&db.conn(), p, crate::db::now_ms())?;
+    app.state::<crate::export::queue::ExportQueue>().poke();
+    crate::events::exports_changed(&app, ids);
+    Ok(())
 }

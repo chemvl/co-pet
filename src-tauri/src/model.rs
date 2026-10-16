@@ -430,6 +430,8 @@ pub struct TaskSummary {
     pub done_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// The most recently updated live export job, if any.
+    pub export: Option<TaskExportState>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -481,4 +483,109 @@ pub struct NextCard {
     pub created_at: i64,
     /// `"ai" | "rank"`
     pub picked_by: String,
+}
+
+// ---------- M4: export ----------
+
+/// The latest live `task_exports` row of a task. `state`: `queued | exporting | exported |
+/// failed`; `error`: `rateLimited | network | unauthorized | targetMissing | invalid |
+/// disconnected`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskExportState {
+    pub provider: String,
+    pub state: String,
+    pub error: Option<String>,
+    pub external_url: Option<String>,
+    pub next_attempt_at: Option<i64>,
+}
+
+/// The live `export_targets` row of a provider; `config` is a `NotionConfig` / `AsanaConfig`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportTarget {
+    pub id: String,
+    pub provider: String,
+    pub account_label: String,
+    pub target_label: String,
+    pub config: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderStatus {
+    pub provider: String,
+    pub connected: bool,
+    /// `"oauth" | "token"`
+    pub method: Option<String>,
+    pub account_label: Option<String>,
+    pub needs_reconnect: bool,
+    pub target: Option<ExportTarget>,
+    /// This device's jobs.
+    pub queued: i64,
+    pub failed: i64,
+    pub next_attempt_at: Option<i64>,
+    pub last_error: Option<String>,
+}
+
+/// A Notion data source or an Asana workspace / project / section.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetOption {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotionConfig {
+    pub data_source_id: String,
+    pub mapping: NotionMapping,
+}
+
+/// Notion property names; `None` = "Not mapped".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotionMapping {
+    pub title: String,
+    pub status: Option<NotionStatusMap>,
+    pub due: Option<String>,
+    pub tags: Option<String>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotionStatusMap {
+    pub prop: String,
+    /// `"status" | "select"`
+    pub kind: String,
+    pub todo: String,
+    pub done: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsanaConfig {
+    pub workspace_gid: String,
+    pub project_gid: String,
+    pub section_gid: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotionSchema {
+    pub title: String,
+    pub props: Vec<NotionProp>,
+    pub suggested: NotionMapping,
+}
+
+/// `kind` is the Notion property type (`title`, `status`, `select`, `date`, …); `options` are
+/// the option names of `status` / `select` / `multi_select` properties.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotionProp {
+    pub name: String,
+    pub kind: String,
+    pub options: Vec<String>,
 }

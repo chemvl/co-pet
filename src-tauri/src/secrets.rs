@@ -12,8 +12,6 @@ const SERVICE: &str = "com.copet.app";
 const ITEM_NOT_FOUND: i32 = -25300;
 
 /// The keychain value of the `notion` and `asana` accounts. No `Debug`, so it can't be logged.
-// Task 4.3: written by connect/OAuth and read by the exporters.
-#[allow(dead_code)]
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderToken {
@@ -54,14 +52,10 @@ pub fn delete(account: &str) -> AppResult<()> {
     }
 }
 
-// Task 4.3: the provider tokens.
-#[allow(dead_code)]
 pub fn get_json<T: DeserializeOwned>(account: &str) -> AppResult<Option<T>> {
     get(account)?.map(|s| serde_json::from_str(&s)).transpose().map_err(Into::into)
 }
 
-// Task 4.3: the provider tokens.
-#[allow(dead_code)]
 pub fn set_json<T: Serialize>(account: &str, v: &T) -> AppResult<()> {
     set(account, &serde_json::to_string(v)?)
 }

@@ -334,12 +334,15 @@ enum Target {
 }
 
 /// The source item's link (web/mail/tel schemes only), else its file, else the item in Home.
-/// Without a live source item: the task in Home.
-fn start_target(task_id: &str, source: Option<&ItemRow>) -> Target {
-    let Some(item) = source.filter(|i| i.deleted_at.is_none()) else {
-        return Target::Home(format!("tasks/open/{task_id}"));
-    };
+/// Without a live source item: the task's latest exported page/task URL, else the task in Home.
+fn start_target(task_id: &str, source: Option<&ItemRow>, exported_url: Option<&str>) -> Target {
     let openable = |u: &&str| OPEN_SCHEMES.iter().any(|s| u.get(..s.len()).is_some_and(|p| p.eq_ignore_ascii_case(s)));
+    let Some(item) = source.filter(|i| i.deleted_at.is_none()) else {
+        return match exported_url.filter(openable) {
+            Some(url) => Target::Url(url.to_owned()),
+            None => Target::Home(format!("tasks/open/{task_id}")),
+        };
+    };
     if let Some(url) = item.url.as_deref().filter(openable) {
         Target::Url(url.to_owned())
     } else if let Some(rel) = &item.file_path {
@@ -347,6 +350,19 @@ fn start_target(task_id: &str, source: Option<&ItemRow>) -> Target {
     } else {
         Target::Home(format!("item/{}", item.id))
     }
+}
+
+/// The `external_url` of the task's most recently updated live `exported` job.
+fn exported_url(conn: &Connection, task_id: &str) -> AppResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT external_url FROM task_exports
+             WHERE task_id = ?1 AND state = 'exported' AND deleted_at IS NULL AND external_url IS NOT NULL
+             ORDER BY updated_at DESC LIMIT 1",
+            [task_id],
+            |r| r.get(0),
+        )
+        .optional()?)
 }
 
 /// The task's source item row, if it has one. `notFound` for an unknown task.
@@ -378,13 +394,14 @@ pub fn act(app: &AppHandle, task_id: &str, action: &str, trigger: &str) -> AppRe
     let db = app.state::<Db>();
     match action {
         "start" => {
-            let source = {
+            let (source, exported) = {
                 let conn = db.conn();
                 let source = source_item(&conn, task_id)?;
+                let exported = exported_url(&conn, task_id)?;
                 record(&conn, task_id, trigger, action)?;
-                source
+                (source, exported)
             };
-            open(app, start_target(task_id, source.as_ref()))
+            open(app, start_target(task_id, source.as_ref(), exported.as_deref()))
         }
         "done" => {
             let became_done = {
@@ -686,15 +703,18 @@ mod tests {
             file_path: file.map(String::from),
             ..Default::default()
         };
-        assert_eq!(start_target("t1", None), Target::Home("tasks/open/t1".into()));
+        assert_eq!(start_target("t1", None, None), Target::Home("tasks/open/t1".into()));
+        let notion = "https://www.notion.so/Task-abc";
+        assert_eq!(start_target("t1", None, Some(notion)), Target::Url(notion.into()));
+        assert_eq!(start_target("t1", None, Some("javascript:x")), Target::Home("tasks/open/t1".into()));
         let link = item(Some("HTTPS://example.com/a"), Some("ab/x.png"));
-        assert_eq!(start_target("t1", Some(&link)), Target::Url("HTTPS://example.com/a".into()));
+        assert_eq!(start_target("t1", Some(&link), Some(notion)), Target::Url("HTTPS://example.com/a".into()));
         let script = item(Some("file:///etc/passwd"), Some("ab/x.pdf"));
-        assert_eq!(start_target("t1", Some(&script)), Target::File("ab/x.pdf".into()));
+        assert_eq!(start_target("t1", Some(&script), None), Target::File("ab/x.pdf".into()));
         let text = item(Some("javascript:alert(1)"), None);
-        assert_eq!(start_target("t1", Some(&text)), Target::Home("item/i1".into()));
+        assert_eq!(start_target("t1", Some(&text), None), Target::Home("item/i1".into()));
         let trashed = ItemRow { deleted_at: Some(1), ..link };
-        assert_eq!(start_target("t1", Some(&trashed)), Target::Home("tasks/open/t1".into()));
+        assert_eq!(start_target("t1", Some(&trashed), None), Target::Home("tasks/open/t1".into()));
     }
 
     #[test]
@@ -707,7 +727,7 @@ mod tests {
         let linked = private_task(&mut conn);
         let item = source_item(&conn, &linked).unwrap().unwrap();
         assert_eq!(item.title, "Bank login");
-        assert_eq!(start_target(&linked, Some(&item)), Target::Home(format!("item/{}", item.id)));
+        assert_eq!(start_target(&linked, Some(&item), None), Target::Home(format!("item/{}", item.id)));
     }
 
     #[test]

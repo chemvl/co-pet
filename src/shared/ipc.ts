@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-  AiStatus, BackendStatus, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
+  AiStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
 } from './types';
@@ -119,6 +119,28 @@ export const nextAction = (taskId: string, action: NextAction, trigger: NextTrig
 
 // Phase 2 M4 — export
 export const backendStatus = () => invoke<BackendStatus>('backend_status');
+export const integrationsStatus = () => invoke<ProviderStatus[]>('integrations_status');
+/** Opens the provider's consent page; the result arrives as `integration-changed`.
+ *  Rejects with `"localOnly"` or `"notConfigured"`. */
+export const connectOauth = (provider: ExportProvider) => invoke<void>('connect_oauth', { provider });
+/** Rejects with `"localOnly"`, `"invalidToken"`, `"network"` or `"rateLimited"`. */
+export const connectToken = (provider: ExportProvider, token: string) =>
+  invoke<ProviderStatus>('connect_token', { provider, token });
+/** Deletes the token and fails this device's queued jobs; the target is kept. */
+export const disconnect = (provider: ExportProvider) => invoke<void>('disconnect', { provider });
+export const notionDataSources = () => invoke<TargetOption[]>('notion_data_sources');
+export const notionSchema = (id: string) => invoke<NotionSchema>('notion_schema', { id });
+/** `parent` is the workspace gid (`project`) or project gid (`section`). */
+export const asanaOptions = (level: 'workspace' | 'project' | 'section', parent?: string) =>
+  invoke<TargetOption[]>('asana_options', { level, parent: parent ?? null });
+/** `config` is a `NotionConfig` / `AsanaConfig`. Rejects with `"invalid"` or `"notConnected"`. */
+export const setExportTarget = (provider: ExportProvider, config: ExportTarget['config'], targetLabel: string) =>
+  invoke<ExportTarget>('set_export_target', { provider, config, targetLabel });
+/** Rejects with `"notConnected"`, `"noTarget"`, `"alreadyExported"` or `"notFound"`. */
+export const exportTask = (taskId: string, provider: ExportProvider) =>
+  invoke<TaskExportState>('export_task', { taskId, provider });
+/** Requeues this device's failed and queued jobs (of `provider`, or all). */
+export const retryExports = (provider?: ExportProvider) => invoke<void>('retry_exports', { provider: provider ?? null });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

@@ -1,7 +1,7 @@
 //! Local tasks. Every write is one transaction that bumps `updated_at` and appends a
 //! `task_events` row whose `before_json`/`after_json` hold only the changed columns.
 use chrono::{Local, NaiveDate, NaiveTime, TimeZone};
-use rusqlite::types::{Value as SqlValue, ValueRef};
+use rusqlite::types::{Type, Value as SqlValue, ValueRef};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, Transaction};
 use serde_json::{Map, Value};
 use tauri::AppHandle;
@@ -27,12 +27,17 @@ const TASK_UNDOABLE: [&str; 11] = [
 ];
 
 /// `TaskSummary` columns. `source_title` is withheld once the source item is trashed/deleted;
-/// `category_id` is the source item's category while both are live, else `todo`.
+/// `category_id` is the source item's category while both are live, else `todo`; the last
+/// column is the most recently updated live `task_exports` row as a `TaskExportState` JSON.
 const SUMMARY_SELECT: &str = "SELECT t.id, t.title, t.status, t.due_date, t.due_time, t.priority,
     t.estimate_min, t.first_step, t.source_item_id,
     CASE WHEN i.deleted_at IS NULL THEN i.title END,
     COALESCE(CASE WHEN i.deleted_at IS NULL THEN c.id END, 'todo'),
-    t.added_by, t.snoozed_until, t.done_at, t.created_at, t.updated_at
+    t.added_by, t.snoozed_until, t.done_at, t.created_at, t.updated_at,
+    (SELECT json_object('provider', e.provider, 'state', e.state, 'error', e.error,
+        'externalUrl', e.external_url, 'nextAttemptAt', e.next_attempt_at)
+      FROM task_exports e WHERE e.task_id = t.id AND e.deleted_at IS NULL
+      ORDER BY e.updated_at DESC LIMIT 1)
   FROM tasks t
   LEFT JOIN items i ON i.id = t.source_item_id
   LEFT JOIN categories c ON c.id = i.category_id AND c.deleted_at IS NULL";
@@ -61,6 +66,11 @@ fn map_summary(r: &Row<'_>) -> rusqlite::Result<TaskSummary> {
         done_at: r.get(13)?,
         created_at: r.get(14)?,
         updated_at: r.get(15)?,
+        export: r
+            .get::<_, Option<String>>(16)?
+            .map(|s| serde_json::from_str(&s))
+            .transpose()
+            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(16, Type::Text, Box::new(e)))?,
     })
 }
 

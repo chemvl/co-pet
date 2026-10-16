@@ -213,5 +213,28 @@ INSERT INTO settings (key, value, updated_at) VALUES
   ('whatsNext.maxPerHour', '2', 0);
 "#;
 
+/// Schema v5: Notion/Asana export targets and the per-device export queue. Ids are
+/// deterministic (`export_targets.id = provider`, `task_exports.id = '<task_id>:<provider>'`).
+const V5: &str = r#"
+CREATE TABLE export_targets (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('notion','asana')),
+  account_label TEXT NOT NULL,
+  target_label TEXT NOT NULL,
+  config TEXT NOT NULL,
+  updated_at INTEGER NOT NULL, deleted_at INTEGER);
+CREATE TABLE task_exports (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
+  provider TEXT NOT NULL CHECK (provider IN ('notion','asana')),
+  device_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','exporting','exported','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER,
+  error TEXT,
+  external_id TEXT, external_url TEXT,
+  activity_id TEXT,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER);
+INSERT INTO settings (key, value, updated_at) VALUES ('sync.deviceId', '"' || lower(hex(randomblob(16))) || '"', 0);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> =
-    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4)]));
+    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5)]));

@@ -24,6 +24,7 @@ function task(id: string, over: Partial<TaskSummary> = {}): TaskSummary {
     doneAt: null,
     createdAt: 0,
     updatedAt: 0,
+    export: null,
     ...over,
   };
 }

@@ -1,6 +1,6 @@
 // Hash router for the Home window: `#/inbox`, `#/inbox/pinned`, `#/inbox/unsorted`,
 // `#/category/<id>`, `#/item/<id>`, `#/tasks`, `#/tasks/done`, `#/tasks/<open|done>/<id>`,
-// `#/tasks/new`, `#/integrations`, `#/settings/<section>`.
+// `#/tasks/new`, `#/agents`, `#/integrations`, `#/settings/<section>`.
 import { useEffect, useState } from 'react';
 import type { CategoryId } from '../shared/types';
 
@@ -14,6 +14,7 @@ export type Route =
   /** `id` selects a task; `new` opens the editor in create mode. */
   | { page: 'tasks'; view: TasksView; id?: string; new?: true }
   | { page: 'integrations' }
+  | { page: 'agents' }
   | { page: 'settings'; section: string };
 
 const DEFAULT_SETTINGS_SECTION = 'general';
@@ -42,6 +43,8 @@ export function parseRoute(hash: string): Route {
       if (arg === 'new') return { page: 'tasks', view: 'open', new: true };
       if (arg === 'open' || arg === 'done') return arg2 ? { page: 'tasks', view: arg, id: arg2 } : { page: 'tasks', view: arg };
       return { page: 'tasks', view: 'open' };
+    case 'agents':
+      return { page: 'agents' };
     case 'integrations':
       return { page: 'integrations' };
     case 'settings':
@@ -63,6 +66,8 @@ export function routePath(r: Route): string {
       if (r.new) return 'tasks/new';
       if (r.id) return `tasks/${r.view}/${encodeURIComponent(r.id)}`;
       return r.view === 'open' ? 'tasks' : 'tasks/done';
+    case 'agents':
+      return 'agents';
     case 'integrations':
       return 'integrations';
     case 'settings':

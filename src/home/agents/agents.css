@@ -1,0 +1,37 @@
+/* Agents screen (Agents.dc.html). Dialogs and inputs come from settings.css (st-dialog, st-input). */
+
+.ag-page { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-5) var(--space-6); }
+.ag-head { display: flex; align-items: center; gap: var(--space-3); }
+.ag-grow { flex: 1 1 0; }
+.ag-m0 { margin: 0; }
+.ag-muted { color: var(--ink-muted); }
+.ag-h { margin: 0 0 var(--space-2); font: 600 14px/22px var(--font-sans); }
+
+.ag-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+@media (max-width: 1000px) { .ag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ag-card { background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.ag-card__name { display: flex; align-items: center; gap: var(--space-2); min-width: 0; font: 600 14px/22px var(--font-sans); }
+.ag-card__name b { font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ag-codes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
+.ag-code { display: flex; align-items: center; gap: 10px; min-width: 0; padding: var(--space-2) var(--space-2) var(--space-2) 14px; border-radius: var(--radius-md); background: var(--surface-sunken); font: 400 13px/20px var(--font-mono); }
+.ag-code__text { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-cap { margin-top: 6px; }
+.ag-other__actions { margin-top: var(--space-2); }
+
+.ag-activity__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.ag-activity__head .ag-h { flex: 1 1 0; margin: 0; }
+.ag-table { width: 100%; border-collapse: collapse; table-layout: fixed; font: 400 13px/20px var(--font-sans); }
+.ag-table th { text-align: left; font: 600 12px/18px var(--font-sans); color: var(--ink-muted); padding: 0 10px var(--space-2); border-bottom: 1px solid var(--line-strong); }
+.ag-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-table td.ag-mono { font: 500 12px/18px var(--font-mono); }
+.ag-table .ag-c-time { width: 70px; }
+.ag-table .ag-c-agent { width: 130px; }
+.ag-table .ag-c-tool { width: 140px; }
+.ag-table .ag-c-action { width: 110px; }
+.ag-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ag-empty { padding: var(--space-4) 10px; }
+.ag-foot { margin-top: var(--space-2); }
+
+.ag-token { display: flex; align-items: center; gap: 10px; padding: var(--space-2) var(--space-2) var(--space-2) 14px; border-radius: var(--radius-md); background: var(--surface-sunken); font: 400 13px/20px var(--font-mono); }
+.ag-token__text { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; user-select: all; }

@@ -11,6 +11,7 @@ export type Fx =
   | null
   | { kind: 'category'; icon: IconName; color: BuiltinCategoryId }
   | { kind: 'question' }
+  | { kind: 'agent' }
   | { kind: 'cloud' }
   | { kind: 'zzz' };
 
@@ -45,6 +46,8 @@ export const TRIGGERS: Readonly<Record<Trigger, { priority: Priority; ms: number
   tilt: { priority: 2, ms: 500 },
   gesture: { priority: 3, ms: 300 },
   fidget: { priority: 3, ms: 1200 },
+  // An agent read the inbox. Asleep it is dropped like every non-wake trigger.
+  glance: { priority: 3, ms: 400 },
 };
 
 /** Length of a reaction; the wink (fidget variant 3) is shorter than the other fidgets. */
@@ -144,6 +147,7 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
       let fx: Fx = null;
       if (trigger === 'idea') fx = { kind: 'category', icon: opts.icon ?? 'idea', color: opts.color ?? 'idea' };
       else if (trigger === 'tilt') fx = { kind: 'question' };
+      else if (trigger === 'glance') fx = { kind: 'agent' };
       emit({ body: trigger, fx, variant: trigger === 'fidget' ? (opts.variant ?? 0) : 0, seq });
     } else {
       const body = resolveLoop();

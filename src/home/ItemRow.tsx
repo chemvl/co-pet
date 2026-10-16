@@ -4,7 +4,7 @@ import type { ReactElement, Ref } from 'react';
 import { Icon, KIND_ICON, Kbd, StatusPill } from '../ds';
 import { categoryLabelOf } from '../shared/categories';
 import { useLang, useT } from '../shared/i18n';
-import { useCategories } from '../shared/queries';
+import { useAddedBy, useCategories } from '../shared/queries';
 import type { Category, CategoryId, ItemSummary } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
 import { rowMeta } from './itemText';
@@ -53,6 +53,7 @@ export function ItemRow(p: RowProps): ReactElement {
   const lang = useLang();
   const { item } = p;
   const actions = useItemActions();
+  const addedBy = useAddedBy();
   return (
     <div
       ref={p.rowRef}
@@ -79,6 +80,7 @@ export function ItemRow(p: RowProps): ReactElement {
             <CategoryTag id={item.categoryId} size="sm" />
           )}
           {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
+          {item.addedBy ? <StatusPill status="agent" label={addedBy(item.addedBy)} /> : null}
           {item.kind === 'screenshot' ? <StatusPill status="local" label={t('common.localOnly')} /> : null}
           <span className="caption hm-muted hm-ellipsis">{rowMeta(item, t, lang)}</span>
         </div>

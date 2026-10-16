@@ -119,6 +119,24 @@ describe('petMachine interrupt rules', () => {
     expect(body()).toBe('idle');
   });
 
+  it('glance_never_interrupts', () => {
+    const { clock, machine, body } = setup();
+    machine.fire('glance');
+    expect(machine.output()).toMatchObject({ body: 'glance', fx: { kind: 'agent' } });
+    clock.advance(400);
+    expect(machine.output()).toMatchObject({ body: 'idle', fx: null });
+
+    // Another reaction playing: the glance is dropped, not queued.
+    machine.fire('tilt');
+    clock.advance(100);
+    machine.fire('glance');
+    expect(body()).toBe('tilt');
+    clock.advance(400);
+    expect(body()).toBe('idle');
+    clock.advance(400);
+    expect(body()).toBe('idle');
+  });
+
   it('discards a queued reaction after 2 s', () => {
     const { clock, machine, body } = setup();
     machine.fire('catch');
@@ -198,6 +216,15 @@ describe('petMachine loops', () => {
     machine.fire('catch');
     expect(body()).toBe('sleep');
     clock.advance(600);
+    expect(body()).toBe('sleep');
+  });
+
+  it('glance_dropped_while_asleep', () => {
+    const { clock, machine, body } = setup();
+    machine.set('sleep', true);
+    machine.fire('glance');
+    expect(machine.output()).toMatchObject({ body: 'sleep', fx: { kind: 'zzz' } });
+    clock.advance(400);
     expect(body()).toBe('sleep');
   });
 

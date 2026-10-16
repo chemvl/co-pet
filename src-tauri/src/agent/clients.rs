@@ -3,9 +3,11 @@
 //! entry into the config file of one of the [`KNOWN`] clients; Remove takes it out again.
 use std::ffi::OsString;
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::Deserialize;
@@ -160,16 +162,51 @@ pub trait ClaudeCli: Sync {
     fn run(&self, claude: &Path, args: &[OsString]) -> AppResult<()>;
 }
 
-/// The user's login shell (`/bin/zsh -l`), so the PATH matches their terminal's.
+/// How long the login-shell probe or one `claude mcp` call may run before it is killed.
+const SHELL_TIMEOUT: Duration = Duration::from_secs(15);
+const POLL: Duration = Duration::from_millis(50);
+
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    })
+}
+
+/// `cmd.output()` (stdin null) that kills the child after `timeout` and fails with `TimedOut`.
+/// On a timeout the pipe readers are left to end on their own, so a grandchild still holding
+/// a pipe can't hold up the caller.
+fn output_within(mut cmd: Command, timeout: Duration) -> io::Result<Output> {
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::new(ErrorKind::TimedOut, format!("timed out after {} s", timeout.as_secs_f32())));
+        }
+        thread::sleep(POLL);
+    };
+    Ok(Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
+}
+
+/// The user's login shell (`/bin/zsh -l`), so the PATH matches their terminal's. Each call is
+/// killed after [`SHELL_TIMEOUT`].
 pub struct LoginShell;
 
 impl ClaudeCli for LoginShell {
     fn find(&self) -> Option<PathBuf> {
-        let out = Command::new("/bin/zsh")
-            .args(["-lc", "command -v claude"])
-            .stdin(Stdio::null())
-            .output()
-            .ok()?;
+        let mut cmd = Command::new("/bin/zsh");
+        cmd.args(["-lc", "command -v claude"]);
+        let out = output_within(cmd, SHELL_TIMEOUT).ok()?;
         let stdout = String::from_utf8(out.stdout).ok()?;
         let path = PathBuf::from(stdout.lines().last()?.trim());
         (out.status.success() && path.is_absolute() && path.is_file()).then_some(path)
@@ -177,12 +214,9 @@ impl ClaudeCli for LoginShell {
 
     fn run(&self, claude: &Path, args: &[OsString]) -> AppResult<()> {
         // Through the login shell too: `claude` is a node script that needs its PATH.
-        let out = Command::new("/bin/zsh")
-            .args(["-lc", r#"exec "$0" "$@""#])
-            .arg(claude)
-            .args(args)
-            .stdin(Stdio::null())
-            .output()?;
+        let mut cmd = Command::new("/bin/zsh");
+        cmd.args(["-lc", r#"exec "$0" "$@""#]).arg(claude).args(args);
+        let out = output_within(cmd, SHELL_TIMEOUT).map_err(|e| AppError::msg(format!("claude failed: {e}")))?;
         if out.status.success() {
             return Ok(());
         }
@@ -590,6 +624,24 @@ mod tests {
     use super::*;
 
     const COMMAND: &str = "/Applications/Co-pet.app/Contents/MacOS/copet-mcp";
+
+    #[test]
+    fn shell_calls_are_killed_after_the_timeout() {
+        // The shell's `sleep` child keeps the pipes open after the shell is killed.
+        let mut slow = Command::new("/bin/sh");
+        slow.args(["-c", "echo started; sleep 30"]);
+        let start = Instant::now();
+        let err = output_within(slow, Duration::from_millis(300)).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::TimedOut);
+        assert!(start.elapsed() < Duration::from_secs(5), "returned after {:?}", start.elapsed());
+
+        let mut quick = Command::new("/bin/sh");
+        quick.args(["-c", "echo out; echo err >&2; exit 3"]);
+        let out = output_within(quick, Duration::from_secs(5)).unwrap();
+        assert_eq!(out.status.code(), Some(3));
+        assert_eq!(out.stdout, b"out\n");
+        assert_eq!(out.stderr, b"err\n");
+    }
 
     /// A `claude` CLI that records its calls; `path: None` = not on the PATH.
     struct FakeClaude {

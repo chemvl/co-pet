@@ -1,10 +1,13 @@
-// Shared react-query hooks for settings, categories, the local-model status and the export
-// integrations. Each hook keeps its cache live from Rust events: `settings-changed`,
-// `categories-changed`, `integration-changed` and `exports-changed` invalidate their query;
-// `ai-status` replaces the AI status in place.
+// Shared react-query hooks for settings, categories, the local-model status, the export
+// integrations and the MCP clients. Each hook keeps its cache live from Rust events:
+// `settings-changed`, `categories-changed`, `integration-changed`, `exports-changed` and
+// `agents-changed` invalidate their query; `ai-status` replaces the AI status in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
-import { aiStatus, backendStatus, getSettings, integrationsStatus, listCategories, on, setSetting } from './ipc';
+import { useT } from './i18n';
+import {
+  aiStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on, setSetting,
+} from './ipc';
 import type { AiStatus, Json } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
@@ -12,6 +15,9 @@ export const AI_STATUS_KEY = ['aiStatus'] as const;
 export const CATEGORIES_KEY = ['categories'] as const;
 export const INTEGRATIONS_KEY = ['integrations'] as const;
 export const BACKEND_KEY = ['backendStatus'] as const;
+/** Prefix of every Agents screen query (clients, server status, activity). */
+export const AGENTS_KEY = ['agents'] as const;
+export const MCP_CLIENTS_KEY = [...AGENTS_KEY, 'clients'] as const;
 
 export type Settings = Record<string, Json>;
 
@@ -20,6 +26,7 @@ const settingsSubscribed = new WeakSet<QueryClient>();
 const aiSubscribed = new WeakSet<QueryClient>();
 const categoriesSubscribed = new WeakSet<QueryClient>();
 const integrationsSubscribed = new WeakSet<QueryClient>();
+const agentsSubscribed = new WeakSet<QueryClient>();
 
 export function useSettings() {
   const qc = useQueryClient();
@@ -98,4 +105,30 @@ export function useIntegrations() {
 /** Whether this build can sign in through the backend (OAuth). */
 export function useBackendStatus() {
   return useQuery({ queryKey: BACKEND_KEY, queryFn: backendStatus, staleTime: Infinity });
+}
+
+/** The MCP clients; `agents-changed` refreshes every Agents query (`AGENTS_KEY` prefix). */
+export function useMcpClients() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (agentsSubscribed.has(qc)) return;
+    agentsSubscribed.add(qc);
+    void on('agents-changed', () => {
+      void qc.invalidateQueries({ queryKey: AGENTS_KEY });
+    });
+  }, [qc]);
+  return useQuery({ queryKey: MCP_CLIENTS_KEY, queryFn: listMcpClients });
+}
+
+/** "Added by {name}" for an `addedBy` client id; an id unknown on this Mac reads "Added by agent". */
+export function useAddedBy(): (clientId: string) => string {
+  const t = useT();
+  const { data: clients } = useMcpClients();
+  return useCallback(
+    (clientId) => {
+      const name = clients?.find((c) => c.id === clientId)?.name;
+      return name ? t('common.addedBy', { name }) : t('common.addedByAgent');
+    },
+    [clients, t],
+  );
 }

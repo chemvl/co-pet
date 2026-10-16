@@ -11,7 +11,11 @@ import './cat.css';
 export type CatLook = 'soft' | 'sticker' | 'pixel' | PixelSpecies;
 export const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel', ...PIXEL_SPECIES];
 export type CatSkin = 'peach' | 'tabby' | 'midnight';
-export type CatFx = null | { kind: 'category'; icon: IconName; color: BuiltinCategoryId } | { kind: 'question' };
+export type CatFx =
+  | null
+  | { kind: 'category'; icon: IconName; color: BuiltinCategoryId }
+  | { kind: 'question' }
+  | { kind: 'agent' };
 
 interface SkinColors { body: string; belly: string; ear: string; blush: string; eye: string; glint: string }
 
@@ -42,7 +46,7 @@ export interface CatArtProps {
   reducedMotion: boolean;
   /** which edge the pet docks on; sets the direction of `lean`, `offer` and `tilt` */
   edge?: Edge;
-  /** above-head icon: category disc or question mark */
+  /** above-head icon: category disc, question mark or the agent icon */
   fx?: CatFx;
   /** the pet is hidden: animations pause */
   hidden?: boolean;
@@ -110,6 +114,10 @@ export function CatArt(props: CatArtProps): ReactElement {
           {fx.kind === 'category' ? (
             <span style={{ color: `var(--cat-${fx.color})`, display: 'flex' }}>
               <Icon name={fx.icon} size={16} />
+            </span>
+          ) : fx.kind === 'agent' ? (
+            <span className="cp-cat__fx-agent">
+              <Icon name="agent" size={16} />
             </span>
           ) : (
             <span className="cp-cat__fx-q">?</span>

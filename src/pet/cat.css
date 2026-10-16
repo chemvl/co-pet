@@ -50,6 +50,7 @@
   animation: cp-cat-fx-pop 200ms var(--ease-spring, ease-out);
 }
 .cp-cat__fx-q { font: 700 18px/1 var(--font-display); color: var(--bubble-ink); }
+.cp-cat__fx-agent { display: flex; color: var(--info); }
 
 /* Reduced motion (or pause): the key pose only. Hidden: freeze where it is. */
 .cp-cat.is-still, .cp-cat.is-still * { animation: none !important; }

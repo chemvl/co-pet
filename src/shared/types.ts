@@ -379,7 +379,7 @@ export interface ActivityRow {
 
 export type PetInput =
   | 'poof' | 'wake' | 'catch' | 'handOver' | 'camera' | 'confused' | 'idea' | 'tilt' | 'gesture' | 'fidget'
-  | 'celebrate' | 'cheer';
+  | 'celebrate' | 'cheer' | 'glance';
 
 export interface EventPayloads {
   'items-changed': { ids: string[] };

@@ -9,7 +9,7 @@ import { categoryColor, categoryIcon, categoryLabel } from '../../shared/categor
 import { formatTime, joinMeta } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
 import { copyItems, counts as fetchCounts, listItems } from '../../shared/ipc';
-import { useCategories } from '../../shared/queries';
+import { useAddedBy, useCategories } from '../../shared/queries';
 import type { ItemSummary } from '../../shared/types';
 import { armDragOut } from '../dragOut';
 
@@ -52,6 +52,7 @@ export function TrayPanel(p: {
   });
   const { data: counts } = useQuery({ queryKey: COUNTS_KEY, queryFn: fetchCounts });
   const { data: categories } = useCategories();
+  const addedBy = useAddedBy();
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
 
   // Selection only covers what is listed.
@@ -205,7 +206,8 @@ export function TrayPanel(p: {
                 sensitive={item.sensitive}
                 selected={selected.includes(item.id)}
                 lang={lang}
-                labels={labels}
+                agent={item.addedBy != null}
+                labels={item.addedBy ? { ...labels, agent: addedBy(item.addedBy) } : labels}
                 className={copied.includes(item.id) ? 'pt-card is-copied' : 'pt-card'}
                 onClick={(e) => onCardClick(e, item)}
                 onPointerDown={(e) =>

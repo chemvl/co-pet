@@ -9,7 +9,7 @@ import { categoryLabelOf } from '../shared/categories';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
 import { copyItems } from '../shared/ipc';
-import { useAiStatus, useCategories, useSetting } from '../shared/queries';
+import { useAddedBy, useAiStatus, useCategories, useSetting } from '../shared/queries';
 import { useToast } from '../shared/Toast';
 import type { ItemDetail as Item } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
@@ -133,6 +133,7 @@ function ItemPane({ item }: { item: Item }): ReactElement {
           <CategoryTag id={item.categoryId} />
         )}
         {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
+        {item.addedBy ? <AgentPill clientId={item.addedBy} /> : null}
         <Tags item={item} />
       </div>
       <div className="hm-det__actions">
@@ -495,8 +496,14 @@ function PrivacyPills({ item }: { item: Item }): ReactElement {
     <div className="hm-tags">
       <StatusPill status="local" label={t('common.localOnly')} />
       {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
+      {item.addedBy ? <AgentPill clientId={item.addedBy} /> : null}
     </div>
   );
+}
+
+function AgentPill({ clientId }: { clientId: string }): ReactElement {
+  const addedBy = useAddedBy();
+  return <StatusPill status="agent" label={addedBy(clientId)} />;
 }
 
 function History({ item }: { item: Item }): ReactElement {

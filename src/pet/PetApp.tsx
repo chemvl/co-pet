@@ -614,7 +614,7 @@ export function PetApp() {
 
   // ---------- render ----------
   const pose = poseFor(output.body, output.variant);
-  const fx = output.fx && (output.fx.kind === 'category' || output.fx.kind === 'question') ? output.fx : null;
+  const fx = output.fx && (output.fx.kind === 'category' || output.fx.kind === 'question' || output.fx.kind === 'agent') ? output.fx : null;
   const art = applied ? (
     <CatArt
       look={applied.look}

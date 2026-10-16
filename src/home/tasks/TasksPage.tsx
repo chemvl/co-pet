@@ -10,7 +10,7 @@ import { errorMessage } from '../../shared/errors';
 import { formatEstimate } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
 import { exportTask, nextAction } from '../../shared/ipc';
-import { useIntegrations } from '../../shared/queries';
+import { useAddedBy, useIntegrations } from '../../shared/queries';
 import type { TaskSummary } from '../../shared/types';
 import { isTypingTarget, useDelayed, useMediaQuery } from '../hooks';
 import { EmptyState, Skeleton } from '../InboxPage';
@@ -139,6 +139,7 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
   }, []);
 
   const openExported = (url: string) => void openUrl(url).catch(actions.fail);
+  const addedBy = useAddedBy();
 
   const row = (task: TaskSummary, group?: GroupKey) => {
     const pill = task.export ? exportPill(task.export, nowMs, t) : null;
@@ -148,8 +149,9 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
         key={task.id}
         title={task.title}
         done={task.status === 'done'}
-        source={task.sourceTitle ? 'item' : undefined}
-        sourceLabel={task.sourceTitle ?? undefined}
+        // An agent's label wins over the source title; the editor still shows the source.
+        source={task.addedBy || task.sourceTitle ? 'item' : undefined}
+        sourceLabel={task.addedBy ? addedBy(task.addedBy) : (task.sourceTitle ?? undefined)}
         estimate={task.estimateMin != null ? formatEstimate(task.estimateMin, lang) : undefined}
         due={dueText(task, now, lang, t)}
         overdue={group === 'overdue'}

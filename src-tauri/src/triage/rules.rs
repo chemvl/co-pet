@@ -25,7 +25,7 @@ pub(crate) fn extension(file_name: &str) -> Option<String> {
     (!stem.is_empty() && !ext.is_empty()).then(|| ext.to_ascii_lowercase())
 }
 
-fn matches(rule: &Rule, item: &ItemRow) -> bool {
+pub(crate) fn matches(rule: &Rule, item: &ItemRow) -> bool {
     match rule.kind.as_str() {
         "domain" => item.url.as_deref().and_then(host).is_some_and(|h| {
             let p = rule.pattern.to_ascii_lowercase();
@@ -44,6 +44,9 @@ fn matches(rule: &Rule, item: &ItemRow) -> bool {
         "item_kind" => item.kind == rule.pattern,
         "source_kind" => item.source_kind == rule.pattern,
         "source_app" => {
+            if rule.pattern.trim().is_empty() {
+                return false;
+            }
             let p = fold(rule.pattern.trim());
             item.source_app.as_deref().is_some_and(|a| fold(a.trim()) == p)
                 || item.source_bundle_id.as_deref().is_some_and(|b| b.trim().eq_ignore_ascii_case(rule.pattern.trim()))
@@ -62,7 +65,7 @@ fn reason(rule: &Rule, item: &ItemRow) -> String {
         "extension" => format!("rule:extension:{}", rule.pattern.to_ascii_lowercase()),
         "item_kind" => format!("rule:kind:{}", item.kind),
         "source_kind" => format!("rule:source:{}", item.source_kind),
-        "source_app" => format!("rule:app:{}", rule.pattern),
+        "source_app" => format!("rule:app:{}", rule.pattern.trim()),
         _ => format!("rule:regex:{}", rule.category_id),
     }
 }

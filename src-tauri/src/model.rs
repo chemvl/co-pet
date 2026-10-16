@@ -102,11 +102,30 @@ pub struct TriageUpdate {
 pub struct Rule {
     pub id: String,
     pub category_id: String,
-    /// `domain | extension | item_kind | source_kind | regex`
+    /// `domain | extension | item_kind | source_kind | source_app | regex`
     pub kind: String,
     pub pattern: String,
     pub builtin: bool,
     pub position: i64,
+}
+
+/// A rule in the editor with the number of live items of its category it matches.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleView {
+    #[serde(flatten)]
+    pub rule: Rule,
+    pub match_count: i64,
+}
+
+/// A live `category_examples` row.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Example {
+    pub id: String,
+    pub item_id: String,
+    pub title: String,
+    pub created_at: i64,
 }
 
 /// A live `categories` row. `None` name/icon/color: the built-in i18n name `category.<id>`, the

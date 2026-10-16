@@ -350,6 +350,53 @@ pub fn reorder_categories(app: AppHandle, db: State<'_, Db>, ids: Vec<String>) -
     Ok(())
 }
 
+// ---------- M6: rules and examples ----------
+
+#[tauri::command]
+pub fn list_rules(db: State<'_, Db>, category_id: String) -> AppResult<Vec<crate::model::RuleView>> {
+    crate::db::rules::list_for_category(&db.conn(), &category_id)
+}
+
+/// Rejects with `invalid` or `notFound`.
+#[tauri::command]
+pub fn add_rule(
+    app: AppHandle,
+    db: State<'_, Db>,
+    category_id: String,
+    kind: String,
+    pattern: String,
+) -> AppResult<crate::model::Rule> {
+    let rule = crate::db::rules::add_rule(&mut db.conn(), &category_id, &kind, &pattern)?;
+    crate::events::categories_changed(&app);
+    Ok(rule)
+}
+
+#[tauri::command]
+pub fn delete_rule(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<()> {
+    crate::db::rules::delete_rule(&db.conn(), &id)?;
+    crate::events::categories_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_rule(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<()> {
+    crate::db::rules::restore_rule(&db.conn(), &id)?;
+    crate::events::categories_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_examples(db: State<'_, Db>, category_id: String) -> AppResult<Vec<crate::model::Example>> {
+    crate::db::rules::list_examples(&db.conn(), &category_id)
+}
+
+#[tauri::command]
+pub fn delete_example(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<()> {
+    crate::db::rules::delete_example(&db.conn(), &id)?;
+    crate::events::categories_changed(&app);
+    Ok(())
+}
+
 // ---------- M2: tasks ----------
 
 #[tauri::command]

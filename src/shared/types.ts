@@ -330,6 +330,19 @@ export interface Rule {
   position: number;
 }
 
+/** A rule in the editor; `matchCount` = live items of its category it matches. */
+export interface RuleView extends Rule {
+  matchCount: number;
+}
+
+/** A correction example that teaches the local model. */
+export interface Example {
+  id: string;
+  itemId: string;
+  title: string;
+  createdAt: number;
+}
+
 export type HotkeyAction = 'focusPet' | 'sendSelection' | 'captureScreen' | 'quickNote';
 
 // ---------- M5: agents ----------

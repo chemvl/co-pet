@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
-  PetStatus, Placement, Rule, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
+  PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken,
 } from './types';
 
@@ -92,6 +92,17 @@ export const updateCategory = (id: CategoryId, patch: CategoryPatch) =>
 export const deleteCategory = (id: CategoryId) => invoke<{ eventIds: string[] }>('delete_category', { id });
 /** `ids` is every live category once; Unsorted stays last. Rejects with `"invalid"`. */
 export const reorderCategories = (ids: CategoryId[]) => invoke<void>('reorder_categories', { ids });
+
+// Phase 2 M6 — rules and examples. Writes emit `categories-changed`.
+export const listRules = (categoryId: CategoryId) => invoke<RuleView[]>('list_rules', { categoryId });
+/** Normalizes `pattern`; rejects with `"invalid"` or `"notFound"`. */
+export const addRule = (categoryId: CategoryId, kind: Rule['kind'], pattern: string) =>
+  invoke<Rule>('add_rule', { categoryId, kind, pattern });
+export const deleteRule = (id: string) => invoke<void>('delete_rule', { id });
+/** Undo for `deleteRule`. */
+export const restoreRule = (id: string) => invoke<void>('restore_rule', { id });
+export const listExamples = (categoryId: CategoryId) => invoke<Example[]>('list_examples', { categoryId });
+export const deleteExample = (id: string) => invoke<void>('delete_example', { id });
 
 // Phase 2 M2 — tasks. Writes emit `tasks-changed` then `counts-changed`.
 export const listTasks = (q: TaskQuery) => invoke<TaskSummary[]>('list_tasks', { q });

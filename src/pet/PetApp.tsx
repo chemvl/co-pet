@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { PetDock, type IconName } from '../ds';
 import { categoryColor, categoryIcon, categoryLabelOf } from '../shared/categories';
-import { errorMessage } from '../shared/errors';
+import { errorMessage, errorText } from '../shared/errors';
 import { useT, type I18nKey } from '../shared/i18n';
 import {
   captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
@@ -171,8 +171,14 @@ export function PetApp() {
     void resignPetPanel();
   }, []);
 
+  // A notice raised while the What's Next card is up waits until the card closes.
+  const pendingNotice = useRef<Notice | null>(null);
   const showNotice = useCallback(
     (n: Notice) => {
+      if (live.current.surface === 'next') {
+        pendingNotice.current = n;
+        return;
+      }
       setNotice(n);
       openSurface('notice');
     },
@@ -229,21 +235,36 @@ export function PetApp() {
   );
 
   // ---------- What's Next ----------
+  const shownCard = useRef<NextCard | null>(null);
+
+  /** Closes the card and shows a notice that waited behind it. */
+  const closeNext = () => {
+    live.current.surface = null;
+    shownCard.current = null;
+    setSurface(null);
+    void resignPetPanel();
+    const pending = pendingNotice.current;
+    pendingNotice.current = null;
+    if (pending) showNotice(pending);
+  };
+
   /** User-initiated cards take keyboard focus; proactive ones never do. */
   const openNext = (card: NextCard, trigger: NextTrigger, userInitiated: boolean) => {
     setNext({ card, trigger, userInitiated });
+    shownCard.current = card;
     live.current.surface = 'next';
     setSurface('next');
     setOut(true);
     if (userInitiated) void focusPetPanel();
-    void nextAction(card.taskId, 'shown', trigger);
+    nextAction(card.taskId, 'shown', trigger).catch((e: unknown) => {
+      // The task is gone since it was picked: take the card down without recording anything.
+      if (errorText(e) === 'notFound' && shownCard.current === card && live.current.surface === 'next') closeNext();
+    });
   };
 
   const onNextAction = (action: CardAction) => {
     if (!next || live.current.surface !== 'next') return;
-    live.current.surface = null;
-    setSurface(null);
-    void resignPetPanel();
+    closeNext();
     nextAction(next.card.taskId, action, next.trigger).catch((e: unknown) =>
       showNotice({ message: errorMessage(t, e) }),
     );
@@ -261,6 +282,9 @@ export function PetApp() {
     } finally {
       machine.set('thinking', false);
     }
+    // Stale pick: the pet was hidden, or the user (or a proactive card) took a surface meanwhile.
+    const now = live.current.surface;
+    if (live.current.hidden || (now !== null && now !== 'bubbles')) return;
     if (card) openNext(card, 'bubble', true);
     else showNotice({ message: t('notice.nextEmpty'), home: 'tasks' });
   };
@@ -290,6 +314,8 @@ export function PetApp() {
     machine.setHidden(isHidden);
     if (isHidden) {
       live.current.surface = null;
+      shownCard.current = null;
+      pendingNotice.current = null;
       setSurface(null);
       setOut(false);
     }

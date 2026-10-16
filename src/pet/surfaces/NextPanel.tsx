@@ -55,6 +55,8 @@ export function NextPanel(p: {
     const action = KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key];
     if (!action) return;
     e.preventDefault();
+    // The window-level Esc handler must not close the surface a second time.
+    e.stopPropagation();
     onAction(action);
   };
 

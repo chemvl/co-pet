@@ -21,6 +21,7 @@ import { useTaskActions } from '../tasks/useTaskActions';
 import { useItemActions } from '../useItemActions';
 import { matchActions, SEARCH_INBOX, type ActionMatch, type PaletteContext } from './actions';
 import { matchRanges } from './match';
+import { resultsSettled } from './settled';
 import './palette.css';
 
 const RESULTS_DEBOUNCE_MS = 120;
@@ -80,12 +81,13 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
   const q = useDebounced(query, RESULTS_DEBOUNCE_MS);
 
   // Focus returns to where it was when the palette closes.
+  // Captured before the first commit: autoFocus moves focus before effects run.
+  const [before] = useState(() => document.activeElement);
   useEffect(() => {
-    const before = document.activeElement;
     return () => {
       if (before instanceof HTMLElement) before.focus();
     };
-  }, []);
+  }, [before]);
 
   const items = useQuery({
     queryKey: ['items', 'palette', q],
@@ -94,6 +96,8 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
   });
   const tasks = useQuery({ ...tasksQuery('open', q), enabled: q !== '' });
 
+  const settled = resultsSettled(query, q, [items, tasks]);
+  const queryError = items.error ?? tasks.error;
   const fail = (err: unknown) => show({ message: errorMessage(t, err) });
   const ctx: PaletteContext = {
     t,
@@ -198,7 +202,7 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
           const run = subRows(sub.entry)[sub.active]?.run;
           if (run) runAndClose(run);
         } else if (entries[current]) runEntry(entries[current]);
-        else if (query) runAndClose(() => SEARCH_INBOX.run(ctx));
+        else if (query && settled) runAndClose(() => SEARCH_INBOX.run(ctx));
         break;
       case 'Tab': {
         const entry = entries[current];
@@ -259,7 +263,13 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
       </div>
     );
   } else if (!entries.length) {
-    body = query ? <p className="pl-empty">{t('palette.empty')}</p> : <></>;
+    body = queryError ? (
+      <p className="pl-empty" role="alert">{errorMessage(t, queryError)}</p>
+    ) : query && settled ? (
+      <p className="pl-empty">{t('palette.empty')}</p>
+    ) : (
+      <></>
+    );
   } else {
     let index = 0;
     const group = (key: string, heading: string, rows: ReactNode[]) =>

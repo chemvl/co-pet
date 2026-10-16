@@ -22,6 +22,9 @@ export const TitleBar = forwardRef<HTMLInputElement, TitleBarProps>(function Tit
         ref={searchRef}
         className="hm-titlebar__search"
         placeholder={t('home.searchPlaceholder')}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
         shortcut={['⌘', 'K']}
         value={p.search}
         onChange={(e) => p.onSearch(e.currentTarget.value)}

@@ -148,6 +148,9 @@ export function TrayPanel(p: {
           <SearchField
             ref={searchRef}
             autoFocus
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
             value={search}
             placeholder={t('tray.searchPlaceholder')}
             onChange={(e) => setSearch(e.target.value)}

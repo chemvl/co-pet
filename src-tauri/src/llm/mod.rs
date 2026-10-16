@@ -79,6 +79,27 @@ fn free_port() -> AppResult<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
 
+/// Kills `llama-server` processes an earlier Co-pet left behind when it died without running its
+/// exit path (SIGKILL, crash): children of launchd running this app's own `llama-server`.
+pub fn reap_orphans(app: &AppHandle) {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+    let Ok(exe) = server_dir(app).and_then(|d| Ok(d.join("llama-server").canonicalize()?)) else {
+        return;
+    };
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+    );
+    for p in sys.processes_by_exact_name("llama-server".as_ref()) {
+        if p.parent() == Some(Pid::from_u32(1)) && p.exe() == Some(exe.as_path()) {
+            eprintln!("[llm] killing orphaned llama-server pid {}", p.pid());
+            p.kill();
+        }
+    }
+}
+
 impl LlmServer {
     /// Starts `llama-server` for the selected model unless it already runs. Error `noModel`
     /// when no verified model is present.

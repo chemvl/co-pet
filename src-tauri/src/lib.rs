@@ -59,6 +59,8 @@ pub fn run() {
             app.manage(db);
             app.manage(llm::download::Downloader::default());
             app.manage(llm::LlmServer::default());
+            llm::reap_orphans(&handle);
+            system::quit_on_signals(&handle);
             app.state::<llm::download::Downloader>().resume_if_needed(&handle);
             // After Paths, Db, Downloader and LlmServer: the worker uses all of them.
             app.manage(triage::start(&handle));

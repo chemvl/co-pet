@@ -23,6 +23,29 @@ pub async fn quit(app: &AppHandle) {
     app.exit(0);
 }
 
+/// SIGTERM (`kill`, launchd), SIGINT and SIGHUP exit through `quit` instead of ending the
+/// process outright, which would orphan `llama-server`.
+pub fn quit_on_signals(app: &AppHandle) {
+    use tokio::signal::unix::{signal, SignalKind};
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let (Ok(mut term), Ok(mut int), Ok(mut hup)) = (
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+            signal(SignalKind::hangup()),
+        ) else {
+            eprintln!("[system] could not install signal handlers");
+            return;
+        };
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+            _ = hup.recv() => {}
+        }
+        quit(&app).await;
+    });
+}
+
 /// Matches the login item to `general.openAtLogin`. Debug builds only log: a login item pointing
 /// at `target/debug` would start a dev binary without its dev server at every login.
 pub fn apply_autostart(app: &AppHandle) {

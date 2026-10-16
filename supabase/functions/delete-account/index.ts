@@ -32,9 +32,9 @@ Deno.serve(async (req) => {
     const { data: removed, error: rmErr } = await bucket.remove(
       objects.map((o) => `${uid}/${o.name}`),
     );
-    // Blobs are flat under `<uid>/`; an empty result on a non-empty page (e.g. a folder prefix entry)
-    // would otherwise list the same page forever.
-    if (rmErr || !removed || removed.length === 0) {
+    // Blobs are flat under `<uid>/`; a short result (partial remove, or a folder prefix entry) would
+    // orphan blobs or list the same page forever, so fail instead.
+    if (rmErr || !removed || removed.length < objects.length) {
       return json(500, { error: "storage_remove_failed" });
     }
     if (objects.length < PAGE) break;

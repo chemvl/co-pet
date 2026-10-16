@@ -73,6 +73,8 @@ export const en = {
   'error.notDeletable': "Unsorted can't be deleted.",
   'error.notEditable': 'Only the name of Unsorted can change.',
   'error.notFound': "It's no longer here.",
+  'error.alreadyUndone': 'That change was already undone.',
+  'error.notUndoable': "This change can't be undone.",
 
   'kind.file': 'File',
   'kind.image': 'Image',

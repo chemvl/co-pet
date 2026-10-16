@@ -123,6 +123,14 @@ pub fn run() {
             commands::update_category,
             commands::delete_category,
             commands::reorder_categories,
+            commands::list_tasks,
+            commands::get_task,
+            commands::create_task,
+            commands::update_task,
+            commands::set_task_done,
+            commands::snooze_task,
+            commands::trash_task,
+            commands::undo_task_event,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

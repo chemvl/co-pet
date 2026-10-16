@@ -228,6 +228,14 @@ pub struct EventIds {
     pub event_ids: Vec<String>,
 }
 
+/// `create_task` result: the new task and its `created` event id (for Undo).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskCreated {
+    pub task: TaskSummary,
+    pub event_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Counts {
@@ -341,7 +349,6 @@ pub struct PetStatus {
 
 /// Who made a task change; maps to the `task_events.actor` / `client_id` columns. Not serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // constructed by the task commands (next M2 task)
 pub enum Actor {
     User,
 }

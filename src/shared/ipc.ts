@@ -3,7 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
-  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, PermissionsStatus, PetStatus, Placement, Rule, Edge,
+  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, PermissionsStatus, PetStatus, Placement, Rule,
+  Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
 } from './types';
 
 // Step 3 — storage
@@ -90,6 +91,23 @@ export const updateCategory = (id: CategoryId, patch: CategoryPatch) =>
 export const deleteCategory = (id: CategoryId) => invoke<{ eventIds: string[] }>('delete_category', { id });
 /** `ids` is every live category once; Unsorted stays last. Rejects with `"invalid"`. */
 export const reorderCategories = (ids: CategoryId[]) => invoke<void>('reorder_categories', { ids });
+
+// Phase 2 M2 — tasks. Writes emit `tasks-changed` then `counts-changed`.
+export const listTasks = (q: TaskQuery) => invoke<TaskSummary[]>('list_tasks', { q });
+/** Rejects with `"notFound"`. */
+export const getTask = (id: string) => invoke<TaskDetail>('get_task', { id });
+/** Rejects with `"invalid"` or `"notFound"` (missing source item). */
+export const createTask = (input: NewTask) => invoke<TaskCreated>('create_task', { input });
+/** Rejects with `"invalid"` or `"notFound"`. */
+export const updateTask = (id: string, patch: TaskPatch) =>
+  invoke<{ eventIds: string[] }>('update_task', { id, patch });
+export const setTaskDone = (id: string, done: boolean) =>
+  invoke<{ eventIds: string[] }>('set_task_done', { id, done });
+/** `until` is epoch ms. */
+export const snoozeTask = (id: string, until: number) => invoke<{ eventIds: string[] }>('snooze_task', { id, until });
+export const trashTask = (id: string) => invoke<{ eventIds: string[] }>('trash_task', { id });
+/** Rejects with `"notFound"`, `"alreadyUndone"` or `"notUndoable"`. */
+export const undoTaskEvent = (eventId: string) => invoke<void>('undo_task_event', { eventId });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

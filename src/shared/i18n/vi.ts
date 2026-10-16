@@ -74,6 +74,8 @@ export const vi: Record<keyof typeof en, string> = {
   'error.notDeletable': 'Không thể xoá Chưa phân loại.',
   'error.notEditable': 'Chỉ có thể đổi tên Chưa phân loại.',
   'error.notFound': 'Mục này không còn nữa.',
+  'error.alreadyUndone': 'Thay đổi này đã được hoàn tác.',
+  'error.notUndoable': 'Không thể hoàn tác thay đổi này.',
 
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',

@@ -5,7 +5,6 @@ pub mod migrations;
 pub mod search;
 pub mod rules;
 pub mod settings;
-#[allow(dead_code)] // the task commands (next M2 task) call these
 pub mod tasks;
 pub mod undo;
 

@@ -343,3 +343,80 @@ pub fn reorder_categories(app: AppHandle, db: State<'_, Db>, ids: Vec<String>) -
     crate::events::categories_changed(&app);
     Ok(())
 }
+
+// ---------- M2: tasks ----------
+
+#[tauri::command]
+pub fn list_tasks(db: State<'_, Db>, q: crate::model::TaskQuery) -> AppResult<Vec<crate::model::TaskSummary>> {
+    crate::db::tasks::list(&db.conn(), &q)
+}
+
+/// Rejects with `notFound`.
+#[tauri::command]
+pub fn get_task(db: State<'_, Db>, id: String) -> AppResult<crate::model::TaskDetail> {
+    crate::db::tasks::get(&db.conn(), &id)
+}
+
+/// Rejects with `invalid` or `notFound` (missing source item).
+#[tauri::command]
+pub fn create_task(
+    app: AppHandle,
+    db: State<'_, Db>,
+    input: crate::model::NewTask,
+) -> AppResult<crate::model::TaskCreated> {
+    let (task, event_id) = crate::db::tasks::create(&mut db.conn(), &input, &crate::model::Actor::User)?;
+    crate::db::tasks::notify_changed(&app, vec![task.id.clone()]);
+    Ok(crate::model::TaskCreated { task, event_ids: vec![event_id] })
+}
+
+/// Rejects with `invalid` or `notFound`.
+#[tauri::command]
+pub fn update_task(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: String,
+    patch: crate::model::TaskPatch,
+) -> AppResult<crate::model::EventIds> {
+    let event_ids = crate::db::tasks::update(&mut db.conn(), &id, &patch, &crate::model::Actor::User)?;
+    crate::db::tasks::notify_changed(&app, vec![id]);
+    Ok(crate::model::EventIds { event_ids })
+}
+
+#[tauri::command]
+pub fn set_task_done(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: String,
+    done: bool,
+) -> AppResult<crate::model::EventIds> {
+    let event_ids = crate::db::tasks::set_done(&mut db.conn(), &id, done, &crate::model::Actor::User)?;
+    crate::db::tasks::notify_changed(&app, vec![id]);
+    Ok(crate::model::EventIds { event_ids })
+}
+
+#[tauri::command]
+pub fn snooze_task(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: String,
+    until: i64,
+) -> AppResult<crate::model::EventIds> {
+    let event_ids = crate::db::tasks::snooze(&mut db.conn(), &id, until, &crate::model::Actor::User)?;
+    crate::db::tasks::notify_changed(&app, vec![id]);
+    Ok(crate::model::EventIds { event_ids })
+}
+
+#[tauri::command]
+pub fn trash_task(app: AppHandle, db: State<'_, Db>, id: String) -> AppResult<crate::model::EventIds> {
+    let event_ids = crate::db::tasks::trash(&mut db.conn(), &id, &crate::model::Actor::User)?;
+    crate::db::tasks::notify_changed(&app, vec![id]);
+    Ok(crate::model::EventIds { event_ids })
+}
+
+/// Rejects with `notFound`, `alreadyUndone` or `notUndoable`.
+#[tauri::command]
+pub fn undo_task_event(app: AppHandle, db: State<'_, Db>, event_id: String) -> AppResult<()> {
+    let task_id = crate::db::tasks::undo_event(&mut db.conn(), &event_id)?;
+    crate::db::tasks::notify_changed(&app, vec![task_id]);
+    Ok(())
+}

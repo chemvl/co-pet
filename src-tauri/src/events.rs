@@ -14,6 +14,7 @@ pub const PET_PLACEMENT: &str = "pet-placement";
 pub const AI_STATUS: &str = "ai-status";
 pub const SETTINGS_CHANGED: &str = "settings-changed";
 pub const CATEGORIES_CHANGED: &str = "categories-changed";
+pub const TASKS_CHANGED: &str = "tasks-changed";
 pub const HOTKEY: &str = "hotkey";
 /// Home window only.
 pub const NAVIGATE: &str = "navigate";
@@ -87,6 +88,12 @@ pub struct Navigate {
     pub route: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TasksChanged {
+    pub ids: Vec<String>,
+}
+
 /// Payload `{}`: listeners re-read `list_categories`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +108,10 @@ pub fn emit<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
 
 pub fn items_changed(app: &AppHandle, ids: Vec<String>) {
     emit(app, ITEMS_CHANGED, ItemsChanged { ids });
+}
+
+pub fn tasks_changed(app: &AppHandle, ids: Vec<String>) {
+    emit(app, TASKS_CHANGED, TasksChanged { ids });
 }
 
 pub fn counts_changed(app: &AppHandle, counts: Counts) {

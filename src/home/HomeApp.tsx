@@ -26,8 +26,14 @@ function useLiveQueries(): void {
       void qc.invalidateQueries({ queryKey: ['item'] });
       void qc.invalidateQueries({ queryKey: ['counts'] });
     };
+    const refreshTasks = () => {
+      void qc.invalidateQueries({ queryKey: ['tasks'] });
+      void qc.invalidateQueries({ queryKey: ['task'] });
+      void qc.invalidateQueries({ queryKey: ['item'] });
+    };
     const subs = [
       on('items-changed', refresh),
+      on('tasks-changed', refreshTasks),
       on('settings-changed', refresh),
       on('counts-changed', (c) => qc.setQueryData<Counts>(['counts'], c)),
       on('navigate', ({ route }) => navigate(route)),

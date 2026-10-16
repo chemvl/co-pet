@@ -189,6 +189,12 @@ export interface TaskDetail extends TaskSummary {
 
 export interface TaskQuery { view: TaskStatus; search?: string }
 
+/** `create_task` result; `eventIds` holds the `created` event (for Undo). */
+export interface TaskCreated {
+  task: TaskSummary;
+  eventIds: string[];
+}
+
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface HitRegion extends Rect { kind: 'pet' | 'panel' }
 export type Edge = 'left' | 'right' | 'bottom';
@@ -258,6 +264,7 @@ export interface EventPayloads {
   'ai-status': AiStatus;
   'settings-changed': { key: string };
   'categories-changed': Record<string, never>;
+  'tasks-changed': { ids: string[] };
   hotkey: { action: HotkeyAction };
   navigate: { route: string };
   /** Pet window only: the outcome of a native drop on the pet. */

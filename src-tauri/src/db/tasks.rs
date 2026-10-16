@@ -4,9 +4,11 @@ use chrono::{Local, NaiveDate, NaiveTime, TimeZone};
 use rusqlite::types::{Value as SqlValue, ValueRef};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, Transaction};
 use serde_json::{Map, Value};
+use tauri::AppHandle;
 
-use crate::db::{new_id, now_ms, search, undo};
+use crate::db::{items, new_id, now_ms, search, undo, Db};
 use crate::error::{AppError, AppResult};
+use crate::events;
 use crate::model::{Actor, NewTask, TaskDetail, TaskEvent, TaskPatch, TaskQuery, TaskSummary};
 
 /// Columns `undo_event` may restore from `before_json`.
@@ -160,6 +162,17 @@ fn apply(
     Ok(Some(add_event(tx, id, actor, action, Some(&before), Some(&after), now)?))
 }
 
+/// Emits `tasks-changed` for `ids`, then `counts-changed`.
+pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
+    use tauri::Manager;
+    events::tasks_changed(app, ids);
+    let fresh = items::counts(&app.state::<Db>().conn());
+    match fresh {
+        Ok(c) => events::counts_changed(app, c),
+        Err(e) => eprintln!("[tasks] counts failed: {e}"),
+    }
+}
+
 // ---------- validation ----------
 
 fn valid_title(title: &str) -> AppResult<String> {
@@ -171,17 +184,24 @@ fn valid_title(title: &str) -> AppResult<String> {
     Ok(t.to_owned())
 }
 
-fn validate_due(due_date: Option<&str>, due_time: Option<&str>) -> AppResult<()> {
-    if let Some(d) = due_date {
-        NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| AppError::Code("invalid"))?;
+/// Validates the due pair and returns it normalized (`%Y-%m-%d`, `%H:%M`).
+fn validate_due(
+    due_date: Option<&str>,
+    due_time: Option<&str>,
+) -> AppResult<(Option<String>, Option<String>)> {
+    let date = due_date
+        .map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| AppError::Code("invalid")))
+        .transpose()?;
+    let time = due_time
+        .map(|t| NaiveTime::parse_from_str(t, "%H:%M").map_err(|_| AppError::Code("invalid")))
+        .transpose()?;
+    if time.is_some() && date.is_none() {
+        return Err(AppError::Code("invalid"));
     }
-    if let Some(t) = due_time {
-        if due_date.is_none() {
-            return Err(AppError::Code("invalid"));
-        }
-        NaiveTime::parse_from_str(t, "%H:%M").map_err(|_| AppError::Code("invalid"))?;
-    }
-    Ok(())
+    Ok((
+        date.map(|d| d.format("%Y-%m-%d").to_string()),
+        time.map(|t| t.format("%H:%M").to_string()),
+    ))
 }
 
 fn validate_priority(p: i64) -> AppResult<()> {
@@ -213,7 +233,7 @@ pub fn create(
     actor: &Actor,
 ) -> AppResult<(TaskSummary, String)> {
     let title = valid_title(&input.title)?;
-    validate_due(input.due_date.as_deref(), input.due_time.as_deref())?;
+    let (due_date, due_time) = validate_due(input.due_date.as_deref(), input.due_time.as_deref())?;
     let priority = input.priority.unwrap_or(0);
     validate_priority(priority)?;
     validate_estimate(input.estimate_min)?;
@@ -239,8 +259,8 @@ pub fn create(
             id,
             title,
             input.notes.as_deref().unwrap_or(""),
-            input.due_date,
-            input.due_time,
+            due_date,
+            due_time,
             priority,
             input.estimate_min,
             input.first_step,
@@ -268,7 +288,7 @@ pub fn update(
     let cur = |col: &str| row.get(col).and_then(Value::as_str).map(String::from);
     let due_date = patch.due_date.clone().unwrap_or_else(|| cur("due_date"));
     let due_time = patch.due_time.clone().unwrap_or_else(|| cur("due_time"));
-    validate_due(due_date.as_deref(), due_time.as_deref())?;
+    let (due_date, due_time) = validate_due(due_date.as_deref(), due_time.as_deref())?;
     let mut changes = Vec::new();
     if let Some(t) = &patch.title {
         changes.push(("title", Value::String(valid_title(t)?)));
@@ -299,7 +319,7 @@ pub fn update(
 }
 
 /// Marks the task done (`done`, sets `done_at`) or open again (`reopened`, clears it); both
-/// clear `snoozed_until`.
+/// clear `snoozed_until`. A task already in the target status is left untouched (no event).
 pub fn set_done(
     conn: &mut Connection,
     id: &str,
@@ -307,6 +327,10 @@ pub fn set_done(
     actor: &Actor,
 ) -> AppResult<Vec<String>> {
     let tx = conn.transaction()?;
+    let status_now = row_map(&tx, id)?.get("status").cloned();
+    if status_now == Some(Value::from(if done { "done" } else { "open" })) {
+        return Ok(Vec::new());
+    }
     let now = now_ms();
     let (status, done_at, action) = if done {
         ("done", Value::from(now), "done")
@@ -612,6 +636,48 @@ mod tests {
         assert_eq!(get(&conn, &task.id).unwrap().events[0].action, "reopened");
         assert_ne!(ev, ev2);
         assert_eq!(get(&conn, &task.id).unwrap().task.done_at, None);
+    }
+
+    #[test]
+    fn set_done_to_current_status_is_noop() {
+        let db = db();
+        let mut conn = db.conn();
+        let (task, _) = create(&mut conn, &new_task("Pay rent"), &Actor::User).unwrap();
+        let until = now_ms() + 60_000;
+        snooze(&mut conn, &task.id, until, &Actor::User).unwrap();
+        assert!(set_done(&mut conn, &task.id, false, &Actor::User).unwrap().is_empty());
+        assert_eq!(get(&conn, &task.id).unwrap().task.snoozed_until, Some(until));
+
+        set_done(&mut conn, &task.id, true, &Actor::User).unwrap();
+        let done_at = get(&conn, &task.id).unwrap().task.done_at;
+        let events = get(&conn, &task.id).unwrap().events.len();
+        assert!(set_done(&mut conn, &task.id, true, &Actor::User).unwrap().is_empty());
+        let d = get(&conn, &task.id).unwrap();
+        assert_eq!(d.task.done_at, done_at);
+        assert_eq!(d.events.len(), events);
+    }
+
+    #[test]
+    fn due_values_are_normalized() {
+        let db = db();
+        let mut conn = db.conn();
+        let input = NewTask {
+            due_date: Some("2026-1-5".into()),
+            due_time: Some("9:00".into()),
+            ..new_task("Dentist")
+        };
+        let (task, _) = create(&mut conn, &input, &Actor::User).unwrap();
+        assert_eq!(task.due_date.as_deref(), Some("2026-01-05"));
+        assert_eq!(task.due_time.as_deref(), Some("09:00"));
+        let patch = TaskPatch {
+            due_date: Some(Some("2026-2-3".into())),
+            due_time: Some(Some("7:05".into())),
+            ..Default::default()
+        };
+        update(&mut conn, &task.id, &patch, &Actor::User).unwrap();
+        let t = get(&conn, &task.id).unwrap().task;
+        assert_eq!(t.due_date.as_deref(), Some("2026-02-03"));
+        assert_eq!(t.due_time.as_deref(), Some("07:05"));
     }
 
     #[test]

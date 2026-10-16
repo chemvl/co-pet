@@ -167,7 +167,7 @@ export function Dialog(p: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="st-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="hm-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="st-dialog" role={p.role ?? 'dialog'} aria-modal="true" aria-labelledby={titleId}>
         <h2 className="st-dialog__title" id={titleId}>{p.title}</h2>
         {p.children}

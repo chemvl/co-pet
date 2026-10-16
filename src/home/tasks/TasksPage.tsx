@@ -35,11 +35,9 @@ type TasksRoute = Extract<Route, { page: 'tasks' }>;
 
 interface TasksPageProps {
   route: TasksRoute;
-  search: string;
-  onClearSearch: () => void;
 }
 
-export function TasksPage({ route, search, onClearSearch }: TasksPageProps): ReactElement {
+export function TasksPage({ route }: TasksPageProps): ReactElement {
   const t = useT();
   const lang = useLang();
   const actions = useTaskActions();
@@ -47,11 +45,7 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
   const wide = useMediaQuery('(min-width: 1100px)');
   const { data: c } = useQuery(countsQuery);
   const { view } = route;
-  const list = useQuery({
-    ...tasksQuery(view, search),
-    // Keep rows on screen while the search of the same view changes.
-    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === view ? prev : undefined),
-  });
+  const list = useQuery(tasksQuery(view));
   const showSkeleton = useDelayed(list.isPending, SKELETON_DELAY_MS);
 
   const [now, setNow] = useState(() => new Date());
@@ -236,13 +230,7 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
   } else if (list.isPending) {
     body = showSkeleton ? <Skeleton label={t('tasks.loading')} /> : <></>;
   } else if (!ordered.length) {
-    body = search ? (
-      <EmptyState
-        title={t('home.empty.searchTitle')}
-        line={t('tasks.empty.searchLine', { q: search })}
-        action={{ label: t('home.clearSearch'), run: onClearSearch }}
-      />
-    ) : view === 'open' ? (
+    body = view === 'open' ? (
       <EmptyState
         title={t('tasks.empty.openTitle')}
         line={t('tasks.empty.openLine')}
@@ -277,7 +265,7 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
 
   const doneToday = c?.tasksDoneToday ?? 0;
   const footer =
-    view === 'open' && !search && doneToday > 0 && list.isSuccess ? (
+    view === 'open' && doneToday > 0 && list.isSuccess ? (
       <div className="tk-donefoot">
         <Icon name="check" size={16} />
         {t('tasks.doneToday', { n: doneToday })}

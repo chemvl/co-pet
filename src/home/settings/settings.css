@@ -101,8 +101,6 @@
 .st-danger__text { flex: 1 1 260px; min-width: 0; font: 400 13px/20px var(--font-sans); }
 .st-danger__text b { display: block; font: 600 14px/22px var(--font-sans); }
 
-.st-scrim { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--ink) 35%, transparent); }
-[data-theme="dark"] .st-scrim { background: color-mix(in srgb, var(--ink-inverse) 70%, transparent); }
 .st-dialog { width: min(460px, calc(100vw - 48px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 24px; background: var(--surface-raised); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-float); }
 .st-dialog__title { margin: 0; font: 600 16px/24px var(--font-sans); }
 .st-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }

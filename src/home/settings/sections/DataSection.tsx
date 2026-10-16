@@ -94,7 +94,7 @@ function DeleteDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="st-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="hm-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="st-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
         <h2 className="st-dialog__title" id={titleId}>{t('settings.data.deleteTitle')}</h2>
         <p className="st-body" id={descId}>{t('settings.data.deleteBody')}</p>

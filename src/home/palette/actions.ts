@@ -8,6 +8,7 @@ import type { ShowToast } from '../../shared/Toast';
 import type { ExportProvider, ProviderStatus } from '../../shared/types';
 import { isReady, PROVIDER_NAME, PROVIDERS } from '../integrations/model';
 import type { HomeSelection } from '../selection';
+import { matchRanges } from './match';
 
 export interface PaletteContext {
   t: TFunction;
@@ -19,6 +20,7 @@ export interface PaletteContext {
   /** Home's services the actions drive. */
   toast: ShowToast;
   setSearch: (q: string) => void;
+  /** Converts the item to a task and opens it; toasts its own errors (never rejects). */
   convertToTask: (itemId: string) => Promise<void>;
   petPaused: boolean;
 }
@@ -26,6 +28,8 @@ export interface PaletteContext {
 export interface PaletteAction {
   id: string;
   label: (t: TFunction, ctx: PaletteContext) => string;
+  /** The label embeds the query, so it is matched on its text without the query. */
+  templated?: boolean;
   icon: IconName;
   keywords?: string[];
   when?: (ctx: PaletteContext) => boolean;
@@ -76,6 +80,7 @@ export const ACTIONS: readonly PaletteAction[] = [
     id: 'note.add',
     icon: 'note',
     label: (t, ctx) => t('palette.addNote', { query: ctx.query }),
+    templated: true,
     when: (ctx) => ctx.query !== '',
     run: (ctx) =>
       attempt(ctx, async () => {
@@ -87,6 +92,7 @@ export const ACTIONS: readonly PaletteAction[] = [
     id: 'inbox.search',
     icon: 'search',
     label: (t, ctx) => t('palette.searchInbox', { query: ctx.query }),
+    templated: true,
     when: (ctx) => ctx.query !== '',
     run: (ctx) => {
       ctx.setSearch(ctx.query);
@@ -140,3 +146,38 @@ export const ACTIONS: readonly PaletteAction[] = [
     run: (ctx) => attempt(ctx, () => setSetting('pet.paused', !ctx.petPaused)),
   },
 ];
+
+export const MAX_ACTIONS = 6;
+
+export interface ActionMatch {
+  action: PaletteAction;
+  label: string;
+  /** Highlight ranges in `label`; empty for a keyword or templated match. */
+  ranges: Array<[number, number]>;
+}
+
+/**
+ * The actions to list, in registry order, at most `MAX_ACTIONS`: those whose `when` passes and
+ * whose label (or a keyword) matches the query. A templated label matches on its text without
+ * the query ("Add note “”"), so typing any text does not list it.
+ */
+export function matchActions(ctx: PaletteContext): ActionMatch[] {
+  const out: ActionMatch[] = [];
+  for (const action of ACTIONS) {
+    if (out.length === MAX_ACTIONS) break;
+    if (action.when && !action.when(ctx)) continue;
+    const label = action.label(ctx.t, ctx);
+    let ranges: Array<[number, number]> | null;
+    if (action.templated) {
+      ranges = matchRanges(action.label(ctx.t, { ...ctx, query: '' }), ctx.query) && [];
+    } else {
+      ranges = matchRanges(label, ctx.query);
+      if (!ranges && action.keywords?.some((k) => matchRanges(k, ctx.query))) ranges = [];
+    }
+    if (ranges) out.push({ action, label, ranges });
+  }
+  return out;
+}
+
+/** The action Enter runs when nothing matches. */
+export const SEARCH_INBOX = ACTIONS.find((a) => a.id === 'inbox.search')!;

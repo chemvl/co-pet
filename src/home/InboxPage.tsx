@@ -341,6 +341,14 @@ export function InboxPage({ route, search, onClearSearch }: InboxPageProps): Rea
   return (
     <div className="hm-page">
       {header}
+      {search ? (
+        <div className="hm-results">
+          <span className="label">{t('home.resultsFor', { q: search })}</span>
+          <Button variant="quiet" size="sm" onClick={onClearSearch}>
+            {t('home.clearResults')}
+          </Button>
+        </div>
+      ) : null}
       <div className="hm-split">
         {listPane}
         {showDetail ? (

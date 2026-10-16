@@ -1,0 +1,24 @@
+/* Command palette (Palette.dc.html). Backdrop: `.hm-scrim` (home.css); panel: the dialog surface. */
+.pl-scrim { align-items: flex-start; padding-top: 88px; box-sizing: border-box; }
+.pl { width: min(640px, calc(100vw - 48px)); max-height: calc(100vh - 88px - 24px); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--surface-raised); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-float); font-family: var(--font-sans); }
+.pl-head { flex: none; padding: 12px; }
+.pl-search.cp-search { display: flex; }
+.pl-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.pl-grp { padding: 4px 8px 8px; }
+.pl-gh { font: 600 12px/18px var(--font-sans); color: var(--ink-muted); padding: 8px 10px 4px; }
+.pl-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-row { display: flex; align-items: center; gap: 12px; min-height: 40px; box-sizing: border-box; padding: 6px 10px; border-radius: 10px; font: 500 14px/22px var(--font-sans); color: var(--ink); cursor: pointer; }
+.pl-row:hover { background: var(--surface-hover); }
+.pl-row.is-sel { background: var(--surface-selected); }
+.pl-row.is-disabled { cursor: default; color: var(--ink-muted); }
+.pl-ic { display: inline-flex; color: var(--ink-muted); }
+.pl-row.is-sel .pl-ic { color: var(--clover); }
+.pl-lb { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-lb b { font-weight: 600; }
+/* Matches: body-strong weight, no colour. */
+.pl-lb mark { background: none; color: inherit; font-weight: 600; }
+.pl-cap { flex: none; font: 400 12px/18px var(--font-sans); color: var(--ink-muted); }
+.pl-empty { margin: 0; padding: 16px 18px 20px; font: 400 14px/22px var(--font-sans); color: var(--ink-muted); }
+.pl-foot { flex: none; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface-sunken); font: 400 12px/18px var(--font-sans); color: var(--ink-muted); }
+.pl-foot span { display: inline-flex; align-items: center; gap: 6px; }
+.pl-foot__end { margin-left: auto; }

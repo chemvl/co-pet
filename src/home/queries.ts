@@ -8,7 +8,7 @@ export const countsQuery = queryOptions({ queryKey: ['counts'], queryFn: counts 
 
 export const itemQuery = (id: string) => queryOptions({ queryKey: ['item', id], queryFn: () => getItem(id) });
 
-export const tasksQuery = (view: TaskStatus, search: string) =>
+export const tasksQuery = (view: TaskStatus, search = '') =>
   queryOptions({ queryKey: ['tasks', view, search], queryFn: () => listTasks({ view, search: search || undefined }) });
 
 export const taskQuery = (id: string) => queryOptions({ queryKey: ['task', id], queryFn: () => getTask(id) });

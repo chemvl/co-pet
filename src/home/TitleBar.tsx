@@ -1,16 +1,16 @@
 // 44 px title bar over the native traffic lights (TitleBarStyle::Overlay): wordmark, page
-// name, centred search (⌘K) and the "Local only" status pill. Empty areas drag the window.
-import { forwardRef } from 'react';
-import { SearchField, StatusPill } from '../ds';
+// name, the centred search button that opens the command palette (⌘K) and the "Local only"
+// status pill. Empty areas drag the window.
+import type { ReactElement } from 'react';
+import { Icon, Kbd, StatusPill } from '../ds';
 import { useT } from '../shared/i18n';
 
 interface TitleBarProps {
   page: string;
-  search: string;
-  onSearch: (q: string) => void;
+  onOpenPalette: () => void;
 }
 
-export const TitleBar = forwardRef<HTMLInputElement, TitleBarProps>(function TitleBar(p, searchRef) {
+export function TitleBar(p: TitleBarProps): ReactElement {
   const t = useT();
   return (
     <header className="hm-titlebar" data-tauri-drag-region>
@@ -18,29 +18,15 @@ export const TitleBar = forwardRef<HTMLInputElement, TitleBarProps>(function Tit
         <span className="hm-titlebar__wm" data-tauri-drag-region>{t('app.name')}</span>
         <span className="hm-titlebar__crumb" data-tauri-drag-region>{p.page}</span>
       </div>
-      <SearchField
-        ref={searchRef}
-        className="hm-titlebar__search"
-        placeholder={t('home.searchPlaceholder')}
-        spellCheck={false}
-        autoCorrect="off"
-        autoCapitalize="off"
-        shortcut={['⌘', 'K']}
-        value={p.search}
-        onChange={(e) => p.onSearch(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            // Consumed here: keep it from also closing the task editor (window listener).
-            e.preventDefault();
-            e.stopPropagation();
-            p.onSearch('');
-            e.currentTarget.blur();
-          }
-        }}
-      />
+      {/* Styled as the SearchField, read-only: it opens the palette. */}
+      <button type="button" className="cp-search hm-titlebar__search" aria-haspopup="dialog" onClick={p.onOpenPalette}>
+        <Icon name="search" size={18} />
+        <span className="hm-titlebar__ph">{t('palette.button')}</span>
+        <Kbd keys={['⌘', 'K']} />
+      </button>
       <div className="hm-titlebar__trail" data-tauri-drag-region>
         <StatusPill status="local" label={t('common.localOnly')} />
       </div>
     </header>
   );
-});
+}

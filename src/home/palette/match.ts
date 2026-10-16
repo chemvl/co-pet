@@ -3,19 +3,28 @@
 
 const MARK = /\p{Mn}/gu;
 
-/** NFD, drop nonspacing marks, `đ/Đ → d`, lowercase. */
+/** NFD, drop nonspacing marks, `đ/Đ → d`, lowercase per code point (as Rust `char::to_lowercase`). */
 export function fold(s: string): string {
-  return s.normalize('NFD').replace(MARK, '').replace(/[đĐ]/g, 'd').toLowerCase();
+  let out = '';
+  for (const ch of s.normalize('NFD').replace(MARK, '').replace(/[đĐ]/g, 'd')) out += ch.toLowerCase();
+  return out;
 }
 
-/** The folded label plus, per folded UTF-16 unit, the `[start, end)` of its source character. */
+/**
+ * The folded label plus, per folded UTF-16 unit, the `[start, end)` of its source character. A
+ * character that folds to nothing (a lone combining mark) extends the previous character's
+ * range, so a highlight never splits a grapheme.
+ */
 function foldWithMap(label: string): { folded: string; from: number[]; to: number[] } {
   let folded = '';
   const from: number[] = [];
   const to: number[] = [];
   let i = 0;
+  let prev = 0;
   for (const ch of label) {
     const f = fold(ch);
+    if (!f) for (let k = prev; k < to.length; k++) to[k] = i + ch.length;
+    else prev = to.length;
     for (let k = 0; k < f.length; k++) {
       from.push(i);
       to.push(i + ch.length);

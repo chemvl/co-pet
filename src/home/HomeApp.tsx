@@ -19,9 +19,7 @@ import { SettingsPage } from './settings/SettingsPage';
 import { TasksPage } from './tasks/TasksPage';
 import { TitleBar } from './TitleBar';
 import { SelectionProvider } from './selection';
-import { useDebounced } from './hooks';
-
-const SEARCH_DEBOUNCE_MS = 150;
+import { Palette } from './palette/Palette';
 
 function useLiveQueries(): void {
   const qc = useQueryClient();
@@ -74,9 +72,9 @@ function navKey(route: Route, itemCategory: string | undefined, firstCategory: s
 export function HomeApp(): ReactElement {
   const t = useT();
   const route = useRoute();
+  // The inbox search; only the palette's "Search inbox for …" sets it.
   const [search, setSearch] = useState('');
-  const query = useDebounced(search.trim(), SEARCH_DEBOUNCE_MS);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const lastList = useRef('inbox');
   // Back from an item (e.g. a task's source) returns to the last list, Tasks included.
   if (route.page === 'inbox' || route.page === 'category' || (route.page === 'tasks' && !route.new)) {
@@ -93,20 +91,12 @@ export function HomeApp(): ReactElement {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
+        setPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-
-  const onSearch = (q: string) => {
-    setSearch(q);
-    if (route.page === 'item' || route.page === 'agents' || route.page === 'categories' || route.page === 'integrations' || route.page === 'settings') {
-      navigate(lastList.current);
-    }
-  };
 
   let pageName: string;
   let page: ReactElement;
@@ -116,11 +106,11 @@ export function HomeApp(): ReactElement {
         route.view === 'all'
           ? t('home.inbox')
           : `${t('home.inbox')} · ${t(route.view === 'pinned' ? 'common.pinned' : 'common.unsorted')}`;
-      page = <InboxPage route={route} search={query} onClearSearch={() => setSearch('')} />;
+      page = <InboxPage route={route} search={search} onClearSearch={() => setSearch('')} />;
       break;
     case 'category':
       pageName = category ? categoryLabel(category, t) : t('home.inbox');
-      page = <InboxPage route={route} search={query} onClearSearch={() => setSearch('')} />;
+      page = <InboxPage route={route} search={search} onClearSearch={() => setSearch('')} />;
       break;
     case 'item':
       pageName = item ? `${categoryLabelOf(categories, item.categoryId, t)} · ${item.title}` : t('common.item');
@@ -128,7 +118,7 @@ export function HomeApp(): ReactElement {
       break;
     case 'tasks':
       pageName = t('tasks.title');
-      page = <TasksPage route={route} search={query} onClearSearch={() => setSearch('')} />;
+      page = <TasksPage route={route} />;
       break;
     case 'agents':
       pageName = t('agents.title');
@@ -151,11 +141,12 @@ export function HomeApp(): ReactElement {
   return (
     <SelectionProvider>
       <div className="hm-win">
-        <TitleBar ref={searchRef} page={pageName} search={search} onSearch={onSearch} />
+        <TitleBar page={pageName} onOpenPalette={() => setPaletteOpen(true)} />
         <div className="hm-body">
           <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
           <main className="hm-main">{page}</main>
         </div>
+        {paletteOpen ? <Palette onClose={() => setPaletteOpen(false)} onSearch={setSearch} /> : null}
       </div>
     </SelectionProvider>
   );

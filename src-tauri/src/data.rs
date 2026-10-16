@@ -230,3 +230,21 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     .await
     .map_err(|e| AppError::msg(e.to_string()))?
 }
+
+#[cfg(test)]
+mod tests {
+    use super::confirmation_ok;
+
+    #[test]
+    fn confirmation_accepts_both_languages_however_typed() {
+        assert!(confirmation_ok("delete everything"));
+        assert!(confirmation_ok("  Delete   Everything \n"));
+        assert!(confirmation_ok("XÓA TẤT CẢ"));
+        // Decomposed input (some Vietnamese input methods) and the older `xoá` spelling.
+        assert!(confirmation_ok("xo\u{301}a ta\u{302}\u{301}t ca\u{309}"));
+        assert!(confirmation_ok("xoá tất cả"));
+        assert!(!confirmation_ok("delete"));
+        assert!(!confirmation_ok("xoa tat ca"));
+        assert!(!confirmation_ok(""));
+    }
+}

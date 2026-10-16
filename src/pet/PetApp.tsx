@@ -419,6 +419,7 @@ export function PetApp() {
       on('pet-reaction', (e) => h.current.onReaction(e)),
       on('pet-flags', (f) => {
         if (f.thinking !== undefined) machine.set('thinking', f.thinking);
+        if (f.carrying !== undefined) machine.set('carrying', f.carrying);
         if (f.sleep !== undefined) machine.set('sleep', f.sleep);
       }),
       on('pet-visibility', (v) => h.current.applyVisibility(v.hidden)),
@@ -622,6 +623,7 @@ export function PetApp() {
       motion={paused ? null : pose.motion}
       motionMs={pose.ms}
       motionKey={output.seq}
+      motionLoop={pose.loop}
       mirrored={edge === 'left'}
       reducedMotion={reducedMotion}
       edge={edge}

@@ -56,6 +56,8 @@ body { margin: 0; overflow: hidden; background: var(--surface); color: var(--ink
 .hm-menu__item:hover, .hm-menu__item:focus-visible { background: var(--surface-hover); }
 .hm-menu__item:focus-visible { outline-offset: -2px; }
 .hm-menu__item.is-danger { color: var(--danger); }
+.hm-menu__item[aria-disabled="true"] { color: var(--ink-muted); cursor: default; }
+.hm-menu__item[aria-disabled="true"]:hover { background: transparent; }
 .hm-menu__icon { display: inline-flex; }
 .hm-menu__label { flex: 1 1 0; white-space: nowrap; }
 .hm-menu__check { display: inline-flex; color: var(--clover); }

@@ -1,16 +1,21 @@
 // Tasks (Tasks.dc.html): Open grouped by due date (Overdue · Today · This week · Later) or
 // Done, the task editor in the right column (over the list below 1100 px), row actions menu,
-// J/K focus, Enter opens, Space toggles done.
+// J/K focus, Enter opens, Space toggles done. Rows show their export state; with no task
+// selected the right column shows What's Next and the export targets.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Button, Icon, SegmentedControl, TaskRow } from '../../ds';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
+import { Button, Icon, SegmentedControl, StatusPill, TaskRow } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { formatEstimate } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
-import { nextAction } from '../../shared/ipc';
+import { exportTask, nextAction } from '../../shared/ipc';
+import { useIntegrations } from '../../shared/queries';
 import type { TaskSummary } from '../../shared/types';
 import { isTypingTarget, useDelayed, useMediaQuery } from '../hooks';
 import { EmptyState, Skeleton } from '../InboxPage';
+import { exportPill, isReady, isRetrying, PROVIDER_NAME, PROVIDERS } from '../integrations/model';
+import { QueueLine } from '../integrations/parts';
 import { Menu, type MenuItem } from '../Menu';
 import { countsQuery, nextQuery, tasksQuery } from '../queries';
 import { navigate, type Route } from '../router';
@@ -23,6 +28,7 @@ import './tasks.css';
 const SKELETON_DELAY_MS = 400;
 /** Groups and due styling follow the clock between data changes. */
 const CLOCK_TICK_MS = 60_000;
+const RETRY_TICK_MS = 1000;
 
 type TasksRoute = Extract<Route, { page: 'tasks' }>;
 
@@ -53,6 +59,20 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
   }, []);
 
   const tasks = useMemo(() => list.data ?? [], [list.data]);
+  const { data: integrations } = useIntegrations();
+
+  // "retrying in {s} s" counts down every second while such a row is listed and the window shows.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const retrying = tasks.some((x) => x.export != null && isRetrying(x.export));
+  useEffect(() => {
+    if (!retrying) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => {
+      if (!document.hidden) setNowMs(Date.now());
+    }, RETRY_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [retrying]);
+
   const groups = useMemo(() => (view === 'open' ? groupTasks(tasks, now) : null), [view, tasks, now]);
   // Row order on screen; J/K and Space index into it.
   const ordered = groups ? GROUP_KEYS.flatMap((k) => groups[k]) : tasks;
@@ -109,30 +129,64 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const row = (task: TaskSummary, group?: GroupKey) => (
-    <TaskRow
-      key={task.id}
-      title={task.title}
-      done={task.status === 'done'}
-      source={task.sourceTitle ? 'item' : undefined}
-      sourceLabel={task.sourceTitle ?? undefined}
-      estimate={task.estimateMin != null ? formatEstimate(task.estimateMin, lang) : undefined}
-      due={dueText(task, now, lang, t)}
-      overdue={group === 'overdue'}
-      dueSoon={isDueSoon(task, now)}
-      selected={task.id === route.id}
-      labels={{ markDone: t('tasks.markDone'), actions: t('tasks.actions') }}
-      onToggle={() => void actions.setDone(task, task.status !== 'done')}
-      onOpen={() => open(task)}
-      onActions={(anchor) => setMenu((m) => (m?.anchor === anchor ? null : { task, anchor }))}
-    />
-  );
+  const openExported = (url: string) => void openUrl(url).catch(actions.fail);
+
+  const row = (task: TaskSummary, group?: GroupKey) => {
+    const pill = task.export ? exportPill(task.export, nowMs, t) : null;
+    const url = task.export?.state === 'exported' ? task.export.externalUrl : null;
+    return (
+      <TaskRow
+        key={task.id}
+        title={task.title}
+        done={task.status === 'done'}
+        source={task.sourceTitle ? 'item' : undefined}
+        sourceLabel={task.sourceTitle ?? undefined}
+        estimate={task.estimateMin != null ? formatEstimate(task.estimateMin, lang) : undefined}
+        due={dueText(task, now, lang, t)}
+        overdue={group === 'overdue'}
+        dueSoon={isDueSoon(task, now)}
+        exportStatus={pill?.status}
+        exportLabel={pill?.label}
+        onExportClick={url ? () => openExported(url) : undefined}
+        selected={task.id === route.id}
+        labels={{ markDone: t('tasks.markDone'), actions: t('tasks.actions') }}
+        onToggle={() => void actions.setDone(task, task.status !== 'done')}
+        onOpen={() => open(task)}
+        onActions={(anchor) => setMenu((m) => (m?.anchor === anchor ? null : { task, anchor }))}
+      />
+    );
+  };
+
+  /** Per provider: Open in (exported), Retry export (failed), else Export to (queued/exporting: none). */
+  const exportItems = (task: TaskSummary): MenuItem[] =>
+    PROVIDERS.flatMap((p): MenuItem[] => {
+      const provider = PROVIDER_NAME[p];
+      const job = task.export?.provider === p ? task.export : null;
+      const queue = () => void exportTask(task.id, p).catch(actions.fail);
+      if (job?.state === 'exported') {
+        const url = job.externalUrl;
+        return url ? [{ key: `open-${p}`, label: t('tasks.openIn', { provider }), onSelect: () => openExported(url) }] : [];
+      }
+      if (job?.state === 'failed') return [{ key: `retry-${p}`, label: t('tasks.retryExport'), onSelect: queue }];
+      if (job) return [];
+      const ready = isReady(integrations?.find((s) => s.provider === p));
+      return [
+        {
+          key: `export-${p}`,
+          label: t('tasks.exportTo', { provider }),
+          disabled: !ready,
+          hint: ready ? undefined : t('tasks.setUpFirst'),
+          onSelect: queue,
+        },
+      ];
+    });
 
   const menuItems = (task: TaskSummary): MenuItem[] => [
     { key: 'edit', label: t('tasks.edit'), onSelect: () => open(task) },
     ...(task.status === 'open'
       ? [{ key: 'snooze', label: t('tasks.snoozeHour'), onSelect: () => void actions.snooze(task) }]
       : []),
+    ...exportItems(task),
     { key: 'trash', label: t('common.moveToTrash'), danger: true, onSelect: () => void actions.trash(task) },
   ];
 
@@ -242,8 +296,17 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
             {body}
             {footer}
           </section>
-          {/* Right column: the editor; with nothing selected, the What's Next card. */}
-          {wide ? <div className="tk-side">{editor ?? <NextColumn />}</div> : null}
+          {/* Right column: the editor; with nothing selected, What's Next and the export targets. */}
+          {wide ? (
+            <div className="tk-side">
+              {editor ?? (
+                <>
+                  <NextColumn />
+                  <ExportTargets />
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
       {menu ? <Menu anchor={menuAnchor} items={menuItems(menu.task)} label={t('tasks.actions')} align="end" onClose={closeMenu} /> : null}
@@ -277,4 +340,45 @@ function NextColumn(): ReactElement | null {
       .finally(() => void qc.invalidateQueries({ queryKey: ['next'] }));
   };
   return <NextCardView card={card} onAction={onAction} />;
+}
+
+/** Export targets: one row per provider, its queue line, and the one-way note. */
+function ExportTargets(): ReactElement | null {
+  const t = useT();
+  const headingId = useId();
+  const { data: statuses } = useIntegrations();
+  if (!statuses) return null;
+  return (
+    <section className="in-panel" aria-labelledby={headingId}>
+      <h2 className="body-strong in-m0" id={headingId}>{t('tasks.exportTargets')}</h2>
+      {PROVIDERS.map((p) => {
+        const s = statuses.find((x) => x.provider === p);
+        const provider = PROVIDER_NAME[p];
+        const target = s?.target;
+        let pill: ReactElement | null = null;
+        if (s?.connected && s.needsReconnect) pill = <StatusPill status="failed" label={t('integrations.reconnectNeeded')} />;
+        else if (isReady(s)) pill = <StatusPill status="synced" label={t('integrations.connected')} />;
+        return (
+          <div key={p} className="in-target">
+            <span className="in-logo" aria-hidden="true">{provider[0]}</span>
+            <span className="in-target__label">
+              {s?.connected && target
+                ? t('tasks.exportTarget', { provider, target: target.targetLabel })
+                : t('tasks.notSetUp', { provider })}
+            </span>
+            {pill}
+            {isReady(s) ? null : (
+              <Button variant="quiet" size="sm" onClick={() => navigate('integrations')}>
+                {t('tasks.setUp')}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+      {statuses.map((s) => (
+        <QueueLine key={s.provider} status={s} />
+      ))}
+      <span className="caption in-muted">{t('integrations.oneWay')}</span>
+    </section>
+  );
 }

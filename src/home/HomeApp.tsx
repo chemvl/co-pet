@@ -10,6 +10,7 @@ import type { Counts } from '../shared/types';
 import { HomeNav, type NavKey } from './HomeNav';
 import { InboxPage } from './InboxPage';
 import { ItemDetail } from './ItemDetail';
+import { IntegrationsPage } from './integrations/IntegrationsPage';
 import { itemQuery } from './queries';
 import { navigate, routePath, useRoute, type Route } from './router';
 import { SettingsPage } from './settings/SettingsPage';
@@ -55,6 +56,8 @@ function navKey(route: Route, itemCategory: string | undefined): NavKey {
       return itemCategory ?? '';
     case 'tasks':
       return 'tasks';
+    case 'integrations':
+      return 'integrations';
     case 'settings':
       return 'settings';
   }
@@ -92,7 +95,7 @@ export function HomeApp(): ReactElement {
 
   const onSearch = (q: string) => {
     setSearch(q);
-    if (route.page === 'item' || route.page === 'settings') navigate(lastList.current);
+    if (route.page === 'item' || route.page === 'integrations' || route.page === 'settings') navigate(lastList.current);
   };
 
   let pageName: string;
@@ -116,6 +119,10 @@ export function HomeApp(): ReactElement {
     case 'tasks':
       pageName = t('tasks.title');
       page = <TasksPage route={route} search={query} onClearSearch={() => setSearch('')} />;
+      break;
+    case 'integrations':
+      pageName = t('integrations.title');
+      page = <IntegrationsPage />;
       break;
     case 'settings':
       pageName = t('settings.title');

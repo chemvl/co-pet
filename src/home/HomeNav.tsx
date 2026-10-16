@@ -11,7 +11,7 @@ import { useAiStatus, useCategories, useSettings } from '../shared/queries';
 import type { AiStatus } from '../shared/types';
 import { countsQuery } from './queries';
 
-/** `inbox`, `tasks`, `settings` or a category id; empty for none. */
+/** `inbox`, `tasks`, `integrations`, `settings` or a category id; empty for none. */
 export type NavKey = string;
 
 const SKINS: readonly CatSkin[] = ['peach', 'tabby', 'midnight'];
@@ -94,6 +94,7 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
         />
       ))}
       <div className="hm-nav__spacer" />
+      <NavLink href="#/integrations" active={active === 'integrations'} icon="link" label={t('integrations.title')} />
       <NavLink href="#/settings/general" active={active === 'settings'} icon="settings" label={t('common.settings')} />
     </nav>
   );

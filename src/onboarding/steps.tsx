@@ -1,4 +1,4 @@
-// The four onboarding steps (plan Step 13) and the model download strip.
+// The five onboarding steps (plan Step 13) and the model download strip.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, type ReactNode } from 'react';
 import { Button, Icon, StatusPill } from '../ds';
@@ -12,6 +12,9 @@ import { poseFor, type CatPose } from '../pet/pose';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
 import { aiDownload, aiPause, aiSelectModel, permissionsStatus, requestPermission } from '../shared/ipc';
+import { useIntegrations } from '../shared/queries';
+import { AsanaCard } from '../home/integrations/AsanaCard';
+import { NotionCard } from '../home/integrations/NotionCard';
 import type { AiStatus } from '../shared/types';
 
 const reducedMotion =
@@ -25,6 +28,7 @@ function Cat({ look, skin, pose }: { look: CatLook; skin: CatSkin; pose: CatPose
       parts={pose.parts}
       motion={reducedMotion ? null : pose.motion}
       motionMs={pose.ms}
+      motionLoop={pose.loop}
       mirrored={false}
       reducedMotion={reducedMotion}
     />
@@ -72,9 +76,9 @@ export function PetStep(props: {
   );
 }
 
-/* ---------- shared layout for steps 2–4 ---------- */
+/* ---------- shared layout for steps 2–5 ---------- */
 
-function SideLayout(props: { look: CatLook; skin: CatSkin; pose: CatPose; title: string; lead: string; children: ReactNode }) {
+function SideLayout(props: { look: CatLook; skin: CatSkin; pose: CatPose; title: string; lead?: string; children: ReactNode }) {
   return (
     <div className="ob-pad">
       <div className="ob-side">
@@ -83,7 +87,7 @@ function SideLayout(props: { look: CatLook; skin: CatSkin; pose: CatPose; title:
       <div className="ob-main">
         <div>
           <h1 className="ob-h1--sm">{props.title}</h1>
-          <p className="ob-lead">{props.lead}</p>
+          {props.lead ? <p className="ob-lead">{props.lead}</p> : null}
         </div>
         {props.children}
       </div>
@@ -192,7 +196,26 @@ export function AiStep(props: { look: CatLook; skin: CatSkin; status: AiStatus |
   );
 }
 
-/* ---------- 4 · Hotkeys ---------- */
+/* ---------- 4 · Apps ---------- */
+
+/**
+ * Optional Notion / Asana connection (the Integrations cards without target pickers). An OAuth
+ * sign-in finishing now only emits `integration-changed`, which refreshes these cards; Home
+ * stays closed until onboarding ends. Continue skips.
+ */
+export function AppsStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
+  const t = useT();
+  const { data: statuses } = useIntegrations();
+  return (
+    <SideLayout look={look} skin={skin} pose={poseFor('carrying')} title={t('onboarding.apps.title')}>
+      <NotionCard status={statuses?.find((s) => s.provider === 'notion')} compact />
+      <AsanaCard status={statuses?.find((s) => s.provider === 'asana')} compact />
+      <p className="caption ob-caption">{t('onboarding.apps.caption')}</p>
+    </SideLayout>
+  );
+}
+
+/* ---------- 5 · Hotkeys ---------- */
 
 export function HotkeysStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
   const t = useT();
@@ -203,7 +226,7 @@ export function HotkeysStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
   );
 }
 
-/* ---------- download strip (steps 2–4) ---------- */
+/* ---------- download strip (steps 2–5) ---------- */
 
 export function DownloadStrip({ status }: { status: AiStatus }) {
   const t = useT();

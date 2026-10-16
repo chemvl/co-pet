@@ -1,14 +1,17 @@
-// Shared react-query hooks for settings, categories and the local-model status.
-// Each hook keeps its cache live from Rust events: `settings-changed` and `categories-changed`
-// invalidate their query; `ai-status` replaces the AI status in place.
+// Shared react-query hooks for settings, categories, the local-model status and the export
+// integrations. Each hook keeps its cache live from Rust events: `settings-changed`,
+// `categories-changed`, `integration-changed` and `exports-changed` invalidate their query;
+// `ai-status` replaces the AI status in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
-import { aiStatus, getSettings, listCategories, on, setSetting } from './ipc';
+import { aiStatus, backendStatus, getSettings, integrationsStatus, listCategories, on, setSetting } from './ipc';
 import type { AiStatus, Json } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
 export const AI_STATUS_KEY = ['aiStatus'] as const;
 export const CATEGORIES_KEY = ['categories'] as const;
+export const INTEGRATIONS_KEY = ['integrations'] as const;
+export const BACKEND_KEY = ['backendStatus'] as const;
 
 export type Settings = Record<string, Json>;
 
@@ -16,6 +19,7 @@ export type Settings = Record<string, Json>;
 const settingsSubscribed = new WeakSet<QueryClient>();
 const aiSubscribed = new WeakSet<QueryClient>();
 const categoriesSubscribed = new WeakSet<QueryClient>();
+const integrationsSubscribed = new WeakSet<QueryClient>();
 
 export function useSettings() {
   const qc = useQueryClient();
@@ -75,4 +79,23 @@ export function useAiStatus() {
     });
   }, [qc]);
   return useQuery({ queryKey: AI_STATUS_KEY, queryFn: aiStatus, staleTime: Infinity });
+}
+
+/** Notion and Asana: connection, target and this device's queue. */
+export function useIntegrations() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (integrationsSubscribed.has(qc)) return;
+    integrationsSubscribed.add(qc);
+    const refresh = () => void qc.invalidateQueries({ queryKey: INTEGRATIONS_KEY });
+    void on('integration-changed', refresh);
+    // Queue counts and the last job error change with every job.
+    void on('exports-changed', refresh);
+  }, [qc]);
+  return useQuery({ queryKey: INTEGRATIONS_KEY, queryFn: integrationsStatus });
+}
+
+/** Whether this build can sign in through the backend (OAuth). */
+export function useBackendStatus() {
+  return useQuery({ queryKey: BACKEND_KEY, queryFn: backendStatus, staleTime: Infinity });
 }

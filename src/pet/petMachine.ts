@@ -5,7 +5,7 @@ import type { IconName } from '../ds';
 import type { BuiltinCategoryId, PetInput } from '../shared/types';
 
 export type Trigger = PetInput;
-export type Flag = 'dragOver' | 'holdSign' | 'thinking' | 'sleep';
+export type Flag = 'dragOver' | 'holdSign' | 'carrying' | 'thinking' | 'sleep';
 export type Body = Trigger | 'idle' | Flag;
 export type Fx =
   | null
@@ -41,6 +41,7 @@ export const TRIGGERS: Readonly<Record<Trigger, { priority: Priority; ms: number
   confused: { priority: 2, ms: 600 },
   idea: { priority: 2, ms: 500 },
   celebrate: { priority: 2, ms: 800 },
+  cheer: { priority: 2, ms: 600 },
   tilt: { priority: 2, ms: 500 },
   gesture: { priority: 3, ms: 300 },
   fidget: { priority: 3, ms: 1200 },
@@ -91,8 +92,9 @@ const noop = () => {};
 
 export function createPetMachine(deps: MachineDeps): PetMachine {
   const random = deps.random ?? Math.random;
-  const flags = { dragOver: false, holdSign: false, thinking: false, sleep: false };
+  const flags = { dragOver: false, holdSign: false, carrying: false, thinking: false, sleep: false };
   let thinkingSince = 0;
+  let carryingSince = 0;
   let awakeUntil = -Infinity;
   let hidden = false;
   let paused = false;
@@ -104,6 +106,7 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
   let cancelEnd = noop;
   let cancelSwap = noop;
   let cancelThinking = noop;
+  let cancelCarrying = noop;
   let cancelAwake = noop;
   let cancelFidget = noop;
   let fidgetArmed = false;
@@ -112,7 +115,9 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
     if (flags.dragOver) return 'dragOver';
     // The What's Next card is open: the pet holds up its sign.
     if (flags.holdSign) return 'holdSign';
-    // `thinking` counts only after it has been on for 400 ms, so quick jobs don't flicker.
+    // `carrying` (an export running) and `thinking` count only after 400 ms, so quick jobs
+    // don't flicker.
+    if (flags.carrying && deps.now() - carryingSince >= LOOP_DELAY_MS) return 'carrying';
     if (flags.thinking && deps.now() - thinkingSince >= LOOP_DELAY_MS) return 'thinking';
     if (flags.sleep && deps.now() >= awakeUntil) return 'sleep';
     return 'idle';
@@ -260,6 +265,16 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
           if (!playing) render();
         }, LOOP_DELAY_MS);
       }
+    } else if (flag === 'carrying') {
+      cancelCarrying();
+      cancelCarrying = noop;
+      if (value) {
+        carryingSince = deps.now();
+        cancelCarrying = deps.schedule(() => {
+          cancelCarrying = noop;
+          if (!playing) render();
+        }, LOOP_DELAY_MS);
+      }
     }
     // Loop changes never cut a reaction; Resolve picks them up when it ends.
     if (!playing) render();
@@ -290,6 +305,7 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
       stopPlaying();
       queued = null;
       cancelThinking();
+      cancelCarrying();
       cancelAwake();
       cancelFidget();
       fidgetArmed = false;

@@ -93,6 +93,20 @@ describe('petMachine interrupt rules', () => {
     expect(body()).toBe('idle');
   });
 
+  it('cheer_does_not_cut_catch', () => {
+    const { clock, machine, body } = setup();
+    machine.fire('catch');
+    clock.advance(100);
+    machine.fire('cheer');
+    expect(body()).toBe('catch');
+    clock.advance(500);
+    expect(machine.output()).toMatchObject({ body: 'cheer', fx: null });
+    clock.advance(599);
+    expect(body()).toBe('cheer');
+    clock.advance(1);
+    expect(body()).toBe('idle');
+  });
+
   it('drops a P3 while a reaction is playing', () => {
     const { clock, machine, body } = setup();
     machine.fire('catch');
@@ -148,6 +162,32 @@ describe('petMachine loops', () => {
     machine.set('holdSign', false);
     expect(body()).toBe('thinking');
     machine.set('thinking', false);
+    expect(body()).toBe('idle');
+  });
+
+  it('carrying_needs_400ms', () => {
+    const { clock, machine, body } = setup();
+    machine.set('carrying', true);
+    expect(body()).toBe('idle');
+    clock.advance(399);
+    expect(body()).toBe('idle');
+    clock.advance(1);
+    expect(machine.output()).toMatchObject({ body: 'carrying', fx: null });
+    // Above thinking, below the held sign.
+    machine.set('thinking', true);
+    clock.advance(400);
+    expect(body()).toBe('carrying');
+    machine.set('holdSign', true);
+    expect(body()).toBe('holdSign');
+    machine.set('holdSign', false);
+    machine.set('carrying', false);
+    expect(body()).toBe('thinking');
+    // A quick job never shows.
+    machine.set('thinking', false);
+    machine.set('carrying', true);
+    clock.advance(200);
+    machine.set('carrying', false);
+    clock.advance(400);
     expect(body()).toBe('idle');
   });
 

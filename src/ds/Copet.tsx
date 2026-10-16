@@ -345,7 +345,15 @@ export function TaskRow(p: TaskRowProps): ReactElement {
         </div>
       </div>
       <div className="cp-task__side">
-        {p.exportStatus ? <StatusPill status={p.exportStatus} label={p.exportLabel} /> : null}
+        {p.exportStatus ? (
+          p.onExportClick ? (
+            <button type="button" className="cp-task__export" onClick={p.onExportClick}>
+              <StatusPill status={p.exportStatus} label={p.exportLabel} />
+            </button>
+          ) : (
+            <StatusPill status={p.exportStatus} label={p.exportLabel} />
+          )
+        ) : null}
         <Button variant="quiet" size="sm" icon="more" aria-label={L.actions} aria-haspopup={p.onActions ? 'menu' : undefined}
           onClick={p.onActions ? (e) => p.onActions!(e.currentTarget) : undefined} />
       </div>

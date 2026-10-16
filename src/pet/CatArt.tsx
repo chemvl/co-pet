@@ -35,6 +35,8 @@ export interface CatArtProps {
   motionMs?: number;
   /** change it to restart the same motion (e.g. the machine's `seq`) */
   motionKey?: number;
+  /** repeat `motion` every `motionMs` */
+  motionLoop?: boolean;
   /** the cat faces right; the left edge mirrors it */
   mirrored: boolean;
   reducedMotion: boolean;
@@ -69,7 +71,12 @@ export function CatArt(props: CatArtProps): ReactElement {
 
   return (
     <div className={rootClass} style={style} data-edge={edge}>
-      <div className="cp-cat__body" data-motion={motion ?? undefined} key={props.motionKey}>
+      <div
+        className="cp-cat__body"
+        data-motion={motion ?? undefined}
+        data-loop={props.motionLoop || undefined}
+        key={props.motionKey}
+      >
         <svg
           className="cp-cat__svg"
           viewBox="0 0 160 160"

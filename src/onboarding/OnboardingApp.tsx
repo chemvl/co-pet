@@ -1,4 +1,4 @@
-// Onboarding window (plan Step 13): Your pet · Permissions · Local AI · Hotkeys.
+// Onboarding window (plan Step 13): Your pet · Permissions · Local AI · Apps · Hotkeys.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button, SegmentedControl } from '../ds';
 import { useAiAction } from '../home/settings/ModelCards';
@@ -8,13 +8,14 @@ import { errorText } from '../shared/errors';
 import { useLang, useT, type I18nKey } from '../shared/i18n';
 import { aiDownload, aiSelectModel, finishOnboarding } from '../shared/ipc';
 import { useAiStatus, useSetSetting, useSetting } from '../shared/queries';
-import { AiStep, DownloadStrip, HotkeysStep, PermissionsStep, PetStep } from './steps';
+import { AiStep, AppsStep, DownloadStrip, HotkeysStep, PermissionsStep, PetStep } from './steps';
 import './onboarding.css';
 
 const STEPS: readonly { label: I18nKey; note: I18nKey }[] = [
   { label: 'onboarding.step.pet', note: 'onboarding.note.pet' },
   { label: 'onboarding.step.permissions', note: 'onboarding.note.permissions' },
   { label: 'onboarding.step.ai', note: 'onboarding.note.ai' },
+  { label: 'onboarding.step.apps', note: 'onboarding.note.apps' },
   { label: 'onboarding.step.hotkeys', note: 'onboarding.note.hotkeys' },
 ];
 const LAST = STEPS.length - 1;
@@ -112,6 +113,8 @@ export function OnboardingApp() {
           <PermissionsStep look={petLook} skin={skin} />
         ) : step === 2 ? (
           <AiStep look={petLook} skin={skin} status={ai} localOnly={localOnly} />
+        ) : step === 3 ? (
+          <AppsStep look={petLook} skin={skin} />
         ) : (
           <HotkeysStep look={petLook} skin={skin} />
         )}

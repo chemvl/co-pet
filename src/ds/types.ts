@@ -167,6 +167,8 @@ export interface TaskRowProps {
   selected?: boolean;
   /** Co-pet addition: replaces the English aria-labels of the check and the "more" button. */
   labels?: { markDone: string; actions: string };
+  /** Co-pet addition: makes the export pill a button (e.g. open the exported page). */
+  onExportClick?: () => void;
 }
 
 export interface TranscriptSegmentProps {

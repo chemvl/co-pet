@@ -186,6 +186,8 @@ body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 2
 .cp-task.is-selected { background: var(--surface-selected); }
 .cp-task[tabindex] .cp-task__body { cursor: pointer; }
 .cp-task:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cp-task__export { display: inline-flex; padding: 0; border: 0; background: none; border-radius: var(--radius-pill); cursor: pointer; }
+.cp-task__export:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* TranscriptSegment */
 .cp-seg-line { display: flex; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }

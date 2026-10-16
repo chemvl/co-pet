@@ -336,7 +336,7 @@ export type HotkeyAction = 'focusPet' | 'sendSelection' | 'captureScreen' | 'qui
 
 export type PetInput =
   | 'poof' | 'wake' | 'catch' | 'handOver' | 'camera' | 'confused' | 'idea' | 'tilt' | 'gesture' | 'fidget'
-  | 'celebrate';
+  | 'celebrate' | 'cheer';
 
 export interface EventPayloads {
   'items-changed': { ids: string[] };

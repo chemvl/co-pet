@@ -23,11 +23,14 @@ export interface CatPose {
   motion: CatMotion | null;
   /** one-shot length, or one loop period */
   ms: number;
+  /** repeat a one-shot motion (`carrying` bounces until the export ends) */
+  loop?: boolean;
 }
 
 const BREATHE_MS = 3000;
 const LEAN_MS = 800;
 const DOTS_MS = 1200;
+const CARRY_MS = 600;
 
 const PLAIN: CatParts = { eyes: 'open', mouth: 'smile', item: false, dots: false, zzz: false };
 
@@ -56,6 +59,8 @@ export function poseFor(body: Body, variant = 0): CatPose {
       return { parts: parts({ eyes: 'up' }), motion: 'tilt', ms: triggerMs('tilt') };
     case 'celebrate':
       return { parts: parts({ eyes: 'happy', mouth: 'open' }), motion: 'hop', ms: triggerMs('celebrate') };
+    case 'cheer':
+      return { parts: parts({ eyes: 'happy' }), motion: 'tail', ms: triggerMs('cheer') };
     case 'holdSign':
       return { parts: parts({ eyes: 'happy', item: true }), motion: 'breathe', ms: BREATHE_MS };
     case 'fidget':
@@ -65,6 +70,8 @@ export function poseFor(body: Body, variant = 0): CatPose {
         motion: variant === 1 ? 'ear' : variant === 2 ? 'tail' : 'blink',
         ms: triggerMs('fidget', variant),
       };
+    case 'carrying':
+      return { parts: parts({ item: true }), motion: 'bounce', ms: CARRY_MS, loop: true };
     case 'thinking':
       return { parts: parts({ eyes: 'up', dots: true }), motion: 'dots', ms: DOTS_MS };
     case 'sleep':

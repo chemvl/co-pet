@@ -13,6 +13,8 @@
     cp-cat-lean var(--cat-dur) ease-in-out 100ms infinite;
 }
 .cp-cat__body[data-motion='bounce'] { animation: cp-cat-bounce var(--cat-dur) var(--ease-out, ease-out); }
+/* `carrying`: the bounce repeats while an export runs. */
+.cp-cat__body[data-motion='bounce'][data-loop] { animation-iteration-count: infinite; }
 .cp-cat__body[data-motion='offer'] { animation: cp-cat-offer var(--cat-dur) var(--ease-out, ease-out); }
 .cp-cat[data-edge='bottom'] .cp-cat__body[data-motion='offer'] { animation-name: cp-cat-offer-up; }
 .cp-cat__body[data-motion='shake'] { animation: cp-cat-shake var(--cat-dur) ease-in-out; }

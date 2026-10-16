@@ -31,6 +31,7 @@ body { background: var(--surface); color: var(--ink); font-family: var(--font-sa
 .ob-h1 { margin: 0; }
 .ob-h1--sm { margin: 0; font: 700 28px/38px var(--font-display); }
 .ob-lead { margin: 4px 0 0; font: 400 14px/22px var(--font-sans); color: var(--ink-muted); }
+.ob-caption { margin: 0; color: var(--ink-muted); }
 .ob-k { display: block; margin: 0 0 8px; font: 600 13px/20px var(--font-sans); }
 .ob-name { width: 100%; height: 40px; font-size: 15px; }
 

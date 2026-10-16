@@ -17,6 +17,9 @@ export interface MenuItem {
   iconClass?: string;
   checked?: boolean;
   danger?: boolean;
+  /** shown but not selectable; `hint` (a tooltip) says why */
+  disabled?: boolean;
+  hint?: string;
   onSelect: () => void;
 }
 
@@ -104,7 +107,10 @@ export function Menu(p: {
           type="button"
           role="menuitem"
           className={`hm-menu__item${it.danger ? ' is-danger' : ''}`}
+          aria-disabled={it.disabled || undefined}
+          title={it.hint}
           onClick={() => {
+            if (it.disabled) return;
             onClose(true);
             it.onSelect();
           }}

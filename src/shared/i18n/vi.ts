@@ -216,6 +216,10 @@ export const vi: Record<keyof typeof en, string> = {
   'item.history.trash': 'Đã chuyển vào thùng rác',
   'item.history.restore': 'Đã khôi phục',
   'item.history.undone': 'Đã hoàn tác',
+  'item.convertToTask': 'Chuyển thành công việc',
+  'item.suggestedTask': 'Công việc gợi ý',
+  'item.tasks': 'Công việc',
+  'item.taskLink': 'Công việc: {title}',
 
   'tasks.title': 'Công việc',
   'tasks.new': 'Thêm công việc',

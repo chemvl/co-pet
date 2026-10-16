@@ -30,6 +30,9 @@ export const TitleBar = forwardRef<HTMLInputElement, TitleBarProps>(function Tit
         onChange={(e) => p.onSearch(e.currentTarget.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
+            // Consumed here: keep it from also closing the task editor (window listener).
+            e.preventDefault();
+            e.stopPropagation();
             p.onSearch('');
             e.currentTarget.blur();
           }

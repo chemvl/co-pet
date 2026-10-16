@@ -215,6 +215,10 @@ export const en = {
   'item.history.trash': 'Moved to trash',
   'item.history.restore': 'Restored',
   'item.history.undone': 'Undone',
+  'item.convertToTask': 'Convert to task',
+  'item.suggestedTask': 'Suggested task',
+  'item.tasks': 'Tasks',
+  'item.taskLink': 'Task: {title}',
 
   'tasks.title': 'Tasks',
   'tasks.new': 'New task',

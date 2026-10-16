@@ -65,6 +65,7 @@ function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactE
           <div className="heading hm-ellipsis">{item.title}</div>
           <div className="caption hm-muted hm-ellipsis">{detailMeta(item, t, lang)}</div>
         </div>
+        <ConvertButton item={item} />
         <CopyButton item={item} />
         <OpenButton item={item} />
         <MoreMenu item={item} />
@@ -81,6 +82,7 @@ function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactE
           <Field label={t('item.why')}>
             <WhyBox item={item} variant="box" />
           </Field>
+          <TaskBlock item={item} />
           {item.tags.length ? (
             <Field label={t('item.tags')}>
               <Tags item={item} />
@@ -134,6 +136,7 @@ function ItemPane({ item }: { item: Item }): ReactElement {
         <Tags item={item} />
       </div>
       <div className="hm-det__actions">
+        <ConvertButton item={item} size="md" />
         <CopyButton item={item} size="md" />
         <OpenButton item={item} size="md" />
       </div>
@@ -180,13 +183,57 @@ function CopyButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['siz
   }, [copied]);
   return (
     <Button
-      variant="primary"
+      variant="secondary"
       size={size}
       icon={copied ? 'check' : 'copy'}
       onClick={() => copyItems([item.id]).then(() => setCopied(true), fail)}
     >
       {t(copied ? 'common.copied' : 'common.copy')}
     </Button>
+  );
+}
+
+/** The surface's primary action; sensitive items convert too (the title is already visible). */
+function ConvertButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['size'] }): ReactElement {
+  const t = useT();
+  const actions = useItemActions();
+  return (
+    <Button variant="primary" size={size} icon="tasks" onClick={() => void actions.convertToTask(item)}>
+      {t('item.convertToTask')}
+    </Button>
+  );
+}
+
+/** Side panel: the suggested task until one exists, then links to the item's tasks. */
+function TaskBlock({ item }: { item: Item }): ReactElement | null {
+  const t = useT();
+  const actions = useItemActions();
+  if (item.tasks.length) {
+    return (
+      <Field label={t('item.tasks')}>
+        <ul className="hm-tasklinks">
+          {item.tasks.map((task) => (
+            <li key={task.id}>
+              {task.status === 'done' ? <Icon name="check" size={16} label={t('tasks.done')} /> : null}
+              <a className="hm-link" href={`#/tasks/${task.status}/${encodeURIComponent(task.id)}`}>
+                {t('item.taskLink', { title: task.title })}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </Field>
+    );
+  }
+  if (!item.taskSuggestion) return null;
+  return (
+    <Field label={t('item.suggestedTask')}>
+      <div className="hm-tasksug">
+        <span className="body">{item.taskSuggestion}</span>
+        <Button variant="secondary" size="sm" onClick={() => void actions.convertToTask(item)}>
+          {t('tasks.create')}
+        </Button>
+      </div>
+    </Field>
   );
 }
 

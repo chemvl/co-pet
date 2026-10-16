@@ -9,6 +9,7 @@ import type { Category, CategoryId, ItemSummary } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
 import { rowMeta } from './itemText';
 import { categoryMenuItems, MenuButton } from './Menu';
+import { useItemActions } from './useItemActions';
 
 export function KindTile({ item, large }: { item: ItemSummary; large?: boolean }): ReactElement {
   const thumb = !item.sensitive && item.thumbPath ? convertFileSrc(item.thumbPath) : null;
@@ -51,6 +52,7 @@ export function ItemRow(p: RowProps): ReactElement {
   const t = useT();
   const lang = useLang();
   const { item } = p;
+  const actions = useItemActions();
   return (
     <div
       ref={p.rowRef}
@@ -86,6 +88,17 @@ export function ItemRow(p: RowProps): ReactElement {
           <Icon name="pin" size={16} label={t('common.pinned')} />
         </span>
       ) : null}
+      <span className="hm-row__menu" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+        <MenuButton
+          variant="quiet"
+          size="sm"
+          icon="more"
+          align="end"
+          aria-label={t('item.moreActions')}
+          menuLabel={t('item.moreActions')}
+          items={[{ key: 'task', label: t('item.convertToTask'), icon: 'tasks', onSelect: () => void actions.convertToTask(item) }]}
+        />
+      </span>
     </div>
   );
 }

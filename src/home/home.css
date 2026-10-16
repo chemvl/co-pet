@@ -100,6 +100,7 @@ body { margin: 0; overflow: hidden; background: var(--surface); color: var(--ink
 .hm-row__t2 { font: 400 13px/20px var(--font-sans); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hm-row__mt { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0; }
 .hm-row__pin { flex: none; color: var(--ink-muted); margin-top: var(--space-2); }
+.hm-row__menu { flex: none; }
 .hm-sug__lead { flex: none; font: 500 12px/18px var(--font-sans); color: var(--ink-muted); margin-right: 2px; }
 .hm-sug { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; box-sizing: border-box; padding: 3px var(--space-1) 3px 6px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--surface-raised); cursor: pointer; }
 .hm-sug:hover { background: var(--surface-hover); }
@@ -158,6 +159,9 @@ body { margin: 0; overflow: hidden; background: var(--surface); color: var(--ink
 .hm-meter { height: 6px; border-radius: var(--radius-pill); background: var(--line); overflow: hidden; margin: var(--space-2) 0 var(--space-1); }
 .hm-meter i { display: block; height: 100%; background: var(--clover); }
 .hm-tags { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.hm-tasklinks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.hm-tasklinks li { display: flex; align-items: center; gap: var(--space-1); color: var(--ink-muted); }
+.hm-tasksug { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .hm-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); background: var(--surface-sunken); font: 500 12px/18px var(--font-sans); color: var(--ink); }
 .hm-hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .hm-hist__row { display: flex; gap: var(--space-2); align-items: baseline; font: 400 13px/20px var(--font-sans); }

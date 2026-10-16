@@ -1,21 +1,25 @@
 // Item mutations shared by the list, the Unsorted queue and Item detail. Each change shows a
 // toast with Undo (through the returned event ids); a single url/file move also offers
-// "Make it a rule".
+// "Make it a rule". Convert to task creates a task from the item and opens it on Tasks.
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
 import { categoryLabelOf } from '../shared/categories';
+import { errorMessage } from '../shared/errors';
 import { useT } from '../shared/i18n';
-import { archive, makeRuleFromItem, recategorize, setPinned, trash, undoEvent } from '../shared/ipc';
+import { archive, createTask, makeRuleFromItem, recategorize, setPinned, trash, undoEvent, undoTaskEvent } from '../shared/ipc';
 import { useCategories } from '../shared/queries';
 import { useToast } from '../shared/Toast';
 import type { CategoryId, ItemSummary } from '../shared/types';
 import { ruleTargetOf } from './itemText';
+import { navigate } from './router';
 
 export interface ItemActions {
   moveTo(items: ItemSummary[], categoryId: CategoryId): Promise<void>;
   archive(items: ItemSummary[]): Promise<void>;
   trash(items: ItemSummary[]): Promise<void>;
   togglePin(item: ItemSummary): Promise<void>;
+  /** Creates a task titled with the item's task suggestion (else its title) and opens it. */
+  convertToTask(item: ItemSummary): Promise<void>;
   undo(eventIds: string[]): Promise<void>;
 }
 
@@ -94,8 +98,30 @@ export function useItemActions(): ItemActions {
       trash: (items) => withUndo(() => trash(items.map((i) => i.id)), t('toast.trashed')),
       togglePin: (item) =>
         withUndo(() => setPinned(item.id, !item.pinned), t(item.pinned ? 'toast.unpinned' : 'toast.pinned')),
+      async convertToTask(item) {
+        const refreshTasks = () => {
+          void qc.invalidateQueries({ queryKey: ['tasks'] });
+          void qc.invalidateQueries({ queryKey: ['task'] });
+          void qc.invalidateQueries({ queryKey: ['item', item.id] });
+        };
+        try {
+          const { task, eventIds } = await createTask({ title: item.taskSuggestion ?? item.title, sourceItemId: item.id });
+          refreshTasks();
+          navigate(`tasks/open/${encodeURIComponent(task.id)}`);
+          // Undo trashes the task through its `created` event.
+          const created = eventIds[0];
+          show({
+            message: t('tasks.created'),
+            undo: created
+              ? () => void undoTaskEvent(created).catch((err) => show({ message: errorMessage(t, err) })).finally(refreshTasks)
+              : undefined,
+          });
+        } catch (err) {
+          show({ message: errorMessage(t, err) });
+        }
+      },
       undo,
     }),
-    [categories, fail, show, t, undo, withUndo],
+    [categories, fail, qc, show, t, undo, withUndo],
   );
 }

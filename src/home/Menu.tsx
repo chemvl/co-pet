@@ -44,8 +44,13 @@ export function Menu(p: {
     const rawLeft = align === 'end' ? a.right - width : a.left;
     const left = Math.min(Math.max(EDGE, rawLeft), window.innerWidth - width - EDGE);
     setPos({ top, left });
-    m.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
   }, [anchor, align]);
+
+  // Focus once the menu is placed: a `visibility: hidden` element can't take focus.
+  const placed = pos != null;
+  useEffect(() => {
+    if (placed) ref.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [placed]);
 
   useEffect(() => {
     const down = (e: PointerEvent) => {

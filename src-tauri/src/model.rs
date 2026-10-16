@@ -383,6 +383,37 @@ pub struct BackendStatus {
     pub configured: bool,
 }
 
+/// Where this Mac stands with the sync master key (see `account::keys::key_state`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyState {
+    /// Signed out.
+    None,
+    /// The master key is on this Mac.
+    Ready,
+    /// No Mac turned sync on yet: show the new recovery key.
+    NeedsSetup,
+    /// Another Mac turned sync on: ask for its recovery key.
+    NeedsRecovery,
+    /// The server couldn't be asked.
+    Unknown,
+}
+
+/// `account_status`. `user_id` stays set after sign-out (this Mac's data belongs to it);
+/// `device_name` is `sync.deviceName`, else the Mac's host name. `last_synced_at` comes from
+/// the sync engine (M9).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountStatus {
+    pub configured: bool,
+    pub signed_in: bool,
+    pub email: Option<String>,
+    pub user_id: Option<String>,
+    pub key_state: KeyState,
+    pub device_name: String,
+    pub last_synced_at: Option<i64>,
+}
+
 /// Who made an item or task change; maps to the `actor` / `client_id` columns of
 /// `item_events` and `task_events`. Not serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -79,7 +79,8 @@ pub(crate) fn random_b64() -> AppResult<String> {
     Ok(URL_SAFE_NO_PAD.encode(buf))
 }
 
-fn challenge(verifier: &str) -> String {
+/// PKCE `S256`: base64url (no padding) of the verifier's SHA-256.
+pub(crate) fn challenge(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 

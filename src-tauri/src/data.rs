@@ -12,6 +12,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use unicode_normalization::UnicodeNormalization;
 
+use crate::account;
 use crate::db::{settings, Db};
 use crate::error::{AppError, AppResult};
 use crate::llm::LlmServer;
@@ -200,23 +201,31 @@ fn unique_dir(dir: &Path, base: &str) -> PathBuf {
 
 // ---------- delete everything ----------
 
-fn confirmation_ok(typed: &str) -> bool {
+/// Whether `typed`, after trimming, NFC, lowercasing and collapsing whitespace, is one of
+/// `phrases` (each given in that form).
+pub(crate) fn phrase_ok(typed: &str, phrases: &[&str]) -> bool {
     let typed: String = typed.trim().nfc().collect::<String>().to_lowercase();
     let typed = typed.split_whitespace().collect::<Vec<_>>().join(" ");
-    CONFIRMATIONS.contains(&typed.as_str())
+    phrases.contains(&typed.as_str())
 }
 
-/// Deletes the export tokens from the keychain, the database and the library (models stay),
-/// then restarts into onboarding. Error `confirmation` when the typed phrase doesn't match.
+/// Deletes the export tokens, the account session and sync key from the keychain, the database
+/// and the library (models stay), then restarts into onboarding. Error `confirmation` when the
+/// typed phrase doesn't match.
 pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult<()> {
-    if !confirmation_ok(confirmation) {
+    if !phrase_ok(confirmation, &CONFIRMATIONS) {
         return Err(AppError::Code("confirmation"));
     }
     app.state::<LlmServer>().stop().await;
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
-        for account in ["notion", "asana"] {
+        // Read before the database goes.
+        let user_id: Option<String> = settings::read(&app, "sync.userId")?;
+        for account in ["notion", "asana", account::auth::SESSION] {
             secrets::delete(account)?;
+        }
+        if let Some(user_id) = user_id {
+            secrets::delete(&account::keys::key_account(&user_id))?;
         }
         let paths = app.state::<Paths>().inner().clone();
         let db = app.state::<Db>();
@@ -232,7 +241,7 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
         if paths.library.exists() {
             std::fs::remove_dir_all(&paths.library)?;
         }
-        eprintln!("[data] deleted the keychain tokens, the database and the library; restarting");
+        eprintln!("[data] deleted the keychain entries, the database and the library; restarting");
         // Exits through `RunEvent::Exit` (which stops `llama-server` again) and relaunches.
         app.restart();
     })
@@ -242,18 +251,30 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
 
 #[cfg(test)]
 mod tests {
-    use super::confirmation_ok;
+    use super::{phrase_ok, CONFIRMATIONS};
+    use crate::account::CLOUD_PHRASES;
 
     #[test]
     fn confirmation_accepts_both_languages_however_typed() {
-        assert!(confirmation_ok("delete everything"));
-        assert!(confirmation_ok("  Delete   Everything \n"));
-        assert!(confirmation_ok("XÓA TẤT CẢ"));
+        let ok = |typed: &str| phrase_ok(typed, &CONFIRMATIONS);
+        assert!(ok("delete everything"));
+        assert!(ok("  Delete   Everything \n"));
+        assert!(ok("XÓA TẤT CẢ"));
         // Decomposed input (some Vietnamese input methods) and the older `xoá` spelling.
-        assert!(confirmation_ok("xo\u{301}a ta\u{302}\u{301}t ca\u{309}"));
-        assert!(confirmation_ok("xoá tất cả"));
-        assert!(!confirmation_ok("delete"));
-        assert!(!confirmation_ok("xoa tat ca"));
-        assert!(!confirmation_ok(""));
+        assert!(ok("xo\u{301}a ta\u{302}\u{301}t ca\u{309}"));
+        assert!(ok("xoá tất cả"));
+        assert!(!ok("delete"));
+        assert!(!ok("xoa tat ca"));
+        assert!(!ok(""));
+        assert!(!ok("delete cloud data"));
+
+        let cloud = |typed: &str| phrase_ok(typed, &CLOUD_PHRASES);
+        assert!(cloud("delete cloud data"));
+        assert!(cloud(" Delete  Cloud\tData "));
+        assert!(cloud("XÓA DỮ LIỆU ĐÁM MÂY"));
+        assert!(cloud("xoá dữ liệu đám mây"));
+        assert!(cloud("xo\u{301}a du\u{31b}\u{303} lie\u{302}\u{323}u \u{111}a\u{301}m ma\u{302}y"));
+        assert!(!cloud("delete everything"));
+        assert!(!cloud("xoa du lieu dam may"));
     }
 }

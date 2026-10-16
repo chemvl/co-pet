@@ -264,6 +264,21 @@ export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | nu
 /** `backend_status`: whether this build has a Supabase URL and key. */
 export interface BackendStatus { configured: boolean }
 
+/** Where this Mac stands with the sync master key. */
+export type KeyState = 'none' | 'ready' | 'needsSetup' | 'needsRecovery' | 'unknown';
+
+/** `account_status`. `userId` stays set after sign-out; `deviceName` is `sync.deviceName`, else
+ *  the Mac's host name; `lastSyncedAt` comes from the sync engine (M9). */
+export interface AccountStatus {
+  configured: boolean;
+  signedIn: boolean;
+  email: string | null;
+  userId: string | null;
+  keyState: KeyState;
+  deviceName: string;
+  lastSyncedAt: number | null;
+}
+
 export type ExportProvider = 'notion' | 'asana';
 export type ExportState = 'queued' | 'exporting' | 'exported' | 'failed';
 export type ExportErrorCode = 'rateLimited' | 'network' | 'unauthorized' | 'targetMissing' | 'invalid' | 'disconnected';
@@ -422,4 +437,7 @@ export interface EventPayloads {
   };
   /** Agents screen data changed: re-read clients, activity and `mcp_status`. */
   'agents-changed': Record<string, never>;
+  /** Sign-in, sign-out, the sync key or cloud data changed: re-read `account_status`.
+   *  `error` is set only when Google sign-in failed. */
+  'account-changed': { error: 'oauthExpired' | 'otherAccount' | string | null };
 }

@@ -259,6 +259,13 @@ CREATE INDEX agent_activity_at ON agent_activity(at DESC);
 INSERT INTO settings (key, value, updated_at) VALUES ('mcp.paused', 'false', 0), ('mcp.httpPort', '4823', 0);
 "#;
 
+/// Schema v7: the signed-in account. `sync.userId` stays after sign-out (only Delete everything
+/// or Delete cloud data clear it); `sync.deviceName` null means the Mac's host name.
+const V7: &str = r#"
+INSERT INTO settings (key, value, updated_at) VALUES
+  ('sync.userId', 'null', 0), ('sync.email', 'null', 0), ('sync.deviceName', 'null', 0), ('sync.maxFileMb', '50', 0);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7)])
 });

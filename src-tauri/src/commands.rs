@@ -685,3 +685,60 @@ pub fn list_agent_activity(
 pub fn undo_agent_activity(app: AppHandle, id: String) -> AppResult<()> {
     crate::agent::undo_activity(&app, &id)
 }
+
+// ---------- M8: account ----------
+
+#[tauri::command]
+pub async fn account_status(app: AppHandle) -> AppResult<crate::model::AccountStatus> {
+    crate::account::status(&app).await
+}
+
+/// Rejects with `localOnly`, `notConfigured`, `network`, `rateLimited` or `invalid`.
+#[tauri::command]
+pub async fn send_email_code(app: AppHandle, email: String) -> AppResult<()> {
+    crate::account::auth::send_email_code(&app, &email).await
+}
+
+/// Signs in and opens Settings › Account. Rejects with `badCode`, `otherAccount`, `localOnly`,
+/// `notConfigured` or `network`.
+#[tauri::command]
+pub async fn verify_email_code(app: AppHandle, email: String, code: String) -> AppResult<()> {
+    crate::account::auth::verify_email_code(&app, &email, &code).await
+}
+
+/// Opens Google sign-in in the browser; the result arrives as `account-changed`. Rejects with
+/// `localOnly` or `notConfigured`.
+#[tauri::command]
+pub fn sign_in_google(app: AppHandle) -> AppResult<()> {
+    crate::account::auth::google_start(&app)
+}
+
+/// The recovery key text; nothing is stored until `confirm_recovery_key`. Rejects with
+/// `signedOut`.
+#[tauri::command]
+pub fn create_recovery_key(app: AppHandle) -> AppResult<String> {
+    crate::account::keys::create_recovery(&app)
+}
+
+/// Rejects with `invalid` (no pending key), `keyExists`, `signedOut` or `network`.
+#[tauri::command]
+pub async fn confirm_recovery_key(app: AppHandle) -> AppResult<()> {
+    crate::account::keys::confirm_recovery(&app).await
+}
+
+/// Rejects with `badRecoveryKey`, `notFound`, `signedOut` or `network`.
+#[tauri::command]
+pub async fn enter_recovery_key(app: AppHandle, key: String) -> AppResult<()> {
+    crate::account::keys::enter_recovery(&app, &key).await
+}
+
+#[tauri::command]
+pub fn sign_out(app: AppHandle) -> AppResult<()> {
+    crate::account::auth::sign_out(&app)
+}
+
+/// Rejects with `confirmation`, `signedOut`, `localOnly`, `notConfigured` or `network`.
+#[tauri::command]
+pub async fn delete_cloud_data(app: AppHandle, confirmation: String) -> AppResult<()> {
+    crate::account::delete_cloud_data(&app, &confirmation).await
+}

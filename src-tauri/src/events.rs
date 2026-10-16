@@ -32,6 +32,9 @@ pub const INTEGRATION_CHANGED: &str = "integration-changed";
 /// Agents screen data changed (a call, an activity row, a client, the HTTP server's state);
 /// payload `{}`.
 pub const AGENTS_CHANGED: &str = "agents-changed";
+/// Sign-in, sign-out, the sync key or Delete cloud data changed the account; listeners re-read
+/// `account_status`. `error` is set only when Google sign-in failed.
+pub const ACCOUNT_CHANGED: &str = "account-changed";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
@@ -148,6 +151,13 @@ pub struct IntegrationChanged {
 #[serde(rename_all = "camelCase")]
 pub struct AgentsChanged {}
 
+/// `error`: `oauthExpired | otherAccount | <AppError code>` after a failed Google sign-in.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountChanged {
+    pub error: Option<String>,
+}
+
 /// Emits to every webview; a failure to emit is logged, never fatal.
 pub fn emit<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     if let Err(e) = app.emit(event, payload) {
@@ -178,6 +188,10 @@ pub fn integration_changed(app: &AppHandle, provider: Option<&str>, ok: bool, er
 /// After an Agents command.
 pub fn agents_changed(app: &AppHandle) {
     emit(app, AGENTS_CHANGED, AgentsChanged {});
+}
+
+pub fn account_changed(app: &AppHandle, error: Option<&str>) {
+    emit(app, ACCOUNT_CHANGED, AccountChanged { error: error.map(String::from) });
 }
 
 /// When `agents-changed` goes out after a call or log write.

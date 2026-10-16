@@ -3,6 +3,7 @@
 use tauri::AppHandle;
 use url::Url;
 
+use crate::account::auth;
 use crate::db::settings;
 use crate::export::oauth;
 use crate::windows;
@@ -12,8 +13,8 @@ pub enum Route {
     /// `copet://oauth/done?state=…[&error=…]`: the OAuth function handing an export
     /// connection back.
     OAuthDone { state: String, error: Option<String> },
-    /// `copet://auth/callback?code=…`: Google sign-in handing back (Task 8.2). `code` is
-    /// missing when the sign-in failed.
+    /// `copet://auth/callback?code=…`: Google sign-in handing back. `code` is missing when the
+    /// sign-in failed.
     AuthCallback { code: Option<String> },
     /// `copet://item/<id>`
     Item(String),
@@ -52,13 +53,17 @@ fn redacted(url: &Url) -> String {
     format!("{}://{}{}", url.scheme(), url.host_str().unwrap_or(""), url.path())
 }
 
-/// Opens what the link names; `oauth/done` finishes an export connection. Item and task links
-/// show onboarding instead while it isn't completed. The `auth` shape is handled by Task 8.2.
+/// Opens what the link names; `oauth/done` finishes an export connection and `auth/callback`
+/// a Google sign-in. Item and task links show onboarding instead while it isn't completed.
 pub fn handle(app: &AppHandle, url: Url) {
     let onboarded = || settings::read::<bool>(app, "onboarding.completed").unwrap_or(false);
     let opened = match route(&url) {
         Route::OAuthDone { state, error } => {
             tauri::async_runtime::spawn(oauth::finish(app.clone(), state, error));
+            return;
+        }
+        Route::AuthCallback { code } => {
+            tauri::async_runtime::spawn(auth::google_finish(app.clone(), code));
             return;
         }
         Route::Item(_) | Route::Task(_) if !onboarded() => windows::open_onboarding(app),

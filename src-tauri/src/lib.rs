@@ -23,6 +23,7 @@ mod backend;
 mod links;
 mod export;
 mod agent;
+mod account;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -56,6 +57,8 @@ pub fn run() {
         .manage(platform::macos::pointer::PointerState::default())
         .manage(windows::PetPlacement::default())
         .manage(export::oauth::OAuthPending::default())
+        .manage(account::auth::GooglePending::default())
+        .manage(account::keys::PendingKey::default())
         .setup(|app| {
             // No Dock icon: the pet and the menu bar icon are the entry points.
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -184,6 +187,15 @@ pub fn run() {
             commands::create_http_client,
             commands::list_agent_activity,
             commands::undo_agent_activity,
+            commands::account_status,
+            commands::send_email_code,
+            commands::verify_email_code,
+            commands::sign_in_google,
+            commands::create_recovery_key,
+            commands::confirm_recovery_key,
+            commands::enter_recovery_key,
+            commands::sign_out,
+            commands::delete_cloud_data,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

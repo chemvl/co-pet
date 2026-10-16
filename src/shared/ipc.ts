@@ -5,7 +5,7 @@ import type {
   AiStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
-  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken,
+  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus,
 } from './types';
 
 // Step 3 — storage
@@ -172,6 +172,27 @@ export const listAgentActivity = (changesOnly: boolean, limit: number) =>
   invoke<ActivityRow[]>('list_agent_activity', { changesOnly, limit });
 /** Rejects with `"notFound"`, `"alreadyUndone"` or `"notUndoable"`. */
 export const undoAgentActivity = (id: string) => invoke<void>('undo_agent_activity', { id });
+
+// Phase 2 M8 — account
+export const accountStatus = () => invoke<AccountStatus>('account_status');
+/** Rejects with `"localOnly"`, `"notConfigured"`, `"network"`, `"rateLimited"` or `"invalid"`. */
+export const sendEmailCode = (email: string) => invoke<void>('send_email_code', { email });
+/** Signs in and opens Settings › Account. Rejects with `"badCode"`, `"otherAccount"`, `"localOnly"`,
+ *  `"notConfigured"` or `"network"`. */
+export const verifyEmailCode = (email: string, code: string) => invoke<void>('verify_email_code', { email, code });
+/** Opens Google sign-in in the browser; the result arrives as `account-changed`.
+ *  Rejects with `"localOnly"` or `"notConfigured"`. */
+export const signInGoogle = () => invoke<void>('sign_in_google');
+/** The recovery key text; nothing is stored until `confirmRecoveryKey`. Rejects with `"signedOut"`. */
+export const createRecoveryKey = () => invoke<string>('create_recovery_key');
+/** Rejects with `"invalid"` (no key created), `"keyExists"`, `"signedOut"` or `"network"`. */
+export const confirmRecoveryKey = () => invoke<void>('confirm_recovery_key');
+/** Rejects with `"badRecoveryKey"`, `"notFound"`, `"signedOut"` or `"network"`. */
+export const enterRecoveryKey = (key: string) => invoke<void>('enter_recovery_key', { key });
+/** Keeps this Mac's data and `userId`; only the same account can sign in again. */
+export const signOut = () => invoke<void>('sign_out');
+/** Rejects with `"confirmation"`, `"signedOut"`, `"localOnly"`, `"notConfigured"` or `"network"`. */
+export const deleteCloudData = (confirmation: string) => invoke<void>('delete_cloud_data', { confirmation });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

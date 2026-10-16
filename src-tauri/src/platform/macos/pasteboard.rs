@@ -1,0 +1,232 @@
+//! The single reader/writer for the drag pasteboard and the general pasteboard, shared by drop,
+//! clipboard, Send selection, copy and paste. Call `read`/`write`/`change_count` on the main thread;
+//! elsewhere use `read_on_main`/`write_on_main`.
+use std::collections::BTreeMap;
+use std::io::Cursor;
+use std::path::PathBuf;
+
+use objc2::rc::Retained;
+use objc2::runtime::{AnyClass, AnyObject, ProtocolObject};
+use objc2::ClassType;
+use objc2_app_kit::{
+    NSPasteboard, NSPasteboardItem, NSPasteboardNameDrag, NSPasteboardReadingOptionKey,
+    NSPasteboardTypePNG, NSPasteboardURLReadingFileURLsOnlyKey, NSPasteboardWriting,
+};
+use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSString, NSURL};
+use tauri::AppHandle;
+
+use crate::error::{AppError, AppResult};
+
+pub const TYPE_URL: &str = "public.url";
+pub const TYPE_URL_NAME: &str = "public.url-name";
+pub const TYPE_PNG: &str = "public.png";
+pub const TYPE_TIFF: &str = "public.tiff";
+pub const TYPE_HTML: &str = "public.html";
+pub const TYPE_PLAIN: &str = "public.utf8-plain-text";
+/// nspasteboard.org markers set by password managers and other privacy-aware apps.
+pub const TYPE_CONCEALED: &str = "org.nspasteboard.ConcealedType";
+pub const TYPE_TRANSIENT: &str = "org.nspasteboard.TransientType";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Board {
+    #[allow(dead_code)] // read by clipboard capture and Send selection (Step 6)
+    General,
+    Drag,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PbContent {
+    Files(Vec<PathBuf>),
+    Url { url: String, title: Option<String> },
+    /// PNG bytes (TIFF is converted).
+    Image(Vec<u8>),
+    Text { plain: String, html: Option<String> },
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // fields are read by capture (Step 6)
+pub struct PbRead {
+    /// The highest-precedence content, or `None` when nothing usable is on the board.
+    pub content: Option<PbContent>,
+    /// Every type on the board (UTIs), including privacy markers.
+    pub types: Vec<String>,
+    pub change_count: isize,
+}
+
+impl PbRead {
+    /// The writer marked the contents as concealed or transient (password managers).
+    #[allow(dead_code)] // used by clipboard capture (Step 6)
+    pub fn concealed(&self) -> bool {
+        self.types.iter().any(|t| t == TYPE_CONCEALED || t == TYPE_TRANSIENT)
+    }
+}
+
+fn board(b: Board) -> Retained<NSPasteboard> {
+    match b {
+        Board::General => NSPasteboard::generalPasteboard(),
+        // SAFETY: AppKit's exported pasteboard name constant.
+        Board::Drag => NSPasteboard::pasteboardWithName(unsafe { NSPasteboardNameDrag }),
+    }
+}
+
+pub fn change_count(b: Board) -> isize {
+    board(b).changeCount()
+}
+
+/// Reads the board with Step 6.2 precedence: file URLs → `public.url` → PNG/TIFF → HTML + plain
+/// text. Plain text that is a single http(s) URL becomes `Url`.
+#[allow(dead_code)] // used by drop and clipboard capture (Step 6)
+pub fn read(b: Board) -> PbRead {
+    read_from(&board(b))
+}
+
+#[allow(dead_code)] // used by drop and clipboard capture (Step 6)
+pub async fn read_on_main(app: &AppHandle, b: Board) -> AppResult<PbRead> {
+    super::on_main(app, move |_| read(b)).await
+}
+
+/// Replaces the general pasteboard: file URLs (one item each) or a single item carrying every
+/// `data` UTI → string pair, plus optional PNG bytes. With files, `data` and `png` join the first
+/// item.
+#[allow(dead_code)] // used by copy and paste (Step 7)
+pub fn write(files: &[PathBuf], data: &BTreeMap<String, String>, png: Option<&[u8]>) -> AppResult<()> {
+    write_to(&NSPasteboard::generalPasteboard(), files, data, png)
+}
+
+#[allow(dead_code)] // used by copy and paste (Step 7)
+pub async fn write_on_main(
+    app: &AppHandle,
+    files: Vec<PathBuf>,
+    data: BTreeMap<String, String>,
+    png: Option<Vec<u8>>,
+) -> AppResult<()> {
+    super::on_main(app, move |_| write(&files, &data, png.as_deref())).await?
+}
+
+fn read_from(pb: &NSPasteboard) -> PbRead {
+    let change_count = pb.changeCount();
+    let types: Vec<String> =
+        pb.types().map(|t| t.iter().map(|s| s.to_string()).collect()).unwrap_or_default();
+    let has = |t: &str| types.iter().any(|x| x == t);
+
+    let content = 'found: {
+        let files = file_urls(pb);
+        if !files.is_empty() {
+            break 'found Some(PbContent::Files(files));
+        }
+        if let Some(url) = string(pb, TYPE_URL).map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) {
+            let title = string(pb, TYPE_URL_NAME).map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+            break 'found Some(PbContent::Url { url, title });
+        }
+        if has(TYPE_PNG) {
+            if let Some(png) = data(pb, TYPE_PNG) {
+                break 'found Some(PbContent::Image(png));
+            }
+        }
+        if has(TYPE_TIFF) {
+            match data(pb, TYPE_TIFF).map(|t| tiff_to_png(&t)) {
+                Some(Ok(png)) => break 'found Some(PbContent::Image(png)),
+                Some(Err(e)) => eprintln!("[pasteboard] tiff → png failed: {e}"),
+                None => {}
+            }
+        }
+        let plain = string(pb, TYPE_PLAIN).filter(|p| !p.trim().is_empty());
+        let html = if has(TYPE_HTML) { string(pb, TYPE_HTML).filter(|h| !h.trim().is_empty()) } else { None };
+        plain.map(|plain| text_or_url(plain, html))
+    };
+    PbRead { content, types, change_count }
+}
+
+/// A plain text that is exactly one http(s) URL is a link, not a note.
+fn text_or_url(plain: String, html: Option<String>) -> PbContent {
+    let trimmed = plain.trim();
+    let single_url = !trimmed.contains(char::is_whitespace)
+        && url::Url::parse(trimmed).is_ok_and(|u| matches!(u.scheme(), "http" | "https"));
+    if single_url {
+        PbContent::Url { url: trimmed.to_string(), title: None }
+    } else {
+        PbContent::Text { plain, html }
+    }
+}
+
+fn file_urls(pb: &NSPasteboard) -> Vec<PathBuf> {
+    let classes: Retained<NSArray<AnyClass>> = NSArray::from_slice(&[NSURL::class()]);
+    let yes = NSNumber::new_bool(true);
+    // SAFETY: AppKit's exported option key constant.
+    let key: &NSPasteboardReadingOptionKey = unsafe { NSPasteboardURLReadingFileURLsOnlyKey };
+    let options: Retained<NSDictionary<NSPasteboardReadingOptionKey, AnyObject>> =
+        NSDictionary::from_slices(&[key], &[yes.as_ref()]);
+    // SAFETY: the class list holds NSURL (an NSPasteboardReading class) and the options dictionary
+    // uses a documented key with an NSNumber value.
+    let Some(objects) = (unsafe { pb.readObjectsForClasses_options(&classes, Some(&options)) }) else {
+        return Vec::new();
+    };
+    objects
+        .iter()
+        .filter_map(|o| o.downcast::<NSURL>().ok())
+        // Finder drags carry file reference URLs (`file:///.file/id=…`); resolve them to paths.
+        .filter_map(|u| u.filePathURL().and_then(|p| p.path()))
+        .map(|p| PathBuf::from(p.to_string()))
+        .collect()
+}
+
+fn string(pb: &NSPasteboard, uti: &str) -> Option<String> {
+    pb.stringForType(&NSString::from_str(uti)).map(|s| s.to_string())
+}
+
+fn data(pb: &NSPasteboard, uti: &str) -> Option<Vec<u8>> {
+    pb.dataForType(&NSString::from_str(uti)).map(|d| d.to_vec()).filter(|d| !d.is_empty())
+}
+
+fn tiff_to_png(tiff: &[u8]) -> Result<Vec<u8>, image::ImageError> {
+    let img = image::load_from_memory_with_format(tiff, image::ImageFormat::Tiff)?;
+    let mut out = Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Png)?;
+    Ok(out.into_inner())
+}
+
+fn write_to(
+    pb: &NSPasteboard,
+    files: &[PathBuf],
+    data: &BTreeMap<String, String>,
+    png: Option<&[u8]>,
+) -> AppResult<()> {
+    let objects: Vec<Retained<ProtocolObject<dyn NSPasteboardWriting>>> = if files.is_empty() {
+        let item = NSPasteboardItem::new();
+        for (uti, value) in data {
+            item.setString_forType(&NSString::from_str(value), &NSString::from_str(uti));
+        }
+        if let Some(png) = png {
+            // SAFETY: AppKit's exported type constant.
+            item.setData_forType(&NSData::with_bytes(png), unsafe { NSPasteboardTypePNG });
+        }
+        vec![ProtocolObject::from_retained(item)]
+    } else {
+        files
+            .iter()
+            .map(|f| {
+                let path = f.to_str().ok_or_else(|| AppError::msg(format!("non-UTF-8 path {f:?}")))?;
+                Ok(ProtocolObject::from_retained(NSURL::fileURLWithPath(&NSString::from_str(path))))
+            })
+            .collect::<AppResult<_>>()?
+    };
+    if objects.is_empty() {
+        return Err(AppError::msg("nothing to write to the pasteboard"));
+    }
+
+    pb.clearContents();
+    if !pb.writeObjects(&NSArray::from_retained_slice(&objects)) {
+        return Err(AppError::msg("pasteboard rejected the items"));
+    }
+    if !files.is_empty() {
+        // `setString:forType:` / `setData:forType:` add to the first pasteboard item.
+        for (uti, value) in data {
+            pb.setString_forType(&NSString::from_str(value), &NSString::from_str(uti));
+        }
+        if let Some(png) = png {
+            // SAFETY: AppKit's exported type constant.
+            pb.setData_forType(Some(&NSData::with_bytes(png)), unsafe { NSPasteboardTypePNG });
+        }
+    }
+    Ok(())
+}

@@ -185,6 +185,13 @@ pub struct ItemPage {
     pub next_cursor: Option<Cursor>,
 }
 
+/// Ids of the `item_events` a write recorded (for Undo).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventIds {
+    pub event_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Counts {

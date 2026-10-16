@@ -1,0 +1,153 @@
+import type * as React from 'react';
+
+export type IconName =
+  | 'whats-next' | 'screenshot' | 'clipboard' | 'mic' | 'home' | 'note'
+  | 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted'
+  | 'inbox' | 'tasks' | 'search' | 'copy' | 'paste' | 'pin' | 'more' | 'close' | 'check' | 'plus' | 'chevron-down'
+  | 'play' | 'pause' | 'stop' | 'snooze' | 'skip' | 'link' | 'image' | 'file' | 'text' | 'lock' | 'agent'
+  | 'sync' | 'export' | 'alert' | 'settings' | 'calendar' | 'clock' | 'language' | 'grip' | 'trash' | 'undo' | 'moon';
+export type CategoryId = 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted';
+export type ItemKind = 'file' | 'image' | 'url' | 'text' | 'richtext' | 'code' | 'screenshot' | 'audio' | 'meeting';
+export type Lang = 'en' | 'vi';
+export type Status = 'exported' | 'synced' | 'pending' | 'exporting' | 'failed' | 'due' | 'overdue' | 'local' | 'sensitive' | 'agent';
+
+export interface IconProps { name: IconName; size?: number; label?: string; strokeWidth?: number; className?: string }
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
+  size?: 'md' | 'sm';
+  icon?: IconName;
+  iconEnd?: IconName;
+}
+
+export interface KbdProps { keys: string[]; className?: string }
+
+export interface CategoryChipProps { category: CategoryId; label?: string; lang?: Lang; size?: 'md' | 'sm'; count?: number; iconOnly?: boolean; className?: string }
+
+export interface StatusPillProps { status: Status; label?: string; icon?: IconName; className?: string }
+
+export interface PetBadgeProps { count?: number; dot?: boolean; label?: string; className?: string }
+
+export interface BubbleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  icon: IconName;
+  label: string;
+  showLabel?: boolean;
+  labelSide?: 'top' | 'left' | 'right';
+  active?: boolean;
+}
+
+export interface PetDockProps {
+  edge?: 'left' | 'right' | 'bottom';
+  state?: 'peek' | 'out' | 'hover' | 'drag' | 'sleep';
+  bubbles?: { icon: IconName; label: string }[];
+  badge?: number | PetBadgeProps;
+  petName?: string;
+  size?: number;
+  arc?: number;
+  focusIndex?: number;
+  className?: string;
+  /** Co-pet addition: renders instead of the internal PetSlot placeholder. */
+  art?: React.ReactNode;
+  /** Co-pet addition: spread onto the `.cp-pet` button (handlers, aria-label override). */
+  petProps?: React.ButtonHTMLAttributes<HTMLButtonElement>;
+  /** Co-pet addition: wired to each bubble's onClick. */
+  onBubble?: (icon: IconName, index: number) => void;
+  /** Co-pet addition: replaces the hard-coded 'Pet actions' toolbar label. */
+  bubblesLabel?: string;
+  /** Co-pet addition: exposes the bubble buttons for arrow-key focus. */
+  bubbleFocusRef?: (index: number, el: HTMLButtonElement | null) => void;
+}
+
+export interface SearchFieldProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> { shortcut?: string[]; size?: 'md' | 'lg' }
+
+export interface SegmentedControlProps {
+  options: { value: string; label: string; icon?: IconName; count?: number }[];
+  value: string;
+  onChange?: (value: string) => void;
+  label?: string;
+  className?: string;
+}
+
+export interface SwitchProps { label: string; description?: string; checked?: boolean; onChange?: (checked: boolean) => void; disabled?: boolean; id?: string; className?: string }
+
+export interface TrayCardLabels { copy: string; paste: string; sensitive: string; agent: string }
+
+export interface TrayCardProps
+  extends Pick<React.HTMLAttributes<HTMLElement>, 'onPointerDown' | 'onClick' | 'onKeyDown' | 'onDoubleClick' | 'id' | 'onMouseEnter'> {
+  kind: ItemKind;
+  title: string;
+  meta?: string;
+  category?: CategoryId;
+  thumbnail?: string;
+  pinned?: boolean;
+  selected?: boolean;
+  sensitive?: boolean;
+  agent?: boolean;
+  dragging?: boolean;
+  lang?: Lang;
+  onCopy?: () => void;
+  onPaste?: () => void;
+  /** Co-pet addition: localized aria-labels and pill labels. */
+  labels?: TrayCardLabels;
+  className?: string;
+}
+
+export interface TrayProps { search?: React.ReactNode; filters?: React.ReactNode; footer?: React.ReactNode; label?: string; children?: React.ReactNode; className?: string }
+
+export interface WhatsNextCardProps {
+  title: string;
+  reason?: string;
+  estimate?: string;
+  due?: string;
+  dueSoon?: boolean;
+  category?: CategoryId;
+  firstStep?: string;
+  lang?: Lang;
+  labels?: Partial<{ eyebrow: string; start: string; done: string; snooze: string; skip: string; firstStep: string }>;
+  onStart?: () => void;
+  onDone?: () => void;
+  onSnooze?: () => void;
+  onSkip?: () => void;
+  className?: string;
+}
+
+export interface RecordingHUDProps {
+  elapsed?: string;
+  micLevel?: number;
+  systemLevel?: number;
+  language?: string;
+  paused?: boolean;
+  labels?: Partial<{ me: string; system: string; pause: string; resume: string; stop: string; recording: string; paused: string }>;
+  onPause?: () => void;
+  onStop?: () => void;
+  className?: string;
+}
+
+export interface TaskRowProps {
+  title: string;
+  done?: boolean;
+  onToggle?: () => void;
+  source?: 'item' | 'meeting';
+  sourceLabel?: string;
+  estimate?: string;
+  due?: string;
+  dueSoon?: boolean;
+  overdue?: boolean;
+  exportStatus?: Status;
+  exportLabel?: string;
+  className?: string;
+}
+
+export interface TranscriptSegmentProps {
+  start: string;
+  speaker: string;
+  isMe?: boolean;
+  speakerIndex?: number;
+  language?: string;
+  active?: boolean;
+  taskChange?: string;
+  text?: string;
+  children?: React.ReactNode;
+  className?: string;
+}
+

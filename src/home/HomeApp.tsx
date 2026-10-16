@@ -1,0 +1,113 @@
+// Home window shell: title bar, sidebar and the routed page. Keeps every query live from
+// Rust events and follows `navigate` events from the pet, tray and menu bar.
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useT } from '../shared/i18n';
+import { on } from '../shared/ipc';
+import type { Counts } from '../shared/types';
+import { HomeNav, type NavKey } from './HomeNav';
+import { InboxPage } from './InboxPage';
+import { ItemDetail } from './ItemDetail';
+import { categoryKey } from './itemText';
+import { itemQuery } from './queries';
+import { navigate, routePath, useRoute, type Route } from './router';
+import { SettingsPage } from './settings/SettingsPage';
+import { TitleBar } from './TitleBar';
+import { useDebounced } from './hooks';
+
+const SEARCH_DEBOUNCE_MS = 150;
+
+function useLiveQueries(): void {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const refresh = () => {
+      void qc.invalidateQueries({ queryKey: ['items'] });
+      void qc.invalidateQueries({ queryKey: ['item'] });
+      void qc.invalidateQueries({ queryKey: ['counts'] });
+    };
+    const subs = [
+      on('items-changed', refresh),
+      on('settings-changed', refresh),
+      on('counts-changed', (c) => qc.setQueryData<Counts>(['counts'], c)),
+      on('navigate', ({ route }) => navigate(route)),
+    ];
+    return () => subs.forEach((s) => void s.then((unlisten) => unlisten()));
+  }, [qc]);
+}
+
+function navKey(route: Route, itemCategory: string | undefined): NavKey {
+  switch (route.page) {
+    case 'inbox':
+      return route.view === 'unsorted' ? 'unsorted' : 'inbox';
+    case 'category':
+      return route.categoryId;
+    case 'item':
+      return itemCategory ?? '';
+    case 'settings':
+      return 'settings';
+  }
+}
+
+export function HomeApp(): ReactElement {
+  const t = useT();
+  const route = useRoute();
+  const [search, setSearch] = useState('');
+  const query = useDebounced(search.trim(), SEARCH_DEBOUNCE_MS);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const lastList = useRef('inbox');
+  if (route.page === 'inbox' || route.page === 'category') lastList.current = routePath(route);
+  const item = useQuery({ ...itemQuery(route.page === 'item' ? route.id : ''), enabled: route.page === 'item' }).data;
+
+  useLiveQueries();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const onSearch = (q: string) => {
+    setSearch(q);
+    if (route.page === 'item' || route.page === 'settings') navigate(lastList.current);
+  };
+
+  let pageName: string;
+  let page: ReactElement;
+  switch (route.page) {
+    case 'inbox':
+      pageName =
+        route.view === 'all'
+          ? t('home.inbox')
+          : `${t('home.inbox')} · ${t(route.view === 'pinned' ? 'common.pinned' : 'common.unsorted')}`;
+      page = <InboxPage route={route} search={query} onClearSearch={() => setSearch('')} />;
+      break;
+    case 'category':
+      pageName = t(categoryKey(route.categoryId));
+      page = <InboxPage route={route} search={query} onClearSearch={() => setSearch('')} />;
+      break;
+    case 'item':
+      pageName = item ? `${t(categoryKey(item.categoryId))} · ${item.title}` : t('common.item');
+      page = <ItemDetail key={route.id} id={route.id} mode="page" onBack={() => navigate(lastList.current)} />;
+      break;
+    case 'settings':
+      pageName = t('settings.title');
+      page = <SettingsPage section={route.section} onNavigate={navigate} />;
+      break;
+  }
+
+  return (
+    <div className="hm-win">
+      <TitleBar ref={searchRef} page={pageName} search={search} onSearch={onSearch} />
+      <div className="hm-body">
+        <HomeNav active={navKey(route, item?.categoryId)} />
+        <main className="hm-main">{page}</main>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,234 @@
+:root, [data-theme="light"] {
+  --surface: #faf6ef;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f2ece2;
+  --surface-hover: #efe7da;
+  --surface-selected: #dcefe7;
+  --line: #e5dccd;
+  --line-strong: #8f8170;
+  --ink: #2a211c;
+  --ink-muted: #6b5d52;
+  --ink-inverse: #faf6ef;
+  --clover: #1d6b57;
+  --clover-hover: #175a49;
+  --clover-soft: #dcefe7;
+  --on-clover: #ffffff;
+  --peach: #f4a27c;
+  --peach-soft: #fde8dc;
+  --on-peach: #2a211c;
+  --honey: #f2c14e;
+  --honey-soft: #fbf0d4;
+  --on-honey: #2a211c;
+  --bubble: #fffdf9;
+  --bubble-ink: #2a211c;
+  --bubble-ring: #d9cdbb;
+  --halo: rgba(29, 107, 87, 0.22);
+  --halo-ring: #1d6b57;
+  --badge: #c4412b;
+  --on-badge: #ffffff;
+  --success: var(--clover);
+  --success-soft: var(--clover-soft);
+  --warning: #8a5300;
+  --warning-soft: #fcefd3;
+  --danger: #b3261e;
+  --danger-soft: #fbe4e1;
+  --on-danger: #ffffff;
+  --rec: #d4331f;
+  --info: #2f5fa7;
+  --info-soft: #e3ebf8;
+  --focus: #1f5fbf;
+  --cat-todo: #b4451f;
+  --cat-todo-soft: #fbe6dc;
+  --cat-read: #2f5fa7;
+  --cat-read-soft: #e3ebf8;
+  --cat-reference: #735c37;
+  --cat-reference-soft: #f1e9da;
+  --cat-code: #3b6a1d;
+  --cat-code-soft: #e5f0d8;
+  --cat-design: #a3367a;
+  --cat-design-soft: #f8e1ef;
+  --cat-idea: #855a00;
+  --cat-idea-soft: #fbefd0;
+  --cat-contact: #17707b;
+  --cat-contact-soft: #dcf0f2;
+  --cat-meeting: #6446ad;
+  --cat-meeting-soft: #ece6f8;
+  --cat-unsorted: #6b5d52;
+  --cat-unsorted-soft: #ece5da;
+  --shadow-sm: 0 1px 2px rgba(42, 33, 28, 0.06), 0 1px 1px rgba(42, 33, 28, 0.04);
+  --shadow-float: 0 6px 20px rgba(42, 33, 28, 0.16), 0 1px 3px rgba(42, 33, 28, 0.10);
+  --shadow-drag: 0 12px 32px rgba(42, 33, 28, 0.24);
+}
+[data-theme="dark"] {
+  --surface: #191613;
+  --surface-raised: #231f1b;
+  --surface-sunken: #141210;
+  --surface-hover: #2c2722;
+  --surface-selected: #173129;
+  --line: #38312a;
+  --line-strong: #82766a;
+  --ink: #f3ece3;
+  --ink-muted: #b3a596;
+  --ink-inverse: #191613;
+  --clover: #5ccaa6;
+  --clover-hover: #7dd8b9;
+  --clover-soft: #173129;
+  --on-clover: #0e1f19;
+  --peach: #ee9a73;
+  --peach-soft: #3a2219;
+  --on-peach: #1d120d;
+  --honey: #e9b949;
+  --honey-soft: #33280e;
+  --on-honey: #1d1606;
+  --bubble: #2a2521;
+  --bubble-ink: #f3ece3;
+  --bubble-ring: #4d443b;
+  --halo: rgba(92, 202, 166, 0.26);
+  --halo-ring: #5ccaa6;
+  --badge: #ff8a72;
+  --on-badge: #2a0d06;
+  --success: var(--clover);
+  --success-soft: var(--clover-soft);
+  --warning: #f0bf5a;
+  --warning-soft: #33270d;
+  --danger: #ff8a7d;
+  --danger-soft: #3d1a16;
+  --on-danger: #2b0806;
+  --rec: #ff6b5b;
+  --info: #8fb4ee;
+  --info-soft: #1b2840;
+  --focus: #8ab4ff;
+  --cat-todo: #f29a76;
+  --cat-todo-soft: #3d2117;
+  --cat-read: #8fb4ee;
+  --cat-read-soft: #1b2840;
+  --cat-reference: #d4b98c;
+  --cat-reference-soft: #2f2617;
+  --cat-code: #9fd27a;
+  --cat-code-soft: #1d2b13;
+  --cat-design: #f09bd0;
+  --cat-design-soft: #3a1a2e;
+  --cat-idea: #eec15c;
+  --cat-idea-soft: #32270c;
+  --cat-contact: #7fd1db;
+  --cat-contact-soft: #132e32;
+  --cat-meeting: #b7a3f0;
+  --cat-meeting-soft: #261d3d;
+  --cat-unsorted: #b3a596;
+  --cat-unsorted-soft: #2c2722;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-drag: 0 14px 36px rgba(0, 0, 0, 0.65);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  --pet-sm: 64px;
+  --pet-md: 80px;
+  --pet-lg: 96px;
+  --bubble-size: 40px;
+  --bubble-arc: 100px;
+  --drop-halo: 48px;
+  --tray-width: 360px;
+  --target-min: 32px;
+  --sidebar-width: 232px;
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-bubble: 300ms;
+  --dur-wake: 400ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --font-sans: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Baloo 2", "Be Vietnam Pro", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+.display {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.pet-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.title {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.heading {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.body-strong {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.caption {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.badge {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.timer {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+

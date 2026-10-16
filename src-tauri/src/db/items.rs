@@ -1,1 +1,809 @@
 //! Item reads and writes. Every write: one transaction, `updated_at`, FTS row, `item_events`.
+use rusqlite::types::Value as SqlValue;
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use serde_json::{json, Value};
+use tauri::{AppHandle, Manager};
+
+use crate::db::{new_id, now_ms, search, Db};
+use crate::error::{AppError, AppResult};
+use crate::events;
+use crate::model::{
+    Counts, Cursor, ItemDetail, ItemEvent, ItemPage, ItemQuery, ItemRow, ItemSummary, NewItem,
+    TriageUpdate, CATEGORY_IDS,
+};
+use crate::paths::Paths;
+
+/// Every `items` column, in the order `map_row` reads them.
+const COLS: &str = "id, kind, title, summary, tags, payload_text, payload_html, url, file_path, \
+    file_name, mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, \
+    extracted_text, extract_status, category_id, triage_status, triage_source, triage_confidence, \
+    triage_reason, suggestions, sensitive, status, pinned, content_hash, captured_at, updated_at, \
+    deleted_at";
+
+/// Same shape as `COLS` without the large text columns (lists never show them).
+const LIST_COLS: &str = "id, kind, title, summary, tags, NULL, NULL, url, file_path, \
+    file_name, mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, \
+    NULL, extract_status, category_id, triage_status, triage_source, triage_confidence, \
+    triage_reason, suggestions, sensitive, status, pinned, content_hash, captured_at, updated_at, \
+    deleted_at";
+
+/// Columns `undo_event` may restore from `before_json`.
+const UNDOABLE: [&str; 6] = [
+    "category_id",
+    "triage_source",
+    "triage_reason",
+    "pinned",
+    "status",
+    "deleted_at",
+];
+
+const PAGE_MAX: i64 = 500;
+
+fn json_list(s: String) -> Vec<String> {
+    serde_json::from_str(&s).unwrap_or_default()
+}
+
+fn map_row(r: &Row<'_>) -> rusqlite::Result<ItemRow> {
+    Ok(ItemRow {
+        id: r.get(0)?,
+        kind: r.get(1)?,
+        title: r.get(2)?,
+        summary: r.get(3)?,
+        tags: json_list(r.get(4)?),
+        payload_text: r.get(5)?,
+        payload_html: r.get(6)?,
+        url: r.get(7)?,
+        file_path: r.get(8)?,
+        file_name: r.get(9)?,
+        mime: r.get(10)?,
+        size_bytes: r.get(11)?,
+        thumb_path: r.get(12)?,
+        source_app: r.get(13)?,
+        source_bundle_id: r.get(14)?,
+        source_kind: r.get(15)?,
+        extracted_text: r.get(16)?,
+        extract_status: r.get(17)?,
+        category_id: r.get(18)?,
+        triage_status: r.get(19)?,
+        triage_source: r.get(20)?,
+        triage_confidence: r.get(21)?,
+        triage_reason: r.get(22)?,
+        suggestions: json_list(r.get(23)?),
+        sensitive: r.get(24)?,
+        status: r.get(25)?,
+        pinned: r.get(26)?,
+        content_hash: r.get(27)?,
+        captured_at: r.get(28)?,
+        updated_at: r.get(29)?,
+        deleted_at: r.get(30)?,
+    })
+}
+
+fn map_event(r: &Row<'_>) -> rusqlite::Result<ItemEvent> {
+    let parse = |s: Option<String>| s.and_then(|s| serde_json::from_str(&s).ok());
+    Ok(ItemEvent {
+        id: r.get(0)?,
+        item_id: r.get(1)?,
+        at: r.get(2)?,
+        actor: r.get(3)?,
+        action: r.get(4)?,
+        before_json: parse(r.get(5)?),
+        after_json: parse(r.get(6)?),
+        undone_at: r.get(7)?,
+    })
+}
+
+fn add_event(
+    conn: &Connection,
+    item_id: &str,
+    actor: &str,
+    action: &str,
+    before: Option<&Value>,
+    after: Option<&Value>,
+    now: i64,
+) -> AppResult<String> {
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO item_events (id, item_id, at, actor, action, before_json, after_json, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?3)",
+        params![
+            id,
+            item_id,
+            now,
+            actor,
+            action,
+            before.map(Value::to_string),
+            after.map(Value::to_string)
+        ],
+    )?;
+    Ok(id)
+}
+
+/// Re-reads the row and rewrites its FTS entry.
+fn reindex(conn: &Connection, id: &str) -> AppResult<ItemRow> {
+    let row = get_row(conn, id)?;
+    search::index_item(conn, &row)?;
+    Ok(row)
+}
+
+fn triage_state(row: &ItemRow) -> Value {
+    json!({
+        "category_id": row.category_id,
+        "triage_source": row.triage_source,
+        "triage_reason": row.triage_reason,
+    })
+}
+
+fn check_category(category_id: &str) -> AppResult<()> {
+    if CATEGORY_IDS.contains(&category_id) {
+        Ok(())
+    } else {
+        Err(AppError::msg(format!("unknown category {category_id}")))
+    }
+}
+
+// ---------- writes ----------
+
+#[allow(dead_code)] // called by capture (Step 6)
+pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
+    let tx = conn.transaction()?;
+    let id = new_id();
+    let now = now_ms();
+    tx.execute(
+        "INSERT INTO items (id, kind, title, payload_text, payload_html, url, file_path, file_name,
+           mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, content_hash,
+           captured_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)",
+        params![
+            id,
+            new.kind,
+            new.title,
+            new.payload_text,
+            new.payload_html,
+            new.url,
+            new.file_path,
+            new.file_name,
+            new.mime,
+            new.size_bytes,
+            new.thumb_path,
+            new.source_app,
+            new.source_bundle_id,
+            new.source_kind,
+            new.content_hash,
+            now
+        ],
+    )?;
+    reindex(&tx, &id)?;
+    add_event(&tx, &id, "user", "captured", None, None, now)?;
+    tx.commit()?;
+    Ok(id)
+}
+
+/// Writes the triage result. `None` fields keep their current value; `triage_status` becomes
+/// `done` and a `recategorize` event (actor `triage`) records the category change.
+#[allow(dead_code)] // called by the triage worker (Step 9)
+pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppResult<()> {
+    check_category(&u.category_id)?;
+    let tx = conn.transaction()?;
+    let before = triage_state(&get_row(&tx, id)?);
+    let now = now_ms();
+    let tags = u.tags.as_ref().map(serde_json::to_string).transpose()?;
+    tx.execute(
+        "UPDATE items SET
+           title = COALESCE(?2, title), summary = COALESCE(?3, summary), tags = COALESCE(?4, tags),
+           extracted_text = COALESCE(?5, extracted_text), extract_status = ?6,
+           thumb_path = COALESCE(?7, thumb_path), category_id = ?8, triage_status = 'done',
+           triage_source = ?9, triage_confidence = ?10, triage_reason = ?11, suggestions = ?12,
+           sensitive = ?13, updated_at = ?14
+         WHERE id = ?1",
+        params![
+            id,
+            u.title,
+            u.summary,
+            tags,
+            u.extracted_text,
+            u.extract_status,
+            u.thumb_path,
+            u.category_id,
+            u.triage_source,
+            u.triage_confidence,
+            u.triage_reason,
+            serde_json::to_string(&u.suggestions)?,
+            u.sensitive,
+            now
+        ],
+    )?;
+    let after = triage_state(&reindex(&tx, id)?);
+    add_event(
+        &tx,
+        id,
+        "triage",
+        "recategorize",
+        Some(&before),
+        Some(&after),
+        now,
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Moves items to `category_id`. A `user` move marks the source/reason `user` and records a
+/// `category_examples` row that later teaches the local model. Returns the event ids.
+#[allow(dead_code)] // called by the recategorize command (Step 9)
+pub fn recategorize(
+    conn: &mut Connection,
+    ids: &[String],
+    category_id: &str,
+    actor: &str,
+) -> AppResult<Vec<String>> {
+    check_category(category_id)?;
+    let tx = conn.transaction()?;
+    let now = now_ms();
+    let mut events = Vec::with_capacity(ids.len());
+    for id in ids {
+        let row = get_row(&tx, id)?;
+        let before = triage_state(&row);
+        if actor == "user" {
+            tx.execute(
+                "UPDATE items SET category_id = ?2, triage_status = 'done', triage_source = 'user',
+                   triage_reason = 'user', updated_at = ?3 WHERE id = ?1",
+                params![id, category_id, now],
+            )?;
+            tx.execute(
+                "INSERT INTO category_examples (id, item_id, category_id, title, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                params![new_id(), id, category_id, row.title, now],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE items SET category_id = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, category_id, now],
+            )?;
+        }
+        let after = triage_state(&reindex(&tx, id)?);
+        events.push(add_event(
+            &tx,
+            id,
+            actor,
+            "recategorize",
+            Some(&before),
+            Some(&after),
+            now,
+        )?);
+    }
+    tx.commit()?;
+    Ok(events)
+}
+
+pub fn set_pinned(conn: &mut Connection, id: &str, pinned: bool) -> AppResult<String> {
+    let tx = conn.transaction()?;
+    let row = get_row(&tx, id)?;
+    let now = now_ms();
+    tx.execute(
+        "UPDATE items SET pinned = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, pinned, now],
+    )?;
+    reindex(&tx, id)?;
+    let action = if pinned { "pin" } else { "unpin" };
+    let event = add_event(
+        &tx,
+        id,
+        "user",
+        action,
+        Some(&json!({ "pinned": row.pinned })),
+        Some(&json!({ "pinned": pinned })),
+        now,
+    )?;
+    tx.commit()?;
+    Ok(event)
+}
+
+/// Sets `status` (and `deleted_at`) on each item, recording `action` per item.
+fn set_status(
+    conn: &mut Connection,
+    ids: &[String],
+    status: &str,
+    deleted: bool,
+    action: &str,
+) -> AppResult<Vec<String>> {
+    let tx = conn.transaction()?;
+    let now = now_ms();
+    let deleted_at = deleted.then_some(now);
+    let mut events = Vec::with_capacity(ids.len());
+    for id in ids {
+        let row = get_row(&tx, id)?;
+        tx.execute(
+            "UPDATE items SET status = ?2, deleted_at = ?3, updated_at = ?4 WHERE id = ?1",
+            params![id, status, deleted_at, now],
+        )?;
+        reindex(&tx, id)?;
+        let before = json!({ "status": row.status, "deleted_at": row.deleted_at });
+        let after = json!({ "status": status, "deleted_at": deleted_at });
+        events.push(add_event(
+            &tx,
+            id,
+            "user",
+            action,
+            Some(&before),
+            Some(&after),
+            now,
+        )?);
+    }
+    tx.commit()?;
+    Ok(events)
+}
+
+pub fn archive(conn: &mut Connection, ids: &[String]) -> AppResult<Vec<String>> {
+    set_status(conn, ids, "archived", false, "archive")
+}
+
+/// Soft delete: status `trashed` + `deleted_at`. The blob stays so Undo can restore it.
+pub fn trash(conn: &mut Connection, ids: &[String]) -> AppResult<Vec<String>> {
+    set_status(conn, ids, "trashed", true, "trash")
+}
+
+fn json_to_sql(v: &Value) -> SqlValue {
+    match v {
+        Value::Null => SqlValue::Null,
+        Value::Bool(b) => SqlValue::Integer(i64::from(*b)),
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => SqlValue::Integer(i),
+            None => SqlValue::Real(n.as_f64().unwrap_or_default()),
+        },
+        Value::String(s) => SqlValue::Text(s.clone()),
+        other => SqlValue::Text(other.to_string()),
+    }
+}
+
+/// Restores the event's `before_json` onto its item and marks the event undone. Appends no new
+/// event. Undoing a user recategorize also retracts the `category_examples` row it taught.
+/// Returns the item id.
+pub fn undo_event(conn: &mut Connection, event_id: &str) -> AppResult<String> {
+    let tx = conn.transaction()?;
+    let ev = tx
+        .query_row(
+            "SELECT id, item_id, at, actor, action, before_json, after_json, undone_at
+             FROM item_events WHERE id = ?1",
+            [event_id],
+            map_event,
+        )
+        .optional()?
+        .ok_or(AppError::Code("notFound"))?;
+    if ev.undone_at.is_some() {
+        return Err(AppError::Code("alreadyUndone"));
+    }
+    let before = match &ev.before_json {
+        Some(Value::Object(m)) => m,
+        _ => return Err(AppError::Code("notUndoable")),
+    };
+    let now = now_ms();
+    let mut sets = Vec::new();
+    let mut values = vec![SqlValue::Text(ev.item_id.clone()), SqlValue::Integer(now)];
+    for (key, value) in before {
+        if UNDOABLE.contains(&key.as_str()) {
+            values.push(json_to_sql(value));
+            sets.push(format!("{key} = ?{}", values.len()));
+        }
+    }
+    if sets.is_empty() {
+        return Err(AppError::Code("notUndoable"));
+    }
+    tx.execute(
+        &format!(
+            "UPDATE items SET {}, updated_at = ?2 WHERE id = ?1",
+            sets.join(", ")
+        ),
+        params_from_iter(values),
+    )?;
+    if ev.action == "recategorize" && ev.actor == "user" {
+        if let Some(cat) = ev
+            .after_json
+            .as_ref()
+            .and_then(|a| a["category_id"].as_str())
+        {
+            tx.execute(
+                "UPDATE category_examples SET deleted_at = ?3, updated_at = ?3
+                 WHERE item_id = ?1 AND category_id = ?2 AND deleted_at IS NULL",
+                params![ev.item_id, cat, now],
+            )?;
+        }
+    }
+    tx.execute(
+        "UPDATE item_events SET undone_at = ?2, updated_at = ?2 WHERE id = ?1",
+        params![event_id, now],
+    )?;
+    reindex(&tx, &ev.item_id)?;
+    tx.commit()?;
+    Ok(ev.item_id)
+}
+
+// ---------- reads ----------
+
+pub fn get_row(conn: &Connection, id: &str) -> AppResult<ItemRow> {
+    conn.query_row(
+        &format!("SELECT {COLS} FROM items WHERE id = ?1"),
+        [id],
+        map_row,
+    )
+    .optional()?
+    .ok_or(AppError::Code("notFound"))
+}
+
+/// Rows in the order of `ids`; unknown ids are an error.
+#[allow(dead_code)] // called by drag-out/copy (Step 7)
+pub fn get_rows(conn: &Connection, ids: &[String]) -> AppResult<Vec<ItemRow>> {
+    ids.iter().map(|id| get_row(conn, id)).collect()
+}
+
+/// A live (not trashed, not deleted) item with this content hash.
+#[allow(dead_code)] // called by capture (Step 6)
+pub fn find_live_by_hash(conn: &Connection, hash: &str) -> AppResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT id FROM items WHERE content_hash = ?1 AND deleted_at IS NULL
+               AND status != 'trashed' ORDER BY captured_at DESC LIMIT 1",
+            [hash],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+/// Whether any item still references the blob. Trashed rows count: Undo can restore them.
+#[allow(dead_code)] // called by capture (Step 6)
+pub fn file_path_in_use(conn: &Connection, rel_path: &str) -> AppResult<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM items WHERE file_path = ?1 OR thumb_path = ?1)",
+        [rel_path],
+        |r| r.get(0),
+    )?)
+}
+
+/// Items still waiting for triage, oldest first.
+#[allow(dead_code)] // called by the triage worker (Step 9)
+pub fn pending_ids(conn: &Connection) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM items WHERE triage_status = 'pending' AND deleted_at IS NULL
+         ORDER BY captured_at, id",
+    )?;
+    let ids = stmt
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids)
+}
+
+fn abs_string(paths: &Paths, rel: &str) -> String {
+    paths.abs(rel).to_string_lossy().into_owned()
+}
+
+fn to_summary(row: ItemRow, paths: &Paths) -> ItemSummary {
+    let sensitive = row.sensitive;
+    ItemSummary {
+        summary: if sensitive { None } else { row.summary },
+        thumb_path: if sensitive {
+            None
+        } else {
+            row.thumb_path.map(|t| abs_string(paths, &t))
+        },
+        id: row.id,
+        kind: row.kind,
+        title: row.title,
+        tags: row.tags,
+        url: row.url,
+        file_name: row.file_name,
+        mime: row.mime,
+        size_bytes: row.size_bytes,
+        source_app: row.source_app,
+        source_kind: row.source_kind,
+        category_id: row.category_id,
+        triage_status: row.triage_status,
+        triage_source: row.triage_source,
+        triage_confidence: row.triage_confidence,
+        triage_reason: row.triage_reason,
+        suggestions: row.suggestions,
+        sensitive,
+        status: row.status,
+        pinned: row.pinned,
+        extract_status: row.extract_status,
+        captured_at: row.captured_at,
+        updated_at: row.updated_at,
+    }
+}
+
+/// Keyset-paginated list by `(captured_at, id)`.
+pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<ItemPage> {
+    let mut sql =
+        format!("SELECT {LIST_COLS} FROM items WHERE deleted_at IS NULL AND status = 'inbox'");
+    let mut args: Vec<SqlValue> = Vec::new();
+    match q.view.as_str() {
+        "all" | "recent" => {}
+        "pinned" => sql.push_str(" AND pinned = 1"),
+        "unsorted" => sql.push_str(" AND category_id = 'unsorted' AND triage_status = 'done'"),
+        other => return Err(AppError::msg(format!("unknown view {other}"))),
+    }
+    if let Some(cat) = &q.category_id {
+        args.push(SqlValue::Text(cat.clone()));
+        sql.push_str(&format!(" AND category_id = ?{}", args.len()));
+    }
+    if let Some(m) = q.search.as_deref().and_then(search::search_query) {
+        args.push(SqlValue::Text(m));
+        sql.push_str(&format!(
+            " AND id IN (SELECT item_id FROM items_fts WHERE items_fts MATCH ?{})",
+            args.len()
+        ));
+    }
+    let oldest = q.sort.as_deref() == Some("oldest");
+    let (cmp, dir) = if oldest { (">", "ASC") } else { ("<", "DESC") };
+    if let Some(c) = &q.cursor {
+        args.push(SqlValue::Integer(c.captured_at));
+        let at = args.len();
+        args.push(SqlValue::Text(c.id.clone()));
+        let id = args.len();
+        sql.push_str(&format!(
+            " AND (captured_at {cmp} ?{at} OR (captured_at = ?{at} AND id {cmp} ?{id}))"
+        ));
+    }
+    let limit = q.limit.clamp(1, PAGE_MAX);
+    args.push(SqlValue::Integer(limit + 1));
+    sql.push_str(&format!(
+        " ORDER BY captured_at {dir}, id {dir} LIMIT ?{}",
+        args.len()
+    ));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt
+        .query_map(params_from_iter(args), map_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let next_cursor = if rows.len() as i64 > limit {
+        rows.truncate(limit as usize);
+        rows.last().map(|r| Cursor {
+            captured_at: r.captured_at,
+            id: r.id.clone(),
+        })
+    } else {
+        None
+    };
+    Ok(ItemPage {
+        items: rows.into_iter().map(|r| to_summary(r, paths)).collect(),
+        next_cursor,
+    })
+}
+
+/// The item plus its events (newest first). Payload fields are withheld for sensitive items.
+pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<ItemDetail> {
+    let mut row = get_row(conn, id)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, item_id, at, actor, action, before_json, after_json, undone_at
+         FROM item_events WHERE item_id = ?1 ORDER BY at DESC, id DESC",
+    )?;
+    let events = stmt
+        .query_map([id], map_event)?
+        .collect::<rusqlite::Result<_>>()?;
+    let (payload_text, payload_html, extracted_text) = if row.sensitive {
+        (None, None, None)
+    } else {
+        (
+            row.payload_text.take(),
+            row.payload_html.take(),
+            row.extracted_text.take(),
+        )
+    };
+    let file_path = row.file_path.as_deref().map(|p| abs_string(paths, p));
+    Ok(ItemDetail {
+        item: to_summary(row, paths),
+        payload_text,
+        payload_html,
+        extracted_text,
+        file_path,
+        events,
+    })
+}
+
+/// Inbox counts. `unsorted` (and `by_category["unsorted"]`) uses the Unsorted-view definition:
+/// triaged items left in `unsorted`, not ones still waiting for triage.
+pub fn counts(conn: &Connection) -> AppResult<Counts> {
+    let mut c = Counts::default();
+    for id in CATEGORY_IDS {
+        c.by_category.insert(id.to_string(), 0);
+    }
+    let mut stmt = conn.prepare(
+        "SELECT category_id, COUNT(*), SUM(pinned),
+           SUM(category_id = 'unsorted' AND triage_status = 'done')
+         FROM items WHERE deleted_at IS NULL AND status = 'inbox' GROUP BY category_id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, i64>(2)?,
+            r.get::<_, i64>(3)?,
+        ))
+    })?;
+    for row in rows {
+        let (cat, n, pinned, unsorted) = row?;
+        c.inbox += n;
+        c.pinned += pinned;
+        c.unsorted += unsorted;
+        c.by_category.insert(cat, n);
+    }
+    c.by_category.insert("unsorted".into(), c.unsorted);
+    Ok(c)
+}
+
+/// Emits `items-changed {ids}` then `counts-changed` with fresh counts.
+pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
+    events::items_changed(app, ids);
+    let fresh = counts(&app.state::<Db>().conn());
+    match fresh {
+        Ok(c) => events::counts_changed(app, c),
+        Err(e) => eprintln!("[items] counts failed: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::migrations::MIGRATIONS;
+
+    fn db() -> Db {
+        Db::open_in_memory().unwrap()
+    }
+
+    fn new_text(title: &str, body: &str, hash: &str) -> NewItem {
+        NewItem {
+            kind: "text".into(),
+            title: title.into(),
+            payload_text: Some(body.into()),
+            source_kind: "drop".into(),
+            content_hash: hash.into(),
+            ..Default::default()
+        }
+    }
+
+    fn query(search: &str) -> ItemQuery {
+        ItemQuery {
+            view: "all".into(),
+            category_id: None,
+            search: Some(search.into()),
+            sort: None,
+            limit: 50,
+            cursor: None,
+        }
+    }
+
+    fn found(conn: &Connection, search: &str) -> Vec<String> {
+        let paths = Paths::new("/tmp/copet-test".into());
+        list_items(conn, &query(search), &paths)
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|i| i.id)
+            .collect()
+    }
+
+    fn sensitive_update(category: &str) -> TriageUpdate {
+        TriageUpdate {
+            extract_status: "skipped".into(),
+            category_id: category.into(),
+            triage_source: "none".into(),
+            triage_reason: "none:sensitive".into(),
+            sensitive: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn migrations_validate() {
+        MIGRATIONS.validate().unwrap();
+    }
+
+    #[test]
+    fn fts_folds_vietnamese() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Đường đến Việt Nam", "", "h1")).unwrap();
+        insert_item(&mut conn, &new_text("Something else", "", "h2")).unwrap();
+        assert_eq!(found(&conn, "duong"), vec![id.clone()]);
+        assert_eq!(found(&conn, "viet nam"), vec![id.clone()]);
+        assert_eq!(found(&conn, "đường"), vec![id]);
+    }
+
+    #[test]
+    fn sensitive_item_found_by_title_not_body() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(
+            &mut conn,
+            &new_text("Deploy notes", "token zebracorn", "h1"),
+        )
+        .unwrap();
+        assert_eq!(found(&conn, "zebracorn"), vec![id.clone()]);
+        update_triage(&mut conn, &id, &sensitive_update("unsorted")).unwrap();
+        assert!(found(&conn, "zebracorn").is_empty());
+        assert_eq!(found(&conn, "deploy"), vec![id.clone()]);
+
+        let paths = Paths::new("/tmp/copet-test".into());
+        let detail = get_item_detail(&conn, &id, &paths).unwrap();
+        assert!(detail.payload_text.is_none());
+    }
+
+    #[test]
+    fn undo_restores_previous_category() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Note", "", "h1")).unwrap();
+        let mut u = sensitive_update("unsorted");
+        u.sensitive = false;
+        u.triage_reason = "none:no-model".into();
+        update_triage(&mut conn, &id, &u).unwrap();
+        let events = recategorize(&mut conn, &[id.clone()], "read", "user").unwrap();
+        assert_eq!(get_row(&conn, &id).unwrap().category_id, "read");
+        assert_eq!(rules_examples(&conn), 1);
+
+        assert_eq!(undo_event(&mut conn, &events[0]).unwrap(), id);
+        let row = get_row(&conn, &id).unwrap();
+        assert_eq!(row.category_id, "unsorted");
+        assert_eq!(row.triage_source.as_deref(), Some("none"));
+        assert_eq!(row.triage_reason.as_deref(), Some("none:no-model"));
+        assert_eq!(rules_examples(&conn), 0);
+        assert!(matches!(
+            undo_event(&mut conn, &events[0]),
+            Err(AppError::Code("alreadyUndone"))
+        ));
+    }
+
+    fn rules_examples(conn: &Connection) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM category_examples WHERE deleted_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn undo_trash_restores_item() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Note", "", "h1")).unwrap();
+        let ev = trash(&mut conn, &[id.clone()]).unwrap();
+        assert_eq!(counts(&conn).unwrap().inbox, 0);
+        undo_event(&mut conn, &ev[0]).unwrap();
+        let row = get_row(&conn, &id).unwrap();
+        assert_eq!((row.status.as_str(), row.deleted_at), ("inbox", None));
+    }
+
+    #[test]
+    fn find_live_by_hash_ignores_trashed() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("A", "", "same")).unwrap();
+        assert_eq!(find_live_by_hash(&conn, "same").unwrap(), Some(id.clone()));
+        trash(&mut conn, &[id]).unwrap();
+        assert_eq!(find_live_by_hash(&conn, "same").unwrap(), None);
+    }
+
+    #[test]
+    fn list_pages_by_keyset() {
+        let db = db();
+        let mut conn = db.conn();
+        let ids: Vec<String> = (0..5)
+            .map(|i| {
+                insert_item(&mut conn, &new_text(&format!("t{i}"), "", &format!("h{i}"))).unwrap()
+            })
+            .collect();
+        let paths = Paths::new("/tmp/copet-test".into());
+        let mut q = query("");
+        q.limit = 2;
+        let mut seen = Vec::new();
+        loop {
+            let page = list_items(&conn, &q, &paths).unwrap();
+            seen.extend(page.items.into_iter().map(|i| i.id));
+            match page.next_cursor {
+                Some(c) => q.cursor = Some(c),
+                None => break,
+            }
+        }
+        // UUIDv7 ids created in one ms still sort by creation, so newest-first is reversed.
+        assert_eq!(seen, ids.into_iter().rev().collect::<Vec<_>>());
+    }
+}

@@ -1,0 +1,131 @@
+// Building blocks shared by the Settings sections and onboarding.
+import { useId, type ReactNode } from 'react';
+import { CatArt, SKINS, type CatLook, type CatSkin } from '../../pet/CatArt';
+import { poseFor } from '../../pet/pose';
+import { useT, type I18nKey } from '../../shared/i18n';
+import './settings.css';
+
+export function Group({ title, desc, children }: { title?: string; desc?: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <section className="st-group" aria-labelledby={title ? id : undefined}>
+      {title ? (
+        <div>
+          <h2 className="st-h2" id={id}>{title}</h2>
+          {desc ? <p className="st-desc">{desc}</p> : null}
+        </div>
+      ) : null}
+      {children}
+    </section>
+  );
+}
+
+/** Label + one-line description on the left, the control on the right (wraps when narrow). */
+export function SettingRow(props: { label: string; desc?: string; htmlFor?: string; children: ReactNode }) {
+  return (
+    <div className="st-row">
+      <div className="st-row__text">
+        {props.htmlFor ? (
+          <label className="st-row__label" htmlFor={props.htmlFor}>{props.label}</label>
+        ) : (
+          <span className="st-row__label">{props.label}</span>
+        )}
+        {props.desc ? <p className="st-desc">{props.desc}</p> : null}
+      </div>
+      <div className="st-row__control">{props.children}</div>
+    </div>
+  );
+}
+
+/** `value` 0..1; null shows an indeterminate strip. */
+export function ProgressBar({ value, label }: { value: number | null; label: string }) {
+  const pct = value == null ? null : Math.max(0, Math.min(1, value)) * 100;
+  return (
+    <div
+      className={pct == null ? 'st-progress is-indeterminate' : 'st-progress'}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct == null ? undefined : Math.floor(pct)}
+    >
+      <i style={pct == null ? undefined : { width: `${pct}%` }} />
+    </div>
+  );
+}
+
+const IDLE = poseFor('idle');
+
+/** A still idle cat, for tiles and avatars. */
+export function StillCat({ look, skin, label }: { look: CatLook; skin: CatSkin; label?: string }) {
+  return <CatArt look={look} skin={skin} parts={IDLE.parts} motion={null} mirrored={false} reducedMotion label={label} />;
+}
+
+export const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel'];
+export const LOOK_LABEL: Record<CatLook, I18nKey> = {
+  soft: 'settings.appearance.styleSoft',
+  sticker: 'settings.appearance.styleSticker',
+  pixel: 'settings.appearance.stylePixel',
+};
+
+export function StyleTiles(props: { value: CatLook; skin: CatSkin; onChange: (look: CatLook) => void; labelledBy?: string }) {
+  const t = useT();
+  return (
+    <div className="st-tiles" role="group" aria-labelledby={props.labelledBy}>
+      {LOOKS.map((look) => (
+        <button
+          key={look}
+          type="button"
+          className="st-tile"
+          aria-pressed={props.value === look}
+          onClick={() => props.onChange(look)}
+        >
+          <span className="st-tile__art"><StillCat look={look} skin={props.skin} /></span>
+          {t(LOOK_LABEL[look])}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const SKIN_ORDER: readonly CatSkin[] = ['peach', 'tabby', 'midnight'];
+const SKIN_LABEL: Record<CatSkin, I18nKey> = {
+  peach: 'settings.appearance.skinPeach',
+  tabby: 'settings.appearance.skinTabby',
+  midnight: 'settings.appearance.skinMidnight',
+};
+
+export function SkinSwatches(props: { value: CatSkin; onChange: (skin: CatSkin) => void; labelledBy?: string }) {
+  const t = useT();
+  return (
+    <div className="st-swatches" role="group" aria-labelledby={props.labelledBy}>
+      {SKIN_ORDER.map((skin) => (
+        <button
+          key={skin}
+          type="button"
+          className="st-swatch"
+          aria-pressed={props.value === skin}
+          onClick={() => props.onChange(skin)}
+        >
+          <span className="st-swatch__dot" style={{ background: SKINS[skin].body }} aria-hidden="true" />
+          {t(SKIN_LABEL[skin])}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Rust commands reject with the AppError message string. */
+export function errorText(e: unknown): string {
+  if (typeof e === 'string') return e;
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+export function asLook(v: unknown): CatLook {
+  return v === 'sticker' || v === 'pixel' ? v : 'soft';
+}
+
+export function asSkin(v: unknown): CatSkin {
+  return v === 'tabby' || v === 'midnight' ? v : 'peach';
+}

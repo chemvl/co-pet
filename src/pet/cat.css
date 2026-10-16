@@ -1,0 +1,103 @@
+/* Cat art motions (plan Step 5.2 pose table). One transform animation on the
+   .cp-cat__body layer; `--cat-dur` is the trigger length or loop period and
+   `--cat-dir` is +1/−1 for "away from the edge" on screen. */
+.cp-cat { position: relative; width: 100%; height: 100%; line-height: 0; }
+.cp-cat__body { position: absolute; inset: 0; transform-origin: 50% 100%; will-change: transform; }
+.cp-cat__svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.cp-cat__body[data-motion='breathe'] { animation: cp-cat-breathe var(--cat-dur) ease-in-out infinite; }
+.cp-cat__body[data-motion='stretch'] { animation: cp-cat-stretch var(--cat-dur) var(--ease-out, ease-out); }
+.cp-cat__body[data-motion='hop'] { animation: cp-cat-hop var(--cat-dur) var(--ease-out, ease-out); }
+.cp-cat__body[data-motion='lean'] {
+  animation: cp-cat-lean-in 100ms var(--ease-out, ease-out) both,
+    cp-cat-lean var(--cat-dur) ease-in-out 100ms infinite;
+}
+.cp-cat__body[data-motion='bounce'] { animation: cp-cat-bounce var(--cat-dur) var(--ease-out, ease-out); }
+.cp-cat__body[data-motion='offer'] { animation: cp-cat-offer var(--cat-dur) var(--ease-out, ease-out); }
+.cp-cat[data-edge='bottom'] .cp-cat__body[data-motion='offer'] { animation-name: cp-cat-offer-up; }
+.cp-cat__body[data-motion='shake'] { animation: cp-cat-shake var(--cat-dur) ease-in-out; }
+.cp-cat__body[data-motion='tilt'] { animation: cp-cat-tilt var(--cat-dur) var(--ease-out, ease-out); }
+.cp-cat__body[data-motion='poof'] { animation: cp-cat-poof var(--cat-dur) ease-in-out; }
+
+/* Fidgets animate one part only. */
+.cp-cat__ear, .cp-cat__tail { transform-box: fill-box; }
+.cp-cat__ear { transform-origin: 50% 100%; }
+.cp-cat__tail { transform-origin: 0% 100%; }
+.cp-cat__body[data-motion='ear'] .cp-cat__ear { animation: cp-cat-ear var(--cat-dur) ease-in-out; }
+.cp-cat__body[data-motion='tail'] .cp-cat__tail { animation: cp-cat-tail var(--cat-dur) ease-in-out; }
+/* Blink: eyes shut for 150 ms of the 1200 ms fidget. */
+.cp-cat__body[data-motion='blink'] .cp-cat__eyes { animation: cp-cat-eyes var(--cat-dur) step-end; }
+.cp-cat__lids { opacity: 0; }
+.cp-cat__body[data-motion='blink'] .cp-cat__lids { animation: cp-cat-lids var(--cat-dur) step-end; }
+.cp-cat__body[data-motion='dots'] .cp-cat__dots circle { animation: cp-cat-dot var(--cat-dur) ease-in-out infinite; }
+.cp-cat__body[data-motion='dots'] .cp-cat__dots circle:nth-child(2) { animation-delay: 150ms; }
+.cp-cat__body[data-motion='dots'] .cp-cat__dots circle:nth-child(3) { animation-delay: 300ms; }
+
+/* Camera: white flash over the art. */
+.cp-cat__flash {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(closest-side, #ffffff 60%, rgba(255, 255, 255, 0));
+  animation: cp-cat-flash var(--cat-dur) ease-out;
+}
+
+/* Above-head FX: centred in the top 22% of the art. */
+.cp-cat__fx {
+  position: absolute; left: 50%; top: 11%; width: 28px; height: 28px; margin: -14px 0 0 -14px;
+  box-sizing: border-box; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--bubble); box-shadow: 0 0 0 1px var(--bubble-ring); pointer-events: none;
+  animation: cp-cat-fx-pop 200ms var(--ease-spring, ease-out);
+}
+.cp-cat__fx-q { font: 700 18px/1 var(--font-display); color: var(--bubble-ink); }
+
+/* Reduced motion (or pause): the key pose only. Hidden: freeze where it is. */
+.cp-cat.is-still, .cp-cat.is-still * { animation: none !important; }
+.cp-cat.is-paused, .cp-cat.is-paused * { animation-play-state: paused !important; }
+
+@keyframes cp-cat-breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.02); } }
+@keyframes cp-cat-stretch { 0%, 100% { transform: none; } 50% { transform: translateY(-6px) scaleY(1.06); } }
+@keyframes cp-cat-hop { 0%, 100% { transform: none; } 50% { transform: translateY(-4px); } }
+@keyframes cp-cat-lean-in { from { transform: none; } to { transform: rotate(calc(6deg * var(--cat-dir))); } }
+@keyframes cp-cat-lean {
+  0%, 100% { transform: rotate(calc(6deg * var(--cat-dir))); }
+  50% { transform: rotate(calc(3deg * var(--cat-dir))); }
+}
+@keyframes cp-cat-bounce {
+  0%, 50%, 100% { transform: none; }
+  25%, 75% { transform: translateY(-8px); }
+}
+@keyframes cp-cat-offer {
+  0%, 100% { transform: none; }
+  40%, 70% { transform: translateX(calc(6px * var(--cat-dir))); }
+}
+@keyframes cp-cat-offer-up {
+  0%, 100% { transform: none; }
+  40%, 70% { transform: translateY(-6px); }
+}
+@keyframes cp-cat-shake {
+  0%, 100% { transform: none; }
+  17%, 50%, 83% { transform: rotate(6deg); }
+  33%, 67% { transform: rotate(-6deg); }
+}
+@keyframes cp-cat-tilt {
+  0%, 100% { transform: none; }
+  20%, 80% { transform: rotate(calc(10deg * var(--cat-dir))); }
+}
+@keyframes cp-cat-poof {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes cp-cat-ear {
+  0%, 20%, 40%, 100% { transform: none; }
+  10%, 30% { transform: rotate(8deg); }
+}
+@keyframes cp-cat-tail {
+  0%, 100% { transform: none; }
+  25%, 75% { transform: rotate(10deg); }
+  50% { transform: rotate(-6deg); }
+}
+@keyframes cp-cat-eyes { 0% { opacity: 1; } 40% { opacity: 0; } 52.5% { opacity: 1; } }
+@keyframes cp-cat-lids { 0% { opacity: 0; } 40% { opacity: 1; } 52.5% { opacity: 0; } }
+@keyframes cp-cat-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes cp-cat-flash { 0% { opacity: 0; } 30% { opacity: 0.8; } 100% { opacity: 0; } }
+@keyframes cp-cat-fx-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }

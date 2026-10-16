@@ -9,8 +9,13 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "drag:default",
     "opener:default",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$APPDATA/library/**" }]
+    }
   ]
 }

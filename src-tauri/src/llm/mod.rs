@@ -1,0 +1,199 @@
+//! Local model runtime: a lazily started `llama-server` child bound to 127.0.0.1 with a random
+//! API key, stopped after 300 s without requests and on quit.
+pub mod download;
+pub mod models;
+
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use serde_json::{json, Value};
+use tauri::{AppHandle, Manager};
+use tokio::process::{Child, Command};
+
+use crate::db::settings;
+use crate::error::{AppError, AppResult};
+use crate::paths::Paths;
+
+const IDLE_STOP: Duration = Duration::from_secs(300);
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
+
+struct Running {
+    child: Child,
+    port: u16,
+    key: String,
+    model: PathBuf,
+}
+
+/// Managed state (`app.state::<LlmServer>()`).
+pub struct LlmServer {
+    running: tokio::sync::Mutex<Option<Running>>,
+    last_used: Mutex<Instant>,
+    watchdog: Mutex<bool>,
+    http: reqwest::Client,
+}
+
+impl Default for LlmServer {
+    fn default() -> Self {
+        LlmServer {
+            running: tokio::sync::Mutex::new(None),
+            last_used: Mutex::new(Instant::now()),
+            watchdog: Mutex::new(false),
+            http: reqwest::Client::new(),
+        }
+    }
+}
+
+/// Folder holding `llama-server` and its dylibs: `Contents/Resources/llama/` in the bundle;
+/// in debug builds falls back to `src-tauri/resources/llama/` when the resource dir lacks it.
+fn server_dir(app: &AppHandle) -> AppResult<PathBuf> {
+    let dir = app.path().resource_dir()?.join("llama");
+    if !dir.join("llama-server").exists() && cfg!(debug_assertions) {
+        return Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join("llama"));
+    }
+    Ok(dir)
+}
+
+/// The verified file of the selected model (`ai.modelId`), if it is downloaded.
+pub fn active_model_path(app: &AppHandle) -> Option<PathBuf> {
+    let id = settings::read::<Option<String>>(app, "ai.modelId").ok().flatten()?;
+    let path = models::model_path(&app.state::<Paths>(), models::find(&id)?);
+    path.exists().then_some(path)
+}
+
+/// Binds `127.0.0.1:0`, reads the port the OS picked and releases it.
+fn free_port() -> AppResult<u16> {
+    Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
+}
+
+impl LlmServer {
+    /// Starts `llama-server` for the selected model unless it already runs. Error `noModel`
+    /// when no verified model is present.
+    pub async fn ensure_running(&self, app: &AppHandle) -> AppResult<()> {
+        let model = active_model_path(app).ok_or(AppError::Code("noModel"))?;
+        self.start_with(&server_dir(app)?, &model).await?;
+        let mut started = self.watchdog.lock().unwrap_or_else(|e| e.into_inner());
+        if !*started {
+            *started = true;
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    let llm = app.state::<LlmServer>();
+                    let idle = llm.last_used.lock().unwrap_or_else(|e| e.into_inner()).elapsed();
+                    if idle >= IDLE_STOP {
+                        llm.stop().await;
+                    }
+                }
+            });
+        }
+        Ok(())
+    }
+
+    /// Spawns `<dir>/llama-server` for `model` unless a live child already serves it, then
+    /// waits for `/health` to answer 200.
+    pub async fn start_with(&self, dir: &Path, model: &Path) -> AppResult<()> {
+        self.touch();
+        let mut running = self.running.lock().await;
+        if let Some(r) = running.as_mut() {
+            if r.model == model && matches!(r.child.try_wait(), Ok(None)) {
+                return Ok(());
+            }
+            let _ = r.child.kill().await;
+            *running = None;
+        }
+        let exe = dir.join("llama-server");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))?;
+        }
+        let port = free_port()?;
+        let key = uuid::Uuid::new_v4().simple().to_string();
+        let mut child = Command::new(&exe)
+            .arg("-m")
+            .arg(model)
+            .args(["--host", "127.0.0.1", "--port", &port.to_string(), "--api-key", &key])
+            .args(["-c", "8192", "-ngl", "99", "--parallel", "1", "--no-webui"])
+            .args(["--reasoning", "off", "--log-disable"])
+            .current_dir(dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()?;
+
+        let health = format!("http://127.0.0.1:{port}/health");
+        let deadline = Instant::now() + HEALTH_TIMEOUT;
+        loop {
+            if let Ok(Some(status)) = child.try_wait() {
+                return Err(AppError::msg(format!("llama-server exited: {status}")));
+            }
+            let ok = self
+                .http
+                .get(&health)
+                .timeout(Duration::from_secs(2))
+                .send()
+                .await
+                .is_ok_and(|r| r.status().is_success());
+            if ok {
+                break;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill().await;
+                return Err(AppError::msg("llama-server did not become healthy in 60 s"));
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        *running = Some(Running { child, port, key, model: model.to_path_buf() });
+        Ok(())
+    }
+
+    fn touch(&self) {
+        *self.last_used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+    }
+
+    /// One structured-output chat completion; returns the parsed JSON content.
+    pub async fn chat_json(&self, system: &str, user: &str, schema: &Value) -> AppResult<Value> {
+        self.touch();
+        let (port, key) = {
+            let running = self.running.lock().await;
+            let r = running.as_ref().ok_or(AppError::Code("notRunning"))?;
+            (r.port, r.key.clone())
+        };
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user },
+            ],
+            "temperature": 0.2,
+            "max_tokens": 400,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": { "name": "triage", "strict": true, "schema": schema },
+            },
+        });
+        let resp: Value = self
+            .http
+            .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+            .bearer_auth(key)
+            .json(&body)
+            .timeout(Duration::from_secs(120))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        self.touch();
+        let content = resp["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| AppError::msg("llama-server reply has no content"))?;
+        Ok(serde_json::from_str(content)?)
+    }
+
+    /// Kills the child, if any (idle timeout, model switch, quit).
+    pub async fn stop(&self) {
+        if let Some(mut r) = self.running.lock().await.take() {
+            let _ = r.child.kill().await;
+        }
+    }
+}

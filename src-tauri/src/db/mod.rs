@@ -2,6 +2,7 @@
 pub mod items;
 pub mod migrations;
 pub mod search;
+pub mod rules;
 pub mod settings;
 
 use std::path::Path;

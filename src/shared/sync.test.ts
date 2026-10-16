@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translate } from './i18n';
-import { canSyncNow, localPillLabel, syncPill } from './sync';
+import { canSyncNow, localPillLabel, pendingText, syncPill } from './sync';
 import type { SyncState } from './types';
 
 const STATES: SyncState[] = ['off', 'paused', 'needsKey', 'syncing', 'idle', 'offline', 'error', 'signedOut'];
@@ -52,5 +52,14 @@ describe('localPillLabel', () => {
       expect(localPillLabel(big, s, true)).toBe('common.localOnly');
       expect(localPillLabel(small, s, false)).toBeNull();
     }
+  });
+});
+
+describe('pendingText', () => {
+  it('uses the singular for one change', () => {
+    const en = (key: Parameters<typeof translate>[1], p?: Record<string, string | number>) => translate('en', key, p);
+    expect(pendingText(en, 1)).toBe('1 change waiting');
+    expect(pendingText(en, 3)).toBe('3 changes waiting');
+    expect(pendingText((k, p) => translate('vi', k, p), 1)).toBe('1 thay đổi đang chờ');
   });
 });

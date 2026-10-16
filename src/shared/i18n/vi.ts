@@ -479,6 +479,7 @@ export const vi: Record<keyof typeof en, string> = {
   'settings.account.deviceName': 'Tên máy Mac này',
   'settings.account.maxFile': 'File lớn hơn {n} MB chỉ ở trên máy Mac đã lưu nó.',
   'settings.account.lastSynced': 'Đồng bộ lần cuối {time}',
+  'settings.account.waitingOne': '1 thay đổi đang chờ',
   'settings.account.waiting': '{n} thay đổi đang chờ',
   'settings.account.deleteCloud': 'Xoá dữ liệu đám mây',
   'settings.account.deleteCloudTitle': 'Xoá dữ liệu đám mây?',

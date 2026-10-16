@@ -478,6 +478,7 @@ export const en = {
   'settings.account.deviceName': "This Mac's name",
   'settings.account.maxFile': 'Files over {n} MB stay on the Mac that captured them.',
   'settings.account.lastSynced': 'Last synced {time}',
+  'settings.account.waitingOne': '1 change waiting',
   'settings.account.waiting': '{n} changes waiting',
   'settings.account.deleteCloud': 'Delete cloud data',
   'settings.account.deleteCloudTitle': 'Delete cloud data?',

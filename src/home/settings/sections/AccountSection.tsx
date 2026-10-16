@@ -7,7 +7,7 @@ import {
   sendEmailCode, signInGoogle, signOut, syncNow, verifyEmailCode,
 } from '../../../shared/ipc';
 import { ACCOUNT_KEY, useAccountStatus, useSetSetting, useSetting, useSyncStatus } from '../../../shared/queries';
-import { syncPill } from '../../../shared/sync';
+import { pendingText, syncPill } from '../../../shared/sync';
 import { useToast } from '../../../shared/Toast';
 import type { AccountStatus } from '../../../shared/types';
 import { relativeTime } from '../../agents/activityText';
@@ -367,7 +367,7 @@ function SyncRow({ r }: { r: Run }): ReactElement | null {
             ? ` · ${t('settings.account.lastSynced', { time: relativeTime(sync.lastSyncedAt, Date.now(), t, lang) })}`
             : null}
         </p>
-        {sync.pending > 0 ? <p className="st-desc">{t('settings.account.waiting', { n: sync.pending })}</p> : null}
+        {sync.pending > 0 ? <p className="st-desc">{pendingText(t, sync.pending)}</p> : null}
       </div>
       <Button size="sm" icon="sync" disabled={r.busy || sync.state === 'syncing'} onClick={() => void r.run(syncNow)}>
         {t('sync.now')}

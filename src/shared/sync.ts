@@ -1,7 +1,7 @@
 // Pure mapping from the sync engine's state to what the UI shows: the title-bar pill, whether
 // "Sync now" is offered, and which items still carry a local-only pill.
 import type { IconName, Status } from '../ds/types';
-import type { I18nKey } from './i18n';
+import type { I18nKey, TFunction } from './i18n';
 import type { ItemSummary, SyncState } from './types';
 
 export interface SyncPill {
@@ -47,4 +47,9 @@ export function localPillLabel(
   // Content leaves this Mac in these states.
   if (state === 'idle' || state === 'syncing' || state === 'offline') return item.fileTooLarge ? 'item.onlyThisMac' : null;
   return localByDefault ? 'common.localOnly' : null;
+}
+
+/** "1 change waiting" / "{n} changes waiting". */
+export function pendingText(t: TFunction, n: number): string {
+  return n === 1 ? t('settings.account.waitingOne') : t('settings.account.waiting', { n });
 }

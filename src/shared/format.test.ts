@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatEstimate, formatSize, formatTime, joinMeta } from './format';
+import { formatDate, formatEstimate, formatSize, formatTime, formatWeekday, joinMeta } from './format';
 
 describe('format', () => {
   it('formats dates per language', () => {
@@ -7,6 +7,12 @@ describe('format', () => {
     expect(formatDate(new Date(2025, 9, 17), 'vi')).toBe('T6, 17/10');
     expect(formatDate(new Date(2025, 9, 17), 'en')).toBe('Fri 17 Oct');
     expect(formatDate(new Date(2025, 9, 19), 'vi')).toBe('CN, 19/10');
+  });
+  it('names ISO weekdays per language', () => {
+    expect(formatWeekday(1, 'en')).toBe('Mon');
+    expect(formatWeekday(7, 'en')).toBe('Sun');
+    expect(formatWeekday(1, 'vi')).toBe('T2');
+    expect(formatWeekday(7, 'vi')).toBe('CN');
   });
   it('formats 24-hour time', () => {
     expect(formatTime(new Date(2026, 9, 17, 14, 0))).toBe('14:00');

@@ -1,19 +1,21 @@
 // Tasks (Tasks.dc.html): Open grouped by due date (Overdue · Today · This week · Later) or
 // Done, the task editor in the right column (over the list below 1100 px), row actions menu,
 // J/K focus, Enter opens, Space toggles done.
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Button, Icon, SegmentedControl, TaskRow } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { formatEstimate } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
+import { nextAction } from '../../shared/ipc';
 import type { TaskSummary } from '../../shared/types';
 import { isTypingTarget, useDelayed, useMediaQuery } from '../hooks';
 import { EmptyState, Skeleton } from '../InboxPage';
 import { Menu, type MenuItem } from '../Menu';
-import { countsQuery, tasksQuery } from '../queries';
+import { countsQuery, nextQuery, tasksQuery } from '../queries';
 import { navigate, type Route } from '../router';
 import { dueText, GROUP_KEYS, groupTasks, isDueSoon, type GroupKey } from './groups';
+import { NextCardView, type CardAction } from './NextCardView';
 import { TaskEditor } from './TaskEditor';
 import { useTaskActions } from './useTaskActions';
 import './tasks.css';
@@ -240,11 +242,28 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
             {body}
             {footer}
           </section>
-          {/* Right column: the editor; with nothing selected, the panels later milestones add. */}
-          {wide ? <div className="tk-side">{editor}</div> : null}
+          {/* Right column: the editor; with nothing selected, the What's Next card. */}
+          {wide ? <div className="tk-side">{editor ?? <NextColumn />}</div> : null}
         </div>
       )}
       {menu ? <Menu anchor={menuAnchor} items={menuItems(menu.task)} label={t('tasks.actions')} align="end" onClose={closeMenu} /> : null}
     </div>
   );
+}
+
+/** What's Next for the Tasks page (`whatsNext('home')`: rank only, no model call). */
+function NextColumn(): ReactElement | null {
+  const t = useT();
+  const qc = useQueryClient();
+  const { fail } = useTaskActions();
+  const { data: card, isSuccess } = useQuery(nextQuery);
+  if (!isSuccess) return null;
+  if (!card) return <p className="body hm-muted tk-msg">{t('next.empty')}</p>;
+  const onAction = (action: CardAction) => {
+    nextAction(card.taskId, action, 'home')
+      .catch(fail)
+      // Skip changes no task, so no `tasks-changed` refreshes the card.
+      .finally(() => void qc.invalidateQueries({ queryKey: ['next'] }));
+  };
+  return <NextCardView card={card} onAction={onAction} />;
 }

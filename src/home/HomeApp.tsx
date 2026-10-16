@@ -31,6 +31,7 @@ function useLiveQueries(): void {
       void qc.invalidateQueries({ queryKey: ['tasks'] });
       void qc.invalidateQueries({ queryKey: ['task'] });
       void qc.invalidateQueries({ queryKey: ['item'] });
+      void qc.invalidateQueries({ queryKey: ['next'] });
     };
     const subs = [
       on('items-changed', refresh),

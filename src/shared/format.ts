@@ -21,6 +21,11 @@ export function formatDate(d: Date | number, lang: Lang): string {
   return `${EN_DAYS[wd]} ${day} ${EN_MONTHS[date.getMonth()]}`;
 }
 
+/** Short weekday for an ISO weekday (1 = Monday … 7 = Sunday): en `Mon`, vi `T2`. */
+export function formatWeekday(isoDay: number, lang: Lang): string {
+  return (lang === 'vi' ? VI_DAYS : EN_DAYS)[isoDay % 7];
+}
+
 /** Decimal units; one decimal for GB and MB, none for KB; vi uses a decimal comma. */
 export function formatSize(bytes: number, lang: Lang): string {
   const units: [number, string, number][] = [[1e9, 'GB', 1], [1e6, 'MB', 1], [1e3, 'KB', 0]];

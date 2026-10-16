@@ -10,15 +10,17 @@ import { GeneralSection } from './sections/GeneralSection';
 import { NotificationsSection } from './sections/NotificationsSection';
 import { PrivacySection } from './sections/PrivacySection';
 import { TriageSection } from './sections/TriageSection';
+import { WhatsNextSection } from './sections/WhatsNextSection';
 import './settings.css';
 
 export type SettingsSectionId =
-  | 'general' | 'capture' | 'triage' | 'notifications' | 'privacy' | 'appearance' | 'data' | 'about';
+  | 'general' | 'capture' | 'triage' | 'whatsnext' | 'notifications' | 'privacy' | 'appearance' | 'data' | 'about';
 
 export const SETTINGS_SECTIONS: readonly { id: SettingsSectionId; label: I18nKey }[] = [
   { id: 'general', label: 'settings.general' },
   { id: 'capture', label: 'settings.capture' },
   { id: 'triage', label: 'settings.triage' },
+  { id: 'whatsnext', label: 'settings.whatsnext' },
   { id: 'notifications', label: 'settings.notifications' },
   { id: 'privacy', label: 'settings.privacy' },
   { id: 'appearance', label: 'settings.appearance' },
@@ -46,6 +48,7 @@ export function SettingsPage({ section, onNavigate }: SettingsPageProps) {
     case 'general': body = <GeneralSection />; break;
     case 'capture': body = <CaptureSection />; break;
     case 'triage': body = <TriageSection />; break;
+    case 'whatsnext': body = <WhatsNextSection />; break;
     case 'notifications': body = <NotificationsSection />; break;
     case 'privacy': body = <PrivacySection onNavigate={onNavigate} />; break;
     case 'appearance': body = <AppearanceSection />; break;

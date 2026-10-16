@@ -61,6 +61,19 @@ pub fn active_model_path(app: &AppHandle) -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+/// Makes `model_id` the active model (`ai.modelId`). A server running another model is stopped
+/// so the next request starts the selected one. Error `unknownModel`.
+pub async fn select_model(app: &AppHandle, model_id: &str) -> AppResult<()> {
+    let spec = models::find(model_id).ok_or(AppError::Code("unknownModel"))?;
+    let current = settings::read::<Option<String>>(app, "ai.modelId")?;
+    if current.as_deref() != Some(spec.id) {
+        settings::set(app, "ai.modelId", &Value::String(spec.id.into()))?;
+        app.state::<LlmServer>().stop().await;
+    }
+    crate::events::ai_status(app, app.state::<download::Downloader>().status(app));
+    Ok(())
+}
+
 /// Binds `127.0.0.1:0`, reads the port the OS picked and releases it.
 fn free_port() -> AppResult<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())

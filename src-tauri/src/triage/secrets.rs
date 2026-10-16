@@ -63,7 +63,6 @@ pub fn is_sensitive(text: &str) -> bool {
 /// Applies [`is_sensitive`] to everything a secret can hide in: payload text, extracted text,
 /// the URL query string and the file name. The caller skips this when
 /// `privacy.secretDetection` is off.
-#[allow(dead_code)] // called by the triage worker
 pub fn is_sensitive_item(item: &ItemRow) -> bool {
     let query = item
         .url

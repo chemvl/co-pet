@@ -17,7 +17,6 @@ const THUMB_MAX_SOURCE: u64 = 40 * 1024 * 1024;
 const SNIFF_LEN: usize = 8192;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // fields read by capture (Step 6)
 pub struct StoredFile {
     /// Relative to `Paths::library`.
     pub rel_path: String,
@@ -69,7 +68,6 @@ fn commit(paths: &Paths, staged: &Path, rel: &str) -> AppResult<()> {
 
 /// Copies `src` into the library, hashing while streaming. With `move_original`, the source is
 /// removed after a successful store; failing to remove it is logged, not fatal.
-#[allow(dead_code)] // called by capture (Step 6)
 pub fn store_file(paths: &Paths, src: &Path, move_original: bool) -> AppResult<StoredFile> {
     if src.is_dir() {
         return Err(AppError::Code("isDirectory"));
@@ -124,7 +122,6 @@ pub fn store_file(paths: &Paths, src: &Path, move_original: bool) -> AppResult<S
 }
 
 /// Stores in-memory bytes (pasted images, downloaded previews) under the given extension.
-#[allow(dead_code)] // called by capture and extraction (Steps 6, 8)
 pub fn store_bytes(paths: &Paths, bytes: &[u8], ext: &str) -> AppResult<StoredFile> {
     let sha = hex::encode(Sha256::digest(bytes));
     let ext = clean_ext(ext);
@@ -145,7 +142,6 @@ pub fn store_bytes(paths: &Paths, bytes: &[u8], ext: &str) -> AppResult<StoredFi
 
 /// A PNG thumbnail (longest side 256 px) of an image blob, as `thumbs/<sha>.png`. `None` for
 /// files over 40 MB or formats the `image` crate cannot decode.
-#[allow(dead_code)] // called by extraction (Step 8)
 pub fn make_thumb(paths: &Paths, rel: &str) -> Option<String> {
     let src = paths.abs(rel);
     let sha = src.file_stem()?.to_str()?;
@@ -187,7 +183,6 @@ pub fn make_thumb(paths: &Paths, rel: &str) -> Option<String> {
 }
 
 /// Deletes a library file; a missing file is fine, other failures are logged.
-#[allow(dead_code)] // called by capture on duplicates (Step 6)
 pub fn remove_blob(paths: &Paths, rel: &str) {
     match fs::remove_file(paths.abs(rel)) {
         Ok(()) => {}
@@ -210,10 +205,22 @@ fn safe_name(name: &str) -> String {
         .collect();
     let trimmed = cleaned.trim().trim_start_matches('.');
     if trimmed.is_empty() {
-        "item".into()
-    } else {
-        trimmed.chars().take(200).collect()
+        return "item".into();
     }
+    // APFS NAME_MAX is 255 bytes; keep ≤200 bytes, truncating the stem on a char boundary.
+    const MAX: usize = 200;
+    if trimmed.len() <= MAX {
+        return trimmed.into();
+    }
+    let (stem, ext) = match trimmed.rfind('.') {
+        Some(i) if trimmed.len() - i <= 16 => trimmed.split_at(i),
+        _ => (trimmed, ""),
+    };
+    let mut end = MAX - ext.len();
+    while !stem.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{ext}", &stem[..end])
 }
 
 fn dragout_dir(paths: &Paths) -> AppResult<PathBuf> {
@@ -224,7 +231,6 @@ fn dragout_dir(paths: &Paths) -> AppResult<PathBuf> {
 
 /// The blob under its original file name in `tmp/dragout/<uuid>/`, so a drop keeps the real
 /// name. Hard-linked; copied when linking fails.
-#[allow(dead_code)] // called by prepare_drag (Step 7)
 pub fn dragout_path(paths: &Paths, item: &ItemRow) -> AppResult<PathBuf> {
     let rel = item.file_path.as_deref().ok_or(AppError::Code("noFile"))?;
     let src = paths.abs(rel);
@@ -243,7 +249,6 @@ pub fn dragout_path(paths: &Paths, item: &ItemRow) -> AppResult<PathBuf> {
 }
 
 /// Writes `<name>.<ext>` (e.g. a `.md` or `.webloc`) into a fresh `tmp/dragout/<uuid>/`.
-#[allow(dead_code)] // called by prepare_drag (Step 7)
 pub fn temp_text_file(paths: &Paths, name: &str, ext: &str, content: &str) -> AppResult<PathBuf> {
     let dest = dragout_dir(paths)?.join(format!("{}.{}", safe_name(name), clean_ext(ext)));
     fs::write(&dest, content)?;
@@ -253,6 +258,17 @@ pub fn temp_text_file(paths: &Paths, name: &str, ext: &str, content: &str) -> Ap
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn safe_name_truncates_bytes_keeping_extension() {
+        let long = format!("{}.pdf", "Đường đến Việt Nam ".repeat(20));
+        let name = safe_name(&long);
+        assert!(name.len() <= 200);
+        assert!(name.ends_with(".pdf"));
+        assert!(name.starts_with("Đường"));
+        let plain = safe_name(&"Việt".repeat(80));
+        assert!(plain.len() <= 200 && plain.starts_with("Việt"));
+    }
 
     fn paths() -> (tempfile::TempDir, Paths) {
         let dir = tempfile::tempdir().unwrap();

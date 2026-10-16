@@ -91,6 +91,9 @@ export const en = {
   'pet.menu.doubleClick': 'Double-click',
   'pet.quickNote.placeholder': 'Write a quick note',
   'pet.announce.savedTo': 'Saved to {category}',
+  'pet.announce.duplicate': 'Already saved',
+  'pet.menu.label': 'Pet menu',
+  'pet.quickNote.label': 'Quick note',
 
   'notice.clipboardExcluded': "Clipboard from {app} isn't saved.",
   'notice.clipboardEmpty': 'The clipboard is empty.',
@@ -103,6 +106,8 @@ export const en = {
   'tray.searchPlaceholder': 'Search items',
   'tray.altDragHint': 'Alt + drag to drop as a file',
   'tray.empty': 'Nothing here yet. Drop anything on {name} to save it.',
+  'tray.views': 'Tray view',
+  'tray.noResults': 'No items match your search.',
 
   'toast.movedTo': 'Moved to {category}.',
   'toast.pinned': 'Pinned.',

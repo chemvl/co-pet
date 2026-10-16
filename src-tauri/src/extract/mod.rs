@@ -10,7 +10,6 @@ use crate::paths::Paths;
 
 const TEXT_CAP: usize = 200_000;
 
-#[allow(dead_code)] // read by the triage worker
 #[derive(Debug, Clone, Default)]
 pub struct ExtractOut {
     pub text: Option<String>,
@@ -42,7 +41,6 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())
 }
 
-#[allow(dead_code)] // called by the triage worker
 pub async fn extract(paths: &Paths, item: &ItemRow, local_only: bool) -> ExtractOut {
     match item.kind.as_str() {
         "image" | "screenshot" => {

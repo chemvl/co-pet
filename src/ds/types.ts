@@ -28,6 +28,7 @@ export interface StatusPillProps { status: Status; label?: string; icon?: IconNa
 
 export interface PetBadgeProps { count?: number; dot?: boolean; label?: string; className?: string }
 
+/** App addition: `Bubble` forwards its ref to the `<button>` (PetDock bubble focus). */
 export interface BubbleProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconName;
   label: string;
@@ -58,6 +59,10 @@ export interface PetDockProps {
   bubbleFocusRef?: (index: number, el: HTMLButtonElement | null) => void;
 }
 
+/**
+ * App addition: `SearchField` forwards its ref to the `<input>` (Cmd+K focus). The HTML `size`
+ * attribute is omitted so `size` can carry the design-system 'md' | 'lg' variant.
+ */
 export interface SearchFieldProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> { shortcut?: string[]; size?: 'md' | 'lg' }
 
 export interface SegmentedControlProps {

@@ -58,7 +58,6 @@ impl PointerState {
     }
 
     /// While hidden the panel ignores the mouse and region checks stop.
-    #[allow(dead_code)] // called by the hidden-state monitor (Step 10)
     pub fn set_hidden(&self, hidden: bool) {
         self.lock().hidden = hidden;
     }

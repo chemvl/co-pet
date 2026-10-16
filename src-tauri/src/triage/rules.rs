@@ -14,12 +14,12 @@ pub struct RuleMatch {
 }
 
 /// URL host, lowercase, without a leading `www.`.
-fn host(url: &str) -> Option<String> {
+pub(crate) fn host(url: &str) -> Option<String> {
     let host = url::Url::parse(url.trim()).ok()?.host_str()?.to_ascii_lowercase();
     Some(host.strip_prefix("www.").map(str::to_owned).unwrap_or(host))
 }
 
-fn extension(file_name: &str) -> Option<String> {
+pub(crate) fn extension(file_name: &str) -> Option<String> {
     let (stem, ext) = file_name.rsplit_once('.')?;
     (!stem.is_empty() && !ext.is_empty()).then(|| ext.to_ascii_lowercase())
 }
@@ -60,7 +60,6 @@ fn reason(rule: &Rule, item: &ItemRow) -> String {
     }
 }
 
-#[allow(dead_code)] // called by the triage worker
 pub fn match_rules(item: &ItemRow, rules: &[Rule]) -> Option<RuleMatch> {
     let mut ordered: Vec<&Rule> = rules.iter().collect();
     // User rules (builtin = false) first, each group by ascending position.

@@ -92,6 +92,9 @@ export const vi: Record<keyof typeof en, string> = {
   'pet.menu.doubleClick': 'Bấm đúp',
   'pet.quickNote.placeholder': 'Viết ghi chú nhanh',
   'pet.announce.savedTo': 'Đã lưu vào {category}',
+  'pet.announce.duplicate': 'Đã lưu trước đó',
+  'pet.menu.label': 'Menu thú cưng',
+  'pet.quickNote.label': 'Ghi chú nhanh',
 
   'notice.clipboardExcluded': 'Clipboard từ {app} không được lưu.',
   'notice.clipboardEmpty': 'Clipboard đang trống.',
@@ -104,6 +107,8 @@ export const vi: Record<keyof typeof en, string> = {
   'tray.searchPlaceholder': 'Tìm mục',
   'tray.altDragHint': 'Giữ Alt và kéo để thả thành file',
   'tray.empty': 'Chưa có gì. Kéo bất cứ thứ gì vào {name} để lưu lại.',
+  'tray.views': 'Chế độ xem khay',
+  'tray.noResults': 'Không có mục nào khớp với tìm kiếm.',
 
   'toast.movedTo': 'Đã chuyển tới {category}.',
   'toast.pinned': 'Đã ghim.',

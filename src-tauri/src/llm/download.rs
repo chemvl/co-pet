@@ -201,7 +201,6 @@ impl Downloader {
     }
 
     /// Pauses the running download; the `.part` file is kept for resuming.
-    #[allow(dead_code)] // called by the `ai_pause` command
     pub fn pause(&self, app: &AppHandle) {
         let model_id = {
             let mut inner = lock(&self.inner);

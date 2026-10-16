@@ -27,7 +27,6 @@ pub struct ItemRow {
     pub size_bytes: Option<i64>,
     pub thumb_path: Option<String>,
     pub source_app: Option<String>,
-    pub source_bundle_id: Option<String>,
     /// `drop | clipboard | screenshot | note | selection`
     pub source_kind: String,
     pub extracted_text: Option<String>,
@@ -45,7 +44,6 @@ pub struct ItemRow {
     /// `inbox | archived | trashed`
     pub status: String,
     pub pinned: bool,
-    pub content_hash: String,
     pub captured_at: i64,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
@@ -289,4 +287,23 @@ pub enum DragPlan {
 pub struct PermissionsStatus {
     pub screen_recording: bool,
     pub accessibility: bool,
+}
+
+/// `list_excluded_apps`: an excluded bundle id and the installed app's name (`None` when the app
+/// isn't installed).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExcludedApp {
+    pub bundle_id: String,
+    pub name: Option<String>,
+}
+
+/// `pet_status`: the pet's hidden/sleep state now, for a pet window that missed the change events.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PetStatus {
+    pub hidden: bool,
+    /// `"fullscreen" | "user"` or `None`.
+    pub reason: Option<&'static str>,
+    pub sleep: bool,
 }

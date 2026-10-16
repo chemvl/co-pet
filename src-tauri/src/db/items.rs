@@ -59,7 +59,6 @@ fn map_row(r: &Row<'_>) -> rusqlite::Result<ItemRow> {
         size_bytes: r.get(11)?,
         thumb_path: r.get(12)?,
         source_app: r.get(13)?,
-        source_bundle_id: r.get(14)?,
         source_kind: r.get(15)?,
         extracted_text: r.get(16)?,
         extract_status: r.get(17)?,
@@ -72,7 +71,6 @@ fn map_row(r: &Row<'_>) -> rusqlite::Result<ItemRow> {
         sensitive: r.get(24)?,
         status: r.get(25)?,
         pinned: r.get(26)?,
-        content_hash: r.get(27)?,
         captured_at: r.get(28)?,
         updated_at: r.get(29)?,
         deleted_at: r.get(30)?,
@@ -144,7 +142,6 @@ fn check_category(category_id: &str) -> AppResult<()> {
 
 // ---------- writes ----------
 
-#[allow(dead_code)] // called by capture (Step 6)
 pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
     let tx = conn.transaction()?;
     let id = new_id();
@@ -181,7 +178,6 @@ pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
 
 /// Writes the triage result. `None` fields keep their current value; `triage_status` becomes
 /// `done` and a `recategorize` event (actor `triage`) records the category change.
-#[allow(dead_code)] // called by the triage worker (Step 9)
 pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppResult<()> {
     check_category(&u.category_id)?;
     let tx = conn.transaction()?;
@@ -229,7 +225,6 @@ pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppRe
 
 /// Moves items to `category_id`. A `user` move marks the source/reason `user` and records a
 /// `category_examples` row that later teaches the local model. Returns the event ids.
-#[allow(dead_code)] // called by the recategorize command (Step 9)
 pub fn recategorize(
     conn: &mut Connection,
     ids: &[String],
@@ -249,11 +244,14 @@ pub fn recategorize(
                    triage_reason = 'user', updated_at = ?3 WHERE id = ?1",
                 params![id, category_id, now],
             )?;
-            tx.execute(
-                "INSERT INTO category_examples (id, item_id, category_id, title, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                params![new_id(), id, category_id, row.title, now],
-            )?;
+            // Sensitive titles must never reach the model as few-shot examples.
+            if !row.sensitive {
+                tx.execute(
+                    "INSERT INTO category_examples (id, item_id, category_id, title, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                    params![new_id(), id, category_id, row.title, now],
+                )?;
+            }
         } else {
             tx.execute(
                 "UPDATE items SET category_id = ?2, updated_at = ?3 WHERE id = ?1",
@@ -430,13 +428,11 @@ pub fn get_row(conn: &Connection, id: &str) -> AppResult<ItemRow> {
 }
 
 /// Rows in the order of `ids`; unknown ids are an error.
-#[allow(dead_code)] // called by drag-out/copy (Step 7)
 pub fn get_rows(conn: &Connection, ids: &[String]) -> AppResult<Vec<ItemRow>> {
     ids.iter().map(|id| get_row(conn, id)).collect()
 }
 
 /// A live (not trashed, not deleted) item with this content hash.
-#[allow(dead_code)] // called by capture (Step 6)
 pub fn find_live_by_hash(conn: &Connection, hash: &str) -> AppResult<Option<String>> {
     Ok(conn
         .query_row(
@@ -449,7 +445,6 @@ pub fn find_live_by_hash(conn: &Connection, hash: &str) -> AppResult<Option<Stri
 }
 
 /// Whether any item still references the blob. Trashed rows count: Undo can restore them.
-#[allow(dead_code)] // called by capture (Step 6)
 pub fn file_path_in_use(conn: &Connection, rel_path: &str) -> AppResult<bool> {
     Ok(conn.query_row(
         "SELECT EXISTS (SELECT 1 FROM items WHERE file_path = ?1 OR thumb_path = ?1)",
@@ -459,7 +454,6 @@ pub fn file_path_in_use(conn: &Connection, rel_path: &str) -> AppResult<bool> {
 }
 
 /// Items still waiting for triage, oldest first.
-#[allow(dead_code)] // called by the triage worker (Step 9)
 pub fn pending_ids(conn: &Connection) -> AppResult<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT id FROM items WHERE triage_status = 'pending' AND deleted_at IS NULL
@@ -749,6 +743,17 @@ mod tests {
             undo_event(&mut conn, &events[0]),
             Err(AppError::Code("alreadyUndone"))
         ));
+    }
+
+    #[test]
+    fn sensitive_recategorize_teaches_no_example() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Secret", "", "h1")).unwrap();
+        update_triage(&mut conn, &id, &sensitive_update("unsorted")).unwrap();
+        recategorize(&mut conn, &[id], "read", "user").unwrap();
+        assert_eq!(rules_examples(&conn), 0);
+        assert!(crate::db::rules::recent_examples(&conn, 8).unwrap().is_empty());
     }
 
     fn rules_examples(conn: &Connection) -> i64 {

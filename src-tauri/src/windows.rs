@@ -6,7 +6,10 @@ use std::sync::{Mutex, MutexGuard};
 use objc2::MainThreadMarker;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Wry};
+use tauri::{
+    ActivationPolicy, AppHandle, Emitter, LogicalPosition, Manager, TitleBarStyle, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry,
+};
 use tauri_nspanel::{
     CollectionBehavior, ManagerExt, PanelHandle, PanelLevel, StyleMask, WebviewWindowExt,
 };
@@ -14,12 +17,16 @@ use tauri_nspanel::{
 use crate::db::settings;
 use crate::error::{AppError, AppResult};
 use crate::events;
-use crate::model::Placement;
+use crate::model::{Placement, Rect};
 use crate::platform::macos::pointer::{self, PointerState};
 use crate::platform::macos::screens::{self, Screen};
 use crate::platform::macos::on_main_sync;
 
 pub const PET: &str = "pet";
+pub const HOME: &str = "home";
+pub const ONBOARDING: &str = "onboarding";
+/// Traffic lights centred in the 44 px custom title bar (Home and Onboarding).
+const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition::new(16.0, 24.0);
 const POSITIONS: &str = "pet.positions";
 const EDGES: [&str; 3] = ["left", "right", "bottom"];
 const DEFAULT_EDGE: &str = "right";
@@ -222,6 +229,12 @@ pub fn get_placement(app: &AppHandle) -> AppResult<Placement> {
         .ok_or_else(|| AppError::msg("pet window not placed"))
 }
 
+/// The full frame (global top-left points) of the monitor the pet lives on.
+pub(crate) fn pet_screen_frame(app: &AppHandle) -> Option<Rect> {
+    pet_window(app)?;
+    app.state::<PetPlacement>().lock().as_ref().map(|c| c.screen.frame)
+}
+
 /// Saves the snapped position under the current monitor setup and emits `pet-placement`.
 pub fn commit_pet_position(app: &AppHandle, edge: &str, offset: f64) -> AppResult<()> {
     if !EDGES.contains(&edge) || !offset.is_finite() {
@@ -254,4 +267,72 @@ pub fn focus_pet_panel(app: &AppHandle) -> AppResult<()> {
 pub fn resign_pet_panel(app: &AppHandle) -> AppResult<()> {
     let panel = pet_panel(app).ok_or_else(|| AppError::msg("no pet window"))?;
     on_main_sync(app, move |_| panel.resign_key_window())
+}
+
+/// Opens Home at `route` (e.g. `settings/general`; default the inbox), or focuses it and emits
+/// `navigate`. Co-pet shows in the Dock and Cmd+Tab while Home or Onboarding is open.
+pub fn open_home(app: &AppHandle, route: Option<String>) -> AppResult<()> {
+    let route = route
+        .map(|r| r.trim_start_matches(['#', '/']).to_string())
+        .filter(|r| !r.is_empty());
+    app.set_activation_policy(ActivationPolicy::Regular)?;
+    if let Some(window) = app.get_webview_window(HOME) {
+        window.unminimize()?;
+        window.show()?;
+        window.set_focus()?;
+        if let Some(route) = route {
+            app.emit_to(HOME, events::NAVIGATE, events::Navigate { route })?;
+        }
+        return Ok(());
+    }
+    let url = format!("home.html#/{}", route.as_deref().unwrap_or("inbox"));
+    let window = overlay_window(app, HOME, &url)
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(960.0, 640.0)
+        .build()?;
+    track_activation_policy(&window);
+    window.set_focus()?;
+    Ok(())
+}
+
+/// Opens (or focuses) the onboarding window.
+pub fn open_onboarding(app: &AppHandle) -> AppResult<()> {
+    app.set_activation_policy(ActivationPolicy::Regular)?;
+    if let Some(window) = app.get_webview_window(ONBOARDING) {
+        window.unminimize()?;
+        window.show()?;
+        return Ok(window.set_focus()?);
+    }
+    let window = overlay_window(app, ONBOARDING, "onboarding.html")
+        .inner_size(960.0, 640.0)
+        .resizable(false)
+        .maximizable(false)
+        .build()?;
+    track_activation_policy(&window);
+    window.set_focus()?;
+    Ok(())
+}
+
+/// A titled window whose content runs under a transparent title bar: native traffic lights over
+/// the page's own 44 px title bar.
+fn overlay_window<'a>(app: &'a AppHandle, label: &str, url: &str) -> WebviewWindowBuilder<'a, Wry, AppHandle> {
+    WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+        .title("Co-pet")
+        .title_bar_style(TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(TRAFFIC_LIGHTS)
+        .center()
+}
+
+/// When the last of Home/Onboarding closes, Co-pet leaves the Dock again.
+fn track_activation_policy(window: &WebviewWindow) {
+    let app = window.app_handle().clone();
+    let other = if window.label() == HOME { ONBOARDING } else { HOME };
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Destroyed) && app.get_webview_window(other).is_none() {
+            if let Err(e) = app.set_activation_policy(ActivationPolicy::Accessory) {
+                eprintln!("[windows] activation policy: {e}");
+            }
+        }
+    });
 }

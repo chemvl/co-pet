@@ -23,6 +23,7 @@ impl Db {
     }
 
     /// In-memory database with migrations applied (tests).
+    #[cfg(test)]
     pub fn open_in_memory() -> AppResult<Self> {
         let mut conn = Connection::open_in_memory()?;
         Self::configure(&mut conn)?;

@@ -1,6 +1,8 @@
 // Line-for-line TSX port of docs/design/design-system/components/bundle.js.
 // DOM, class names and defaults are identical; the only additions are the
-// optional PetDock/TrayCard props documented in ./types.ts.
+// optional PetDock/TrayCard props documented in ./types.ts, plus ref forwarding
+// on SearchField (Cmd+K focus) and Bubble (bubble arc focus). SearchFieldProps
+// omits the HTML `size` attribute so `size` is the 'md' | 'lg' variant.
 import { forwardRef, type CSSProperties, type ReactElement } from 'react';
 import { ICONS } from './icons';
 import type {

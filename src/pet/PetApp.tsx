@@ -1,0 +1,680 @@
+// The pet window (plan Steps 5.3–5.7, 6, 7, 10): a full-window transparent root
+// holding the design-system PetDock with the cat, its bubbles and one transient
+// surface at a time. Only the pet, the bubbles and open panels take the pointer
+// (hit regions → Rust); everything else clicks through.
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import {
+  useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+  type CSSProperties, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { PetDock, type IconName } from '../ds';
+import { useT, type I18nKey } from '../shared/i18n';
+import {
+  captureClipboard, captureDrop, captureNote, captureScreenshot, captureSelection, commitPetPosition,
+  counts as fetchCounts, focusPetPanel, getPlacement, on, openHome, pasteItems, petStatus, quitApp,
+  requestPermission, resignPetPanel, setHitRegions, setPetMoving,
+} from '../shared/ipc';
+import { useSetSetting, useSettings } from '../shared/queries';
+import type { CaptureResult, CategoryId, EventPayloads, HitRegion, HotkeyAction, Placement } from '../shared/types';
+import { CatArt, type CatLook, type CatSkin } from './CatArt';
+import { noticeFor, type Notice } from './notices';
+import {
+  bubbleRects, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
+  DOCK_BOX, type Box, type Point, type Size,
+} from './placement';
+import { poseFor } from './pose';
+import { Floating } from './surfaces/Floating';
+import { PetMenu } from './surfaces/PetMenu';
+import { PetNotice } from './surfaces/PetNotice';
+import { QuickNotePanel } from './surfaces/QuickNotePanel';
+import { COUNTS_KEY, TRAY_KEY, TrayPanel } from './surfaces/TrayPanel';
+import { usePetMachine } from './usePetMachine';
+import './pet.css';
+
+type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice';
+type Region = 'pet' | 'panel' | 'halo' | null;
+
+const BUBBLES: { icon: IconName; label: I18nKey }[] = [
+  { icon: 'screenshot', label: 'pet.bubble.captureScreen' },
+  { icon: 'clipboard', label: 'pet.bubble.saveClipboard' },
+  { icon: 'home', label: 'pet.bubble.openHome' },
+  { icon: 'note', label: 'pet.bubble.quickNote' },
+];
+
+/** Pointer rests this long on the pet before the bubbles fan out. */
+const REST_MS = 150;
+/** Bubbles fold this long after the pointer leaves. */
+const FOLD_MS = 400;
+/** Back to peek this long after the pointer leaves with nothing open… */
+const PEEK_MS = 3000;
+/** …or this long after a drag passes by. */
+const PEEK_AFTER_DRAG_MS = 1000;
+/** Halo fade-out (`dur-fast`). */
+const HALO_FADE_MS = 120;
+const DOUBLE_CLICK_MS = 300;
+const MOVE_THRESHOLD = 4;
+const HIDE_HOUR_MS = 3_600_000;
+/** Surfaces that need keyboard focus: the panel is made key while they're open. */
+const KEYED: Surface[] = ['tray', 'menu', 'quicknote'];
+
+interface Look { look: CatLook; skin: CatSkin; size: number }
+
+const LOOKS: CatLook[] = ['soft', 'sticker', 'pixel'];
+const SKINS: CatSkin[] = ['peach', 'tabby', 'midnight'];
+const SIZES = [64, 80, 96];
+
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+function subscribeReducedMotion(cb: () => void) {
+  reducedMotionQuery.addEventListener('change', cb);
+  return () => reducedMotionQuery.removeEventListener('change', cb);
+}
+
+export function PetApp() {
+  const t = useT();
+  const qc = useQueryClient();
+  const setSetting = useSetSetting();
+  const { data: settings } = useSettings();
+  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, () => reducedMotionQuery.matches);
+
+  // ---------- settings → look, name, paused ----------
+  const name = typeof settings?.['pet.name'] === 'string' && settings['pet.name'] ? settings['pet.name'] : 'Miso';
+  const paused = settings?.['pet.paused'] === true;
+  const wanted: Look | null = settings
+    ? {
+        look: LOOKS.find((l) => l === settings['pet.style']) ?? 'soft',
+        skin: SKINS.find((s) => s === settings['pet.skin']) ?? 'peach',
+        size: SIZES.find((s) => s === settings['pet.size']) ?? 80,
+      }
+    : null;
+  const [applied, setApplied] = useState<Look | null>(null);
+  const pendingLook = useRef<Look | null>(null);
+  const { machine, output } = usePetMachine(() => {
+    if (pendingLook.current) setApplied(pendingLook.current);
+    pendingLook.current = null;
+  });
+
+  const wantedKey = wanted ? `${wanted.look}/${wanted.skin}/${wanted.size}` : null;
+  useEffect(() => {
+    if (!wanted) return;
+    if (!applied) {
+      setApplied(wanted);
+      return;
+    }
+    if (wanted.look === applied.look && wanted.skin === applied.skin && wanted.size === applied.size) return;
+    // Style, skin or size changed: poof, and swap at its midpoint.
+    pendingLook.current = wanted;
+    machine.fire('poof');
+  }, [wantedKey]); // `wanted` is rebuilt every render; its key says when it changed
+
+  useEffect(() => machine.setPaused(paused), [machine, paused]);
+
+  // ---------- window state ----------
+  const [placement, setPlacement] = useState<Placement | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [region, setRegion] = useState<Region>(null);
+  const [out, setOut] = useState(false);
+  const [surface, setSurface] = useState<Surface>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [menuAt, setMenuAt] = useState<Point | null>(null);
+  const [panelRect, setPanelRect] = useState<Box | null>(null);
+  const [halo, setHalo] = useState<'none' | 'on' | 'fading'>('none');
+  const [moving, setMoving] = useState<Point | null>(null);
+  const [petFocused, setPetFocused] = useState(false);
+  const [focusIndex, setFocusIndex] = useState<number | undefined>(undefined);
+  const [announcement, setAnnouncement] = useState('');
+
+  const petRef = useRef<HTMLButtonElement>(null);
+  const bubbleEls = useRef<(HTMLButtonElement | null)[]>([]);
+  const dragOutActive = useRef(false);
+  const peekDelay = useRef(PEEK_MS);
+  const suppressClick = useRef(false);
+  const clickTimer = useRef<number | null>(null);
+  const restTimer = useRef<number | null>(null);
+  const foldTimer = useRef<number | null>(null);
+  const haloTimer = useRef<number | null>(null);
+
+  // Latest values for event handlers subscribed once. Handlers also write the
+  // fields they change, so back-to-back events see them before the next render.
+  const live = useRef({ surface, region, halo, placement });
+  live.current = { surface, region, halo, placement };
+
+  const clear = (timer: { current: number | null }) => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+
+  const { data: counts } = useQuery({ queryKey: COUNTS_KEY, queryFn: fetchCounts });
+  const unsorted = counts?.unsorted ?? 0;
+
+  // ---------- surfaces ----------
+  const openSurface = useCallback((next: Exclude<Surface, null>) => {
+    setSurface(next);
+    setOut(true);
+    if (KEYED.includes(next)) void focusPetPanel();
+  }, []);
+
+  const closeSurface = useCallback(() => {
+    setSurface(null);
+    setFocusIndex(undefined);
+    void resignPetPanel();
+  }, []);
+
+  const showNotice = useCallback(
+    (n: Notice) => {
+      setNotice(n);
+      openSurface('notice');
+    },
+    [openSurface],
+  );
+
+  const announce = (text: string) => setAnnouncement(text);
+
+  const categoryName = useCallback((id: CategoryId) => t(`category.${id}`), [t]);
+
+  const handleResult = useCallback(
+    (r: CaptureResult) => {
+      if (r.status === 'duplicate') announce(t('pet.announce.duplicate'));
+      const n = noticeFor(r, t);
+      if (!n) return;
+      // Rust plays `confused` for failures; a skip with something to say gets it here.
+      if (r.status === 'skipped') machine.fire('confused');
+      showNotice(n);
+    },
+    [machine, showNotice, t],
+  );
+
+  const runCapture = useCallback(
+    (capture: () => Promise<CaptureResult>) => {
+      capture().then(handleResult, (err: unknown) => {
+        machine.fire('confused');
+        showNotice({ message: t('notice.captureFailed', { reason: String(err) }) });
+      });
+    },
+    [handleResult, machine, showNotice, t],
+  );
+
+  const paste = useCallback(
+    (ids: string[]) => {
+      closeSurface();
+      pasteItems(ids).then(
+        (r) => {
+          if (r === 'needsAccessibility') {
+            showNotice({ message: t('notice.needsAccessibility'), permission: 'accessibility' });
+          }
+        },
+        (err: unknown) => showNotice({ message: t('notice.captureFailed', { reason: String(err) }) }),
+      );
+    },
+    [closeSurface, showNotice, t],
+  );
+
+  const goHome = useCallback(
+    (route?: string) => {
+      closeSurface();
+      void openHome(route);
+    },
+    [closeSurface],
+  );
+
+  const onBubble = (icon: IconName) => {
+    if (icon === 'note') {
+      openSurface('quicknote');
+      return;
+    }
+    closeSurface();
+    if (icon === 'screenshot') runCapture(captureScreenshot);
+    else if (icon === 'clipboard') runCapture(captureClipboard);
+    else if (icon === 'home') void openHome();
+  };
+
+  // ---------- Rust events ----------
+  const applyVisibility = (isHidden: boolean) => {
+    setHidden(isHidden);
+    machine.setHidden(isHidden);
+    if (isHidden) {
+      setSurface(null);
+      setOut(false);
+    }
+  };
+
+  const endHalo = () => {
+    live.current.halo = 'fading';
+    machine.set('dragOver', false);
+    setHalo('fading');
+    peekDelay.current = PEEK_AFTER_DRAG_MS;
+    clear(haloTimer);
+    haloTimer.current = window.setTimeout(() => {
+      haloTimer.current = null;
+      setHalo('none');
+    }, HALO_FADE_MS);
+  };
+
+  const onRegion = (next: Region, dragging: boolean) => {
+    const prev = live.current.region;
+    live.current.region = next;
+    setRegion(next);
+
+    // Something is being dragged over the halo (but not our own drag-out).
+    if (dragging && next === 'halo' && !dragOutActive.current) {
+      clear(haloTimer);
+      live.current.halo = 'on';
+      setHalo('on');
+      setOut(true);
+      machine.set('dragOver', true);
+    } else if (live.current.halo === 'on') {
+      endHalo();
+    }
+
+    if (next === 'pet' && !dragging) {
+      if (prev === null) {
+        machine.fire('wake');
+        setOut(true);
+      }
+      clear(restTimer);
+      restTimer.current = window.setTimeout(() => {
+        restTimer.current = null;
+        if (live.current.surface === null) {
+          live.current.surface = 'bubbles';
+          setSurface('bubbles');
+          machine.fire('gesture');
+        }
+      }, REST_MS);
+    } else {
+      clear(restTimer);
+    }
+
+    clear(foldTimer);
+    if (next === null && live.current.surface === 'bubbles') {
+      foldTimer.current = window.setTimeout(() => {
+        foldTimer.current = null;
+        if (live.current.surface === 'bubbles') closeSurface();
+      }, FOLD_MS);
+    }
+  };
+
+  const onHotkey = (action: HotkeyAction) => {
+    if (action === 'focusPet') {
+      machine.fire('wake');
+      setOut(true);
+      petRef.current?.focus();
+    } else if (action === 'quickNote') {
+      openSurface('quicknote');
+    } else if (action === 'captureScreen') {
+      closeSurface();
+      runCapture(captureScreenshot);
+    } else {
+      runCapture(captureSelection);
+    }
+  };
+
+  const onReaction = (e: EventPayloads['pet-reaction']) => {
+    machine.fire(e.input, { category: e.category, variant: e.variant });
+    if (e.input === 'idea' && e.category) announce(t('pet.announce.savedTo', { category: categoryName(e.category) }));
+    if (e.input === 'tilt') announce(t('pet.announce.savedTo', { category: categoryName('unsorted') }));
+  };
+
+  // The subscriptions live for the window's lifetime and call the latest handlers.
+  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction });
+  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction };
+
+  useEffect(() => {
+    const h = handlers;
+    const subs = [
+      on('pet-placement', setPlacement),
+      on('pet-reaction', (e) => h.current.onReaction(e)),
+      on('pet-flags', (f) => {
+        if (f.thinking !== undefined) machine.set('thinking', f.thinking);
+        if (f.sleep !== undefined) machine.set('sleep', f.sleep);
+      }),
+      on('pet-visibility', (v) => h.current.applyVisibility(v.hidden)),
+      on('counts-changed', (c) => qc.setQueryData(COUNTS_KEY, c)),
+      on('items-changed', () => void qc.invalidateQueries({ queryKey: TRAY_KEY })),
+      on('pointer-region', (e) => h.current.onRegion(e.region, e.dragging)),
+      on('hotkey', (e) => h.current.onHotkey(e.action)),
+      getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        // A click outside (another app became key) closes the keyboard surfaces.
+        if (!focused && KEYED.includes(live.current.surface)) setSurface(null);
+      }),
+    ];
+    // Subscribe first, then read the current state so nothing in between is missed.
+    void Promise.all(subs).then(() => {
+      void getPlacement().then(setPlacement);
+      void petStatus().then((s) => {
+        h.current.applyVisibility(s.hidden);
+        machine.set('sleep', s.sleep);
+      });
+    });
+    return () => {
+      for (const s of subs) void s.then((off) => off());
+    };
+  }, [machine, qc]);
+
+  // Esc closes the notice and the bubbles too (the panels handle it themselves).
+  useEffect(() => {
+    if (surface !== 'notice' && surface !== 'bubbles') return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') closeSurface();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [surface, closeSurface]);
+
+  // Back to peek once nothing holds the pet out.
+  useEffect(() => {
+    if (!out || region !== null || surface !== null || halo !== 'none' || petFocused || moving) return;
+    const timer = window.setTimeout(() => {
+      peekDelay.current = PEEK_MS;
+      setOut(false);
+    }, peekDelay.current);
+    return () => window.clearTimeout(timer);
+  }, [out, region, surface, halo, petFocused, moving]);
+
+  // Badge changes are announced.
+  const lastUnsorted = useRef<number | null>(null);
+  useEffect(() => {
+    if (counts === undefined) return;
+    if (lastUnsorted.current !== null && lastUnsorted.current !== unsorted && unsorted > 0) {
+      announce(t('pet.badge.unsorted', { n: unsorted }));
+    }
+    lastUnsorted.current = unsorted;
+  }, [counts, unsorted, t]);
+
+  // ---------- geometry ----------
+  const size = applied?.size ?? 80;
+  const area: Size | null = placement ? { w: placement.workArea.w, h: placement.workArea.h } : null;
+  const edge = placement?.edge ?? 'right';
+  const point = area && placement ? edgePoint(edge, placement.offset, area) : null;
+  const asleep = output.body === 'sleep';
+  const dockState =
+    halo !== 'none' ? 'drag'
+      : surface === 'bubbles' ? 'hover'
+        : out || surface !== null ? 'out'
+          : asleep ? 'sleep'
+            : 'peek';
+  const dockOut = dockState !== 'peek' && dockState !== 'sleep';
+
+  const regionsKey = useRef('');
+  useLayoutEffect(() => {
+    if (!point || !area || moving) return;
+    const regions: HitRegion[] = [];
+    if (!hidden) {
+      regions.push({ ...petHitRect(edge, point, size, dockOut), kind: 'pet' });
+      if (surface === 'bubbles') {
+        for (const r of bubbleRects(edge, point, size, BUBBLES.length)) regions.push({ ...r, kind: 'panel' });
+      }
+      if (panelRect) regions.push({ ...panelRect, kind: 'panel' });
+    }
+    const key = JSON.stringify(regions);
+    if (key === regionsKey.current) return;
+    regionsKey.current = key;
+    void setHitRegions(regions);
+  });
+
+  // ---------- pet pointer: click, double-click, drag-move ----------
+  const onPetPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let dragging = false;
+    const onMove = (ev: PointerEvent) => {
+      if (!dragging) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) <= MOVE_THRESHOLD) return;
+        dragging = true;
+        clear(restTimer);
+        setSurface(null);
+        void setPetMoving(true);
+      }
+      setMoving({ x: ev.clientX, y: ev.clientY });
+    };
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (!dragging) return;
+      suppressClick.current = true;
+      window.setTimeout(() => (suppressClick.current = false), 0);
+      setMoving(null);
+      // The window may have moved to another monitor meanwhile: use its current work area.
+      const p = live.current.placement;
+      if (!p) return;
+      const snap = snapToEdge({ x: ev.clientX, y: ev.clientY }, { w: p.workArea.w, h: p.workArea.h }, size);
+      setPlacement({ ...p, ...snap });
+      void commitPetPosition(snap.edge, snap.offset).finally(() => void setPetMoving(false));
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  const onPetClick = () => {
+    if (suppressClick.current) return;
+    if (clickTimer.current !== null) {
+      clear(clickTimer);
+      goHome();
+      return;
+    }
+    clickTimer.current = window.setTimeout(() => (clickTimer.current = null), DOUBLE_CLICK_MS);
+    if (surface === 'tray') closeSurface();
+    else openSurface('tray');
+  };
+
+  const openMenuAt = (p: Point) => {
+    setMenuAt(p);
+    openSurface('menu');
+  };
+
+  const onPetKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu') {
+      e.preventDefault();
+      const r = petRef.current?.getBoundingClientRect();
+      openMenuAt(r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: 0, y: 0 });
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      if (surface !== 'bubbles') openSurface('bubbles');
+      // The arc mounts with the state change; focus its first bubble next frame.
+      requestAnimationFrame(() => bubbleEls.current[0]?.focus());
+    } else if (e.key === 'Escape' && surface !== null) {
+      e.preventDefault();
+      closeSurface();
+    }
+  };
+
+  const onDockKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const at = bubbleEls.current.indexOf(e.target as HTMLButtonElement);
+    if (at < 0) return;
+    const n = BUBBLES.length;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (at + 1) % n;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (at - 1 + n) % n;
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSurface();
+      petRef.current?.focus();
+      return;
+    }
+    if (next >= 0) {
+      e.preventDefault();
+      bubbleEls.current[next]?.focus();
+    }
+  };
+
+  const onDockFocusOrHover = (target: EventTarget) => {
+    const i = bubbleEls.current.indexOf(target as HTMLButtonElement);
+    setFocusIndex(i >= 0 ? i : undefined);
+  };
+
+  // ---------- drop ----------
+  const acceptDrag = (e: DragEvent) => {
+    if (dragOutActive.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const onDrop = (e: DragEvent) => {
+    if (dragOutActive.current) return;
+    e.preventDefault();
+    const dt = e.dataTransfer;
+    const payload = {
+      uriList: dt.getData('text/uri-list'),
+      plain: dt.getData('text/plain'),
+      html: dt.getData('text/html'),
+      fileNames: [...dt.files].map((f) => f.name),
+    };
+    if (live.current.halo === 'on') endHalo();
+    runCapture(() => captureDrop(payload));
+  };
+
+  // ---------- render ----------
+  const pose = poseFor(output.body, output.variant);
+  const fx = output.fx && (output.fx.kind === 'category' || output.fx.kind === 'question') ? output.fx : null;
+  const art = applied ? (
+    <CatArt
+      look={applied.look}
+      skin={applied.skin}
+      parts={pose.parts}
+      motion={paused ? null : pose.motion}
+      motionMs={pose.ms}
+      motionKey={output.seq}
+      mirrored={edge === 'left'}
+      reducedMotion={reducedMotion}
+      edge={edge}
+      fx={fx}
+      hidden={hidden}
+    />
+  ) : null;
+
+  // Floating re-places only when the resulting position changes, so these may change identity.
+  const outBox = point ? petBox(edge, point, size) : null;
+  const placeNextToPet = (s: Size) => (outBox && area ? placePanel(edge, outBox, s, area) : { x: 0, y: 0 });
+  const placeMenu = (s: Size) => (menuAt && area ? placeAtPointer(edge, menuAt, s, area) : { x: 0, y: 0 });
+  const closeNotice = useCallback(() => {
+    if (live.current.surface === 'notice') closeSurface();
+  }, [closeSurface]);
+
+  if (!placement || !point || !area || !applied) return null;
+  const box = dockBox(edge, point, area);
+
+  return (
+    <div className="pt-root" onDragEnter={acceptDrag} onDragOver={acceptDrag} onDrop={onDrop}>
+      {moving ? (
+        <div className="pt-moving" style={{ left: moving.x - size / 2, top: moving.y - size / 2, width: size, height: size }}>
+          {art}
+        </div>
+      ) : null}
+      <div
+        className={`pt-dock pt-dock--${edge}${hidden ? ' is-hidden' : ''}${halo === 'fading' ? ' is-halo-out' : ''}`}
+        style={{ left: box.x, top: box.y, width: DOCK_BOX, height: DOCK_BOX, '--pt-off': `${size + 8}px`, visibility: moving ? 'hidden' : undefined } as CSSProperties}
+        aria-hidden={hidden || undefined}
+        onKeyDown={onDockKeyDown}
+        onFocus={(e) => onDockFocusOrHover(e.target)}
+        onPointerOver={(e) => onDockFocusOrHover(e.target)}
+      >
+        <PetDock
+          ref={petRef}
+          edge={edge}
+          size={size}
+          state={dockState}
+          art={art}
+          petName={name}
+          bubbles={BUBBLES.map((b) => ({ icon: b.icon, label: t(b.label) }))}
+          bubblesLabel={t('pet.actions')}
+          focusIndex={focusIndex}
+          onBubble={onBubble}
+          bubbleFocusRef={(i, el) => {
+            bubbleEls.current[i] = el;
+          }}
+          badge={
+            !hidden && !asleep && unsorted > 0
+              ? { count: unsorted, label: t('pet.badge.unsorted', { n: unsorted }), className: 'cp-pet__badge' }
+              : undefined
+          }
+          petProps={{
+            'aria-label': t('pet.a11y', { name }),
+            onClick: onPetClick,
+            onPointerDown: onPetPointerDown,
+            onContextMenu: (e) => {
+              e.preventDefault();
+              openMenuAt({ x: e.clientX, y: e.clientY });
+            },
+            onKeyDown: onPetKeyDown,
+            onFocus: () => setPetFocused(true),
+            onBlur: () => setPetFocused(false),
+          }}
+        />
+      </div>
+
+      {!hidden && surface === 'tray' ? (
+        <Floating place={placeNextToPet} onRect={setPanelRect}>
+          <TrayPanel
+            areaHeight={area.h}
+            petName={name}
+            onClose={closeSurface}
+            onPaste={paste}
+            onOpenHome={() => goHome()}
+            onDragStart={() => {
+              dragOutActive.current = true;
+              machine.fire('handOver');
+            }}
+            onDragEnd={(dropped) => {
+              dragOutActive.current = false;
+              if (dropped) closeSurface();
+            }}
+          />
+        </Floating>
+      ) : null}
+
+      {!hidden && surface === 'menu' && menuAt ? (
+        <Floating place={placeMenu} onRect={setPanelRect}>
+          <PetMenu
+            onClose={closeSurface}
+            items={[
+              { key: 'home', label: t('common.openHome'), hint: t('pet.menu.doubleClick'), onSelect: () => goHome() },
+              {
+                key: 'pause',
+                label: paused ? t('pet.menu.resume') : t('pet.menu.pause'),
+                onSelect: () => void setSetting('pet.paused', !paused),
+              },
+              {
+                key: 'hide',
+                label: t('pet.menu.hideHour'),
+                onSelect: () => void setSetting('pet.hiddenUntil', Date.now() + HIDE_HOUR_MS),
+              },
+              null,
+              { key: 'settings', label: t('common.settings'), onSelect: () => goHome('settings/general') },
+              { key: 'quit', label: t('common.quit'), onSelect: () => void quitApp() },
+            ]}
+          />
+        </Floating>
+      ) : null}
+
+      {!hidden && surface === 'quicknote' ? (
+        <Floating place={placeNextToPet} onRect={setPanelRect}>
+          <QuickNotePanel
+            onClose={closeSurface}
+            onSave={(text) => {
+              closeSurface();
+              runCapture(() => captureNote(text));
+            }}
+          />
+        </Floating>
+      ) : null}
+
+      {!hidden && surface === 'notice' && notice ? (
+        <Floating place={placeNextToPet} onRect={setPanelRect}>
+          <PetNotice
+            notice={notice}
+            onClose={closeNotice}
+            onAction={() => {
+              if (notice.permission) void requestPermission(notice.permission);
+              closeSurface();
+            }}
+          />
+        </Floating>
+      ) : null}
+
+      <div className="pt-sr" aria-live="polite">
+        {announcement}
+      </div>
+    </div>
+  );
+}

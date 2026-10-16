@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placePanel, snapToEdge } from './placement';
+import { bubbleRects, petHitRect, placePanel, snapToEdge } from './placement';
 
 const area = { w: 1440, h: 875 };
 const panel = { w: 360, h: 400 };
@@ -39,5 +39,38 @@ describe('snapToEdge', () => {
 
   it('keeps the whole pet on the edge near a corner', () => {
     expect(snapToEdge({ x: 1435, y: 5 }, area, 80)).toEqual({ edge: 'right', offset: 40 / 875 });
+  });
+});
+
+describe('petHitRect', () => {
+  const rounded = (r: { x: number; y: number; w: number; h: number }) =>
+    ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
+
+  it('takes only the on-screen 55% while peeking, minus the top 22% of the art', () => {
+    expect(rounded(petHitRect('right', { x: 1440, y: 400 }, 100, false))).toEqual({ x: 1385, y: 372, w: 55, h: 78 });
+    expect(rounded(petHitRect('left', { x: 0, y: 400 }, 100, false))).toEqual({ x: 0, y: 372, w: 55, h: 78 });
+    // Bottom: the visible top 55 px, of which the top 22 px are the FX zone.
+    expect(rounded(petHitRect('bottom', { x: 700, y: 875 }, 100, false))).toEqual({ x: 650, y: 842, w: 100, h: 33 });
+  });
+
+  it('takes the whole art below the FX zone when out', () => {
+    expect(rounded(petHitRect('right', { x: 1440, y: 400 }, 100, true))).toEqual({ x: 1340, y: 372, w: 100, h: 78 });
+  });
+});
+
+describe('bubbleRects', () => {
+  it('fans away from the right edge, symmetric about the pet centre', () => {
+    const rects = bubbleRects('right', { x: 1440, y: 400 }, 80, 4);
+    const centres = rects.map((r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 }));
+    // Pet centre (1400, 400); every bubble is 100 px from it and left of it.
+    for (const c of centres) {
+      expect(Math.hypot(c.x - 1400, c.y - 400)).toBeCloseTo(100);
+      expect(c.x).toBeLessThan(1400);
+    }
+    expect(centres[0].y + centres[3].y).toBeCloseTo(800);
+  });
+
+  it('fans upward from the bottom edge', () => {
+    for (const r of bubbleRects('bottom', { x: 700, y: 875 }, 80, 4)) expect(r.y + r.h / 2).toBeLessThan(835);
   });
 });

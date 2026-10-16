@@ -1,5 +1,5 @@
 //! App data layout under `~/Library/Application Support/com.copet.app/`.
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
@@ -51,9 +51,5 @@ impl Paths {
     /// Absolute path of a library-relative path such as `ab/abcd….pdf` or `thumbs/abcd….png`.
     pub fn abs(&self, rel: &str) -> PathBuf {
         self.library.join(rel)
-    }
-
-    pub fn rel<'a>(&self, abs: &'a Path) -> Option<&'a Path> {
-        abs.strip_prefix(&self.library).ok()
     }
 }

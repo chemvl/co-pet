@@ -1,51 +1,29 @@
-// TEMPORARY Step 4 probe (replaced by the Pet UI): an 80 px disc at the pet's edge point.
-// It reports the disc as the pet hit region, logs `pointer-region`, and a click moves the pet to
-// the next edge through commit_pet_position.
-import { useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRoot } from 'react-dom/client';
-import { commitPetPosition, getPlacement, on, setHitRegions } from '../shared/ipc';
-import type { Edge, Placement } from '../shared/types';
+import '../ds';
+import { I18nProvider, type LangSetting } from '../shared/i18n';
+import { useSetting } from '../shared/queries';
+import { applyTheme } from '../shared/theme';
+import { PetApp } from './PetApp';
 
-const R = 40;
-const NEXT: Record<Edge, Edge> = { right: 'left', left: 'bottom', bottom: 'right' };
+applyTheme();
 
-function center(p: Placement) {
-  const { w, h } = p.workArea;
-  if (p.edge === 'left') return { x: R, y: p.offset * h };
-  if (p.edge === 'bottom') return { x: p.offset * w, y: h - R };
-  return { x: w - R, y: p.offset * h };
-}
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+});
 
-function Probe() {
-  const [p, setP] = useState<Placement | null>(null);
-  const [region, setRegion] = useState<string | null>(null);
-  useEffect(() => {
-    getPlacement().then(setP);
-    const offs = [
-      on('pet-placement', setP),
-      on('pointer-region', (e) => {
-        console.log('[probe] pointer-region', e);
-        setRegion(e.region);
-      }),
-    ];
-    return () => offs.forEach((o) => o.then((f) => f()));
-  }, []);
-  useEffect(() => {
-    if (!p) return;
-    const c = center(p);
-    setHitRegions([{ x: c.x - R, y: c.y - R, w: 2 * R, h: 2 * R, kind: 'pet' }]);
-  }, [p]);
-  if (!p) return null;
-  const c = center(p);
+function Root() {
+  const language = useSetting<string>('ui.language', 'system');
+  const setting: LangSetting = language === 'en' || language === 'vi' ? language : 'system';
   return (
-    <div
-      onClick={() => commitPetPosition(NEXT[p.edge], 0.3)}
-      style={{
-        position: 'absolute', left: c.x - R, top: c.y - R, width: 2 * R, height: 2 * R,
-        borderRadius: '50%', background: region ? '#f4a27c' : '#9a8f86',
-      }}
-    />
+    <I18nProvider setting={setting}>
+      <PetApp />
+    </I18nProvider>
   );
 }
 
-createRoot(document.getElementById('root')!).render(<Probe />);
+createRoot(document.getElementById('root')!).render(
+  <QueryClientProvider client={queryClient}>
+    <Root />
+  </QueryClientProvider>,
+);

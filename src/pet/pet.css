@@ -1,0 +1,95 @@
+/* Pet window layout and the pet-side surfaces the design system doesn't ship
+   (menu, notice, quick note). Tokens only. */
+/* The design system paints `body` with `surface`; the pet window must stay transparent. */
+html, body { background: transparent; }
+.pt-root { position: fixed; inset: 0; overflow: hidden; }
+
+/* The 360×360 PetDock box, one side on the edge. Hidden slides it fully off over `dur-wake`. */
+.pt-dock { position: absolute; transition: transform var(--dur-wake) var(--ease-out); }
+.pt-dock.is-hidden { pointer-events: none; }
+.pt-dock--right.is-hidden { transform: translateX(var(--pt-off)); }
+.pt-dock--left.is-hidden { transform: translateX(calc(var(--pt-off) * -1)); }
+.pt-dock--bottom.is-hidden { transform: translateY(var(--pt-off)); }
+.pt-dock .cp-pet { touch-action: none; }
+
+/* Drop halo: fades out over `dur-fast`. */
+.pt-dock .cp-dock__halo { transition: opacity var(--dur-fast) var(--ease-out); }
+.pt-dock.is-halo-out .cp-dock__halo { opacity: 0; }
+
+/* Bubbles pop from the pet with `ease-spring`, staggered 30 ms. */
+.pt-dock .cp-dock__bubble { animation: pt-bubble-pop var(--dur-bubble) var(--ease-spring) both; }
+.pt-dock .cp-dock__bubble:nth-child(2) { animation-delay: 30ms; }
+.pt-dock .cp-dock__bubble:nth-child(3) { animation-delay: 60ms; }
+.pt-dock .cp-dock__bubble:nth-child(4) { animation-delay: 90ms; }
+@keyframes pt-bubble-pop { from { scale: 0.4; opacity: 0; } to { scale: 1; opacity: 1; } }
+
+/* The pet while it is being dragged to another edge. */
+.pt-moving { position: absolute; pointer-events: none; z-index: 2; }
+
+.pt-floating { position: absolute; z-index: 3; }
+
+/* Tray: at most 70% of the work area, the list scrolls. */
+.pt-tray .cp-tray { max-height: var(--pt-tray-max); }
+.pt-tray .cp-tray__list { flex: 1 1 auto; min-height: 0; }
+.pt-tray .cp-card { user-select: none; -webkit-user-select: none; }
+.pt-tray__empty { margin: 0; padding: var(--space-4) var(--space-2); color: var(--ink-muted); text-align: center; }
+/* Copy confirmation: a check replaces the kind tile for a moment. */
+.pt-card.is-copied::before, .pt-card.is-copied::after {
+  content: ''; position: absolute; top: var(--space-3); left: var(--space-3); width: 40px; height: 40px;
+  border-radius: var(--radius-sm);
+}
+.pt-card.is-copied::before { background: var(--clover-soft); }
+.pt-card.is-copied::after {
+  background: var(--clover);
+  -webkit-mask: var(--pt-check) center / 20px no-repeat; mask: var(--pt-check) center / 20px no-repeat;
+}
+
+/* Right-click menu: 248 px, 36 px rows. */
+.pt-menu {
+  width: 248px; padding: var(--space-1); box-sizing: border-box; display: flex; flex-direction: column;
+  background: var(--bubble); color: var(--bubble-ink); border: 1px solid var(--bubble-ring);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-float);
+}
+.pt-menu__item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  height: 36px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+}
+.pt-menu__item:hover, .pt-menu__item:focus-visible { background: var(--surface-hover); }
+.pt-menu__item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.pt-menu__hint { color: var(--ink-muted); }
+.pt-menu__sep { height: 1px; margin: var(--space-1) var(--space-2); background: var(--line); }
+
+/* Quick note: tray width, one line plus Save. */
+.pt-quicknote {
+  width: var(--tray-width); box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3); background: var(--bubble); border: 1px solid var(--bubble-ring);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-float);
+}
+.pt-quicknote__input {
+  flex: 1; min-width: 0; height: 36px; padding: 0 var(--space-3); box-sizing: border-box;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface-sunken); color: var(--ink);
+}
+.pt-quicknote__input::placeholder { color: var(--ink-muted); opacity: 1; }
+.pt-quicknote__input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Notice: facts for pet-side failures. */
+.pt-notice {
+  max-width: 280px; box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start;
+  gap: var(--space-2); padding: var(--space-3) var(--space-4);
+  background: var(--bubble); color: var(--bubble-ink); border: 1px solid var(--bubble-ring);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-float);
+}
+.pt-notice .cp-btn { margin-left: calc(var(--space-2) * -1); }
+
+/* Visually hidden live region. */
+.pt-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pt-dock, .pt-dock .cp-dock__halo { transition: none; }
+  .pt-dock .cp-dock__bubble { animation: none; }
+}

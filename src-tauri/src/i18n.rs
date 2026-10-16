@@ -11,7 +11,6 @@ pub enum Lang {
 }
 
 /// Resolves `ui.language`; `system` follows the first macOS preferred language.
-#[allow(dead_code)] // called by screenshot capture and the menu bar (Steps 6, 10)
 pub fn lang(app: &AppHandle) -> Lang {
     match settings::read::<String>(app, "ui.language").as_deref() {
         Ok("en") => Lang::En,
@@ -30,10 +29,10 @@ pub fn system_lang() -> Lang {
 }
 
 /// The string for `key`. Keys are fixed in code, so an unknown key is a programming error.
-#[allow(dead_code)] // called by screenshot capture and the menu bar (Steps 6, 10)
 pub fn tr(lang: Lang, key: &str) -> &'static str {
     let (en, vi) = match key {
         "screenshot.title" => ("Screenshot", "Ảnh chụp"),
+        "image.title" => ("Image", "Hình ảnh"),
         "tray.openHome" => ("Open home", "Mở trang chính"),
         "tray.showPet" => ("Show pet", "Hiện thú cưng"),
         "tray.pausePet" => ("Pause pet", "Tạm dừng thú cưng"),

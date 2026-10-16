@@ -49,6 +49,8 @@ export interface CatArtProps {
 export function CatArt(props: CatArtProps): ReactElement {
   const { look, skin, parts, motion, mirrored, reducedMotion, fx = null, label } = props;
   const edge = props.edge ?? (mirrored ? 'left' : 'right');
+  // Dots and zZ sit on the side away from the screen edge so they show while peeking.
+  const fxLeft = edge === 'right';
   const visible = useSyncExternalStore(subscribeVisibility, () => document.visibilityState === 'visible');
   const paused = props.hidden || !visible;
   const rootClass = ['cp-cat', reducedMotion && 'is-still', paused && 'is-paused', props.className]
@@ -86,8 +88,8 @@ export function CatArt(props: CatArtProps): ReactElement {
               />
             )}
           </g>
-          {parts.dots && <ThoughtDots mirrored={mirrored} />}
-          {parts.zzz && <Zzz mirrored={mirrored} />}
+          {parts.dots && <ThoughtDots left={fxLeft} />}
+          {parts.zzz && <Zzz left={fxLeft} />}
         </svg>
       </div>
       {motion === 'flash' && !reducedMotion && <div className="cp-cat__flash" key={props.motionKey} />}
@@ -286,9 +288,9 @@ function PixelCat(p: { colors: SkinColors; parts: CatParts; lowered: boolean; bl
   );
 }
 
-/** Thought-cloud trail, top right (top left when mirrored); drawn unmirrored so it reads the same. */
-function ThoughtDots({ mirrored }: { mirrored: boolean }) {
-  const x = (v: number) => (mirrored ? 160 - v : v);
+/** Thought-cloud trail at the top corner away from the screen edge; drawn unmirrored. */
+function ThoughtDots({ left }: { left: boolean }) {
+  const x = (v: number) => (left ? 160 - v : v);
   return (
     <g className="cp-cat__dots" fill="#ffffff" stroke={OUTLINE} strokeWidth="2">
       <circle cx={x(120)} cy="34" r="4" />
@@ -298,13 +300,13 @@ function ThoughtDots({ mirrored }: { mirrored: boolean }) {
   );
 }
 
-function Zzz({ mirrored }: { mirrored: boolean }) {
-  // Mirrored: anchor at the end so the letters keep reading left to right.
-  const anchor = mirrored ? 'end' : 'start';
+function Zzz({ left }: { left: boolean }) {
+  // On the left, anchor at the end so the letters keep reading left to right.
+  const anchor = left ? 'end' : 'start';
   return (
     <g fontFamily="'Baloo 2', sans-serif" fontWeight="700" fill={ZZZ} textAnchor={anchor}>
-      <text x={mirrored ? 48 : 112} y="36" fontSize="16">z</text>
-      <text x={mirrored ? 36 : 124} y="24" fontSize="22">Z</text>
+      <text x={left ? 48 : 112} y="36" fontSize="16">z</text>
+      <text x={left ? 36 : 124} y="24" fontSize="22">Z</text>
     </g>
   );
 }

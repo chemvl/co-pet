@@ -6,7 +6,6 @@ use crate::error::{AppError, AppResult};
 use crate::model::{Rule, CATEGORY_IDS};
 
 /// Active rules, user rules first, each group in ascending `position`.
-#[allow(dead_code)] // called by the triage worker (Step 9)
 pub fn list_active(conn: &Connection) -> AppResult<Vec<Rule>> {
     let mut stmt = conn.prepare(
         "SELECT id, category_id, kind, pattern, builtin, position FROM rules
@@ -29,7 +28,6 @@ pub fn list_active(conn: &Connection) -> AppResult<Vec<Rule>> {
 
 /// Inserts a user rule at position 0 and shifts the other user rules down. An existing user
 /// rule with the same kind and pattern is replaced, so the newest choice wins.
-#[allow(dead_code)] // called by make_rule_from_item (Step 9)
 pub fn insert_user_rule(
     conn: &mut Connection,
     category_id: &str,
@@ -69,12 +67,13 @@ pub fn insert_user_rule(
 }
 
 /// The newest `(title, category)` correction examples, skipping categories excluded from AI.
-#[allow(dead_code)] // called by triage AI (Step 9)
 pub fn recent_examples(conn: &Connection, limit: usize) -> AppResult<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT e.title, e.category_id FROM category_examples e
          JOIN categories c ON c.id = e.category_id
+         JOIN items i ON i.id = e.item_id
          WHERE e.deleted_at IS NULL AND c.exclude_from_ai = 0
+           AND i.sensitive = 0 AND i.deleted_at IS NULL
          ORDER BY e.created_at DESC, e.id DESC LIMIT ?1",
     )?;
     let rows = stmt

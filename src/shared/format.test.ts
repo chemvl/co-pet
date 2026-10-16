@@ -3,8 +3,9 @@ import { formatDate, formatEstimate, formatSize, formatTime, joinMeta } from './
 
 describe('format', () => {
   it('formats dates per language', () => {
-    expect(formatDate(new Date('2025-10-17'), 'vi')).toBe('T6, 17/10');
-    expect(formatDate(new Date('2025-10-17'), 'en')).toBe('Fri 17 Oct');
+    // Local constructor: the fixture is 17 Oct in every timezone.
+    expect(formatDate(new Date(2025, 9, 17), 'vi')).toBe('T6, 17/10');
+    expect(formatDate(new Date(2025, 9, 17), 'en')).toBe('Fri 17 Oct');
     expect(formatDate(new Date(2025, 9, 19), 'vi')).toBe('CN, 19/10');
   });
   it('formats 24-hour time', () => {

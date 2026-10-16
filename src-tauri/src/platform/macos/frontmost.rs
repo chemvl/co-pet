@@ -9,7 +9,6 @@ pub struct FrontApp {
     pub pid: i32,
 }
 
-#[allow(dead_code)] // used by capture source detection (Step 6) and full-screen hiding (Step 10)
 pub fn frontmost_app() -> Option<FrontApp> {
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
     Some(FrontApp {

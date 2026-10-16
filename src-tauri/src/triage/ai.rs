@@ -114,7 +114,6 @@ pub async fn classify_with(llm: &LlmServer, item: &ItemRow, examples: &[(String,
 
 /// Starts the local model if needed and classifies `item`. `examples` are recent user
 /// corrections `(title, category)`, already filtered for `exclude_from_ai`.
-#[allow(dead_code)] // called by the triage worker
 pub async fn classify(app: &AppHandle, item: &ItemRow, examples: &[(String, String)]) -> AppResult<TriageOut> {
     let llm = app.state::<LlmServer>();
     llm.ensure_running(app).await?;

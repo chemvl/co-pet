@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, CaptureResult, CategoryId, Counts, DragPlan, DropPayload, EventPayloads, HitRegion,
-  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, PermissionsStatus, Placement, Rule, Edge,
+  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, PermissionsStatus, PetStatus, Placement, Rule, Edge,
 } from './types';
 
 // Step 3 — storage
@@ -26,6 +26,8 @@ export const resignPetPanel = () => invoke<void>('resign_pet_panel');
 export const captureDrop = (p: DropPayload) => invoke<CaptureResult>('capture_drop', { p });
 export const captureClipboard = () => invoke<CaptureResult>('capture_clipboard');
 export const captureScreenshot = () => invoke<CaptureResult>('capture_screenshot');
+/** Send selection (hotkey): copies the frontmost app's selection, then captures it. */
+export const captureSelection = () => invoke<CaptureResult>('capture_selection');
 export const captureNote = (text: string) => invoke<CaptureResult>('capture_note', { text });
 export const requestPermission = (kind: 'screenRecording' | 'accessibility') =>
   invoke<void>('request_permission', { kind });
@@ -51,6 +53,8 @@ export const makeRuleFromItem = (itemId: string) => invoke<Rule>('make_rule_from
 export const setHotkey = (action: HotkeyAction, accelerator: string) =>
   invoke<void>('set_hotkey', { action, accelerator });
 export const quitApp = () => invoke<void>('quit_app');
+/** The pet's hidden/sleep state now; call once on mount, then follow `pet-visibility`/`pet-flags`. */
+export const petStatus = () => invoke<PetStatus>('pet_status');
 
 // Step 11 — Home
 export const openHome = (route?: string) => invoke<void>('open_home', { route: route ?? null });

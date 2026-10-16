@@ -149,4 +149,40 @@ describe('petMachine loops', () => {
     expect(body()).toBe('idle');
     expect(swaps).toEqual([250]);
   });
+
+  it('drops a queued reaction when the pet resolves into sleep', () => {
+    const { clock, machine, body } = setup();
+    machine.fire('catch');
+    machine.fire('idea', { category: 'code' });
+    machine.set('sleep', true);
+    clock.advance(600);
+    expect(body()).toBe('sleep');
+    clock.advance(600);
+    expect(body()).toBe('sleep');
+  });
+
+  it('expires a stale queued entry before comparing priority', () => {
+    const { clock, machine, body } = setup();
+    machine.fire('poof');
+    machine.fire('catch'); // P1 queued behind P0 at t=0
+    // Chain poofs (P0) so the queued catch outlives the 2 s TTL while still playing.
+    for (let t = 400; t <= 2000; t += 400) {
+      clock.advance(400);
+      machine.fire('poof');
+    }
+    clock.advance(100);
+    machine.fire('idea', { category: 'code' }); // stale catch must not block this P2
+    clock.advance(400); // last poof ends at 2500
+    expect(body()).toBe('idea');
+  });
+
+  it('pausing mid-poof still applies the pending swap once', () => {
+    const { clock, machine, swaps } = setup();
+    machine.fire('poof');
+    clock.advance(100);
+    machine.setPaused(true);
+    expect(swaps).toEqual([100]);
+    clock.advance(1000);
+    expect(swaps).toEqual([100]);
+  });
 });

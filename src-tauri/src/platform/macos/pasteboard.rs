@@ -29,7 +29,6 @@ pub const TYPE_TRANSIENT: &str = "org.nspasteboard.TransientType";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Board {
-    #[allow(dead_code)] // read by clipboard capture and Send selection (Step 6)
     General,
     Drag,
 }
@@ -55,7 +54,6 @@ pub struct PbRead {
 
 impl PbRead {
     /// The writer marked the contents as concealed or transient (password managers).
-    #[allow(dead_code)] // used by clipboard capture (Step 6)
     pub fn concealed(&self) -> bool {
         self.types.iter().any(|t| t == TYPE_CONCEALED || t == TYPE_TRANSIENT)
     }
@@ -75,25 +73,28 @@ pub fn change_count(b: Board) -> isize {
 
 /// Reads the board with Step 6.2 precedence: file URLs → `public.url` → PNG/TIFF → HTML + plain
 /// text. Plain text that is a single http(s) URL becomes `Url`.
-#[allow(dead_code)] // used by drop and clipboard capture (Step 6)
 pub fn read(b: Board) -> PbRead {
     read_from(&board(b))
 }
 
-#[allow(dead_code)] // used by drop and clipboard capture (Step 6)
+#[allow(dead_code)] // contract helper; capture reads the board and the frontmost app in one hop
 pub async fn read_on_main(app: &AppHandle, b: Board) -> AppResult<PbRead> {
     super::on_main(app, move |_| read(b)).await
+}
+
+/// The board's image as PNG (TIFF converted), whatever `read` picked. Browser image drags carry
+/// `public.url` as well as the image, and `read` returns the `Url`; capture prefers the image.
+pub fn read_image(b: Board) -> Option<Vec<u8>> {
+    image_from(&board(b))
 }
 
 /// Replaces the general pasteboard: file URLs (one item each) or a single item carrying every
 /// `data` UTI → string pair, plus optional PNG bytes. With files, `data` and `png` join the first
 /// item.
-#[allow(dead_code)] // used by copy and paste (Step 7)
 pub fn write(files: &[PathBuf], data: &BTreeMap<String, String>, png: Option<&[u8]>) -> AppResult<()> {
     write_to(&NSPasteboard::generalPasteboard(), files, data, png)
 }
 
-#[allow(dead_code)] // used by copy and paste (Step 7)
 pub async fn write_on_main(
     app: &AppHandle,
     files: Vec<PathBuf>,
@@ -118,17 +119,8 @@ fn read_from(pb: &NSPasteboard) -> PbRead {
             let title = string(pb, TYPE_URL_NAME).map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
             break 'found Some(PbContent::Url { url, title });
         }
-        if has(TYPE_PNG) {
-            if let Some(png) = data(pb, TYPE_PNG) {
-                break 'found Some(PbContent::Image(png));
-            }
-        }
-        if has(TYPE_TIFF) {
-            match data(pb, TYPE_TIFF).map(|t| tiff_to_png(&t)) {
-                Some(Ok(png)) => break 'found Some(PbContent::Image(png)),
-                Some(Err(e)) => eprintln!("[pasteboard] tiff → png failed: {e}"),
-                None => {}
-            }
+        if let Some(png) = image_from(pb) {
+            break 'found Some(PbContent::Image(png));
         }
         let plain = string(pb, TYPE_PLAIN).filter(|p| !p.trim().is_empty());
         let html = if has(TYPE_HTML) { string(pb, TYPE_HTML).filter(|h| !h.trim().is_empty()) } else { None };
@@ -146,6 +138,20 @@ fn text_or_url(plain: String, html: Option<String>) -> PbContent {
         PbContent::Url { url: trimmed.to_string(), title: None }
     } else {
         PbContent::Text { plain, html }
+    }
+}
+
+fn image_from(pb: &NSPasteboard) -> Option<Vec<u8>> {
+    if let Some(png) = data(pb, TYPE_PNG) {
+        return Some(png);
+    }
+    match data(pb, TYPE_TIFF).map(|t| tiff_to_png(&t)) {
+        Some(Ok(png)) => Some(png),
+        Some(Err(e)) => {
+            eprintln!("[pasteboard] tiff → png failed: {e}");
+            None
+        }
+        None => None,
     }
 }
 

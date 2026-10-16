@@ -200,9 +200,12 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
     playing = null;
     cancelSwap();
     cancelSwap = noop;
-    const next = queued;
+    let next = queued;
     queued = null;
-    if (next && deps.now() - next.at <= QUEUE_TTL_MS) {
+    if (next && deps.now() - next.at > QUEUE_TTL_MS) next = null;
+    // Resolving into sleep drops everything except wake/poof, like a live trigger would be.
+    if (next && next.trigger !== 'wake' && next.trigger !== 'poof' && resolveLoop() === 'sleep') next = null;
+    if (next) {
       play(next);
     } else {
       render();
@@ -210,7 +213,8 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
   }
 
   function enqueue(r: Reaction) {
-    // One slot: the newest of the highest priority.
+    // One slot: the newest of the highest priority. An expired entry no longer competes.
+    if (queued && deps.now() - queued.at > QUEUE_TTL_MS) queued = null;
     if (queued && queued.priority < r.priority) return;
     queued = { ...r, at: deps.now() };
   }
@@ -267,7 +271,10 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
       if (paused === value) return;
       paused = value;
       if (paused) {
+        // A poof cut before its midpoint still applies the pending style/skin/size.
+        const swapPending = playing?.trigger === 'poof' && cancelSwap !== noop;
         stopPlaying();
+        if (swapPending) deps.onSwap?.();
         queued = null;
       }
       render();

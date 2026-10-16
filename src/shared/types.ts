@@ -195,6 +195,26 @@ export interface TaskCreated {
   eventIds: string[];
 }
 
+export type NextTrigger = 'bubble' | 'return' | 'afterDone' | 'agent' | 'home';
+export type NextAction = 'shown' | 'start' | 'done' | 'snooze' | 'skip';
+export type NextReasonKey =
+  | 'overdue' | 'dueSoon' | 'dueToday' | 'dueTomorrow' | 'dueThisWeek' | 'highPriority' | 'waiting';
+
+/** The What's Next card. `reason` is the model's sentence; `reasonKey` the ranking reason. */
+export interface NextCard {
+  taskId: string;
+  title: string;
+  reason: string | null;
+  reasonKey: NextReasonKey | null;
+  firstStep: string | null;
+  estimateMin: number | null;
+  dueDate: string | null;
+  dueTime: string | null;
+  categoryId: CategoryId;
+  sourceTitle: string | null;
+  pickedBy: 'ai' | 'rank';
+}
+
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface HitRegion extends Rect { kind: 'pet' | 'panel' }
 export type Edge = 'left' | 'right' | 'bottom';
@@ -269,4 +289,6 @@ export interface EventPayloads {
   navigate: { route: string };
   /** Pet window only: the outcome of a native drop on the pet. */
   'capture-result': CaptureResult;
+  /** Pet window only: a proactive What's Next card. */
+  'whats-next': { card: NextCard; trigger: 'return' | 'afterDone' };
 }

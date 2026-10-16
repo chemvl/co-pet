@@ -3,8 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
-  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, PermissionsStatus, PetStatus, Placement, Rule,
-  Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
+  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
+  PetStatus, Placement, Rule, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
 } from './types';
 
 // Step 3 — storage
@@ -108,6 +108,14 @@ export const snoozeTask = (id: string, until: number) => invoke<{ eventIds: stri
 export const trashTask = (id: string) => invoke<{ eventIds: string[] }>('trash_task', { id });
 /** Rejects with `"notFound"`, `"alreadyUndone"` or `"notUndoable"`. */
 export const undoTaskEvent = (eventId: string) => invoke<void>('undo_task_event', { eventId });
+
+// Phase 2 M3 — What's Next
+/** `home` uses the ranking only. Resolves with null when no task is eligible. */
+export const whatsNext = (trigger: 'bubble' | 'home') => invoke<NextCard | null>('whats_next', { trigger });
+/** `start` opens the task's link, file or Home page; `done`/`snooze` emit `tasks-changed`.
+ *  Rejects with `"invalid"` or `"notFound"`. */
+export const nextAction = (taskId: string, action: NextAction, trigger: NextTrigger) =>
+  invoke<void>('next_action', { taskId, action, trigger });
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

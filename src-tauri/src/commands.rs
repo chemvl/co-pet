@@ -382,6 +382,7 @@ pub fn update_task(
     Ok(crate::model::EventIds { event_ids })
 }
 
+/// Marking a task done celebrates and, 2 s later, may offer the next card.
 #[tauri::command]
 pub fn set_task_done(
     app: AppHandle,
@@ -391,6 +392,10 @@ pub fn set_task_done(
 ) -> AppResult<crate::model::EventIds> {
     let event_ids = crate::db::tasks::set_done(&mut db.conn(), &id, done, &crate::model::Actor::User)?;
     crate::db::tasks::notify_changed(&app, vec![id]);
+    if done && !event_ids.is_empty() {
+        crate::events::celebrate(&app);
+        crate::next::after_done(&app);
+    }
     Ok(crate::model::EventIds { event_ids })
 }
 
@@ -419,4 +424,21 @@ pub fn undo_task_event(app: AppHandle, db: State<'_, Db>, event_id: String) -> A
     let task_id = crate::db::tasks::undo_event(&mut db.conn(), &event_id)?;
     crate::db::tasks::notify_changed(&app, vec![task_id]);
     Ok(())
+}
+
+// ---------- M3: What's Next ----------
+
+/// `trigger`: `bubble | home` (`home` = ranking only). `None` when no task is eligible.
+#[tauri::command]
+pub async fn whats_next(app: AppHandle, trigger: String) -> AppResult<Option<crate::model::NextCard>> {
+    if !matches!(trigger.as_str(), "bubble" | "home") {
+        return Err(crate::error::AppError::Code("invalid"));
+    }
+    crate::next::pick(&app, &trigger).await
+}
+
+/// `action`: `shown | start | done | snooze | skip`. Rejects with `invalid` or `notFound`.
+#[tauri::command]
+pub fn next_action(app: AppHandle, task_id: String, action: String, trigger: String) -> AppResult<()> {
+    crate::next::act(&app, &task_id, &action, &trigger)
 }

@@ -6,7 +6,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, Tra
 use serde_json::{Map, Value};
 use tauri::AppHandle;
 
-use crate::db::{items, new_id, now_ms, search, undo, Db};
+use crate::db::{items, new_id, now_ms, search, undo};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::{Actor, NewTask, TaskDetail, TaskEvent, TaskPatch, TaskQuery, TaskSummary};
@@ -164,13 +164,8 @@ fn apply(
 
 /// Emits `tasks-changed` for `ids`, then `counts-changed`.
 pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
-    use tauri::Manager;
     events::tasks_changed(app, ids);
-    let fresh = items::counts(&app.state::<Db>().conn());
-    match fresh {
-        Ok(c) => events::counts_changed(app, c),
-        Err(e) => eprintln!("[tasks] counts failed: {e}"),
-    }
+    items::emit_counts(app);
 }
 
 // ---------- validation ----------

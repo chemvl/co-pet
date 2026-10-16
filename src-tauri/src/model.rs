@@ -351,6 +351,8 @@ pub struct PetStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Actor {
     User,
+    /// The What's Next card's Done / Snooze.
+    Next,
 }
 
 impl Actor {
@@ -358,6 +360,7 @@ impl Actor {
     pub fn columns(&self) -> (&'static str, Option<&str>) {
         match self {
             Actor::User => ("user", None),
+            Actor::Next => ("next", None),
         }
     }
 }

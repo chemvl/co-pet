@@ -621,10 +621,14 @@ pub fn counts(conn: &Connection) -> AppResult<Counts> {
 /// Emits `items-changed {ids}` then `counts-changed` with fresh counts.
 pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
     events::items_changed(app, ids);
-    let fresh = counts(&app.state::<Db>().conn());
-    match fresh {
+    emit_counts(app);
+}
+
+/// Emits `counts-changed` with fresh counts; a failure to read them is logged.
+pub fn emit_counts(app: &AppHandle) {
+    match counts(&app.state::<Db>().conn()) {
         Ok(c) => events::counts_changed(app, c),
-        Err(e) => eprintln!("[items] counts failed: {e}"),
+        Err(e) => eprintln!("[counts] read failed: {e}"),
     }
 }
 

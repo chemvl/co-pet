@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager};
 use crate::db::settings;
 use crate::events::{self, PetFlags};
 
-const TICK: Duration = Duration::from_secs(5);
+pub const TICK: Duration = Duration::from_secs(5);
 const IDLE_SECS: f64 = 300.0;
 /// `kCGEventSourceStateHIDSystemState`.
 const HID_SYSTEM_STATE: i32 = 1;
@@ -83,7 +83,7 @@ pub fn in_sleep_hours(app: &AppHandle) -> bool {
 }
 
 /// `HH:MM` → minutes after midnight.
-fn minutes(hhmm: &str) -> Option<u32> {
+pub fn minutes(hhmm: &str) -> Option<u32> {
     let (h, m) = hhmm.trim().split_once(':')?;
     let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
     (h < 24 && m < 60).then_some(h * 60 + m)

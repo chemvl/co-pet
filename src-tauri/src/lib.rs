@@ -69,6 +69,7 @@ pub fn run() {
             hotkeys::init(&handle);
             platform::macos::fullscreen::start(&handle);
             platform::macos::idle::start(&handle);
+            next::start(&handle);
             system::watch_autostart(&handle);
             if settings_bool(&handle, "onboarding.completed") {
                 windows::create_pet_window(&handle)?;
@@ -132,6 +133,8 @@ pub fn run() {
             commands::snooze_task,
             commands::trash_task,
             commands::undo_task_event,
+            commands::whats_next,
+            commands::next_action,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

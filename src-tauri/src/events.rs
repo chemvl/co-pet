@@ -1,8 +1,11 @@
 //! Event names and payloads sent to the webviews. All payloads are camelCase.
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, CaptureResult, Counts, Placement};
+use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -20,6 +23,11 @@ pub const HOTKEY: &str = "hotkey";
 pub const NAVIGATE: &str = "navigate";
 /// Pet window only: the outcome of a native drop on the pet.
 pub const CAPTURE_RESULT: &str = "capture-result";
+/// Pet window only: a proactive What's Next card.
+pub const WHATS_NEXT: &str = "whats-next";
+
+/// At most one `celebrate` reaction per this gap.
+const CELEBRATE_GAP: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +107,14 @@ pub struct TasksChanged {
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesChanged {}
 
+/// `trigger`: `return | afterDone`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhatsNextEvent {
+    pub card: NextCard,
+    pub trigger: String,
+}
+
 /// Emits to every webview; a failure to emit is logged, never fatal.
 pub fn emit<S: Serialize + Clone>(app: &AppHandle, event: &str, payload: S) {
     if let Err(e) = app.emit(event, payload) {
@@ -142,5 +158,43 @@ pub fn categories_changed(app: &AppHandle) {
 pub fn capture_result(app: &AppHandle, r: CaptureResult) {
     if let Err(e) = app.emit_to(crate::windows::PET, CAPTURE_RESULT, r) {
         eprintln!("[events] emit {CAPTURE_RESULT} failed: {e}");
+    }
+}
+
+/// Sent to the pet window only; it opens the card without taking focus.
+pub fn whats_next(app: &AppHandle, ev: WhatsNextEvent) {
+    if let Err(e) = app.emit_to(crate::windows::PET, WHATS_NEXT, ev) {
+        eprintln!("[events] emit {WHATS_NEXT} failed: {e}");
+    }
+}
+
+/// `pet-reaction {input: "celebrate"}` when a task becomes done, at most once per 10 s.
+pub fn celebrate(app: &AppHandle) {
+    static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    let now = Instant::now();
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if !gap_passed(*last, now) {
+            return;
+        }
+        *last = Some(now);
+    }
+    pet_reaction(app, PetReaction::new("celebrate"));
+}
+
+fn gap_passed(last: Option<Instant>, now: Instant) -> bool {
+    last.is_none_or(|t| now.duration_since(t) >= CELEBRATE_GAP)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn celebrate_is_throttled_to_ten_seconds() {
+        let t0 = Instant::now();
+        assert!(gap_passed(None, t0));
+        assert!(!gap_passed(Some(t0), t0 + Duration::from_millis(9_999)));
+        assert!(gap_passed(Some(t0), t0 + CELEBRATE_GAP));
     }
 }

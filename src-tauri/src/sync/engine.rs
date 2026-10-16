@@ -42,6 +42,8 @@ static PUSH_ORDER: LazyLock<String> = LazyLock::new(|| {
 pub struct SyncEngine {
     notify: Notify,
     state: Mutex<SyncState>,
+    /// The last `sync-status` sent; another is sent only when the status differs.
+    sent: Mutex<Option<SyncStatus>>,
     /// Held for a whole run: the loop and `sync_now` never overlap.
     running: tokio::sync::Mutex<()>,
 }
@@ -50,12 +52,18 @@ impl SyncEngine {
     fn state(&self) -> std::sync::MutexGuard<'_, SyncState> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    fn sent(&self) -> std::sync::MutexGuard<'_, Option<SyncStatus>> {
+        self.sent.lock().unwrap_or_else(|e| e.into_inner())
+    }
 }
 
 /// What a run reports while it goes.
 pub(crate) enum Progress {
     /// Rows are being pushed or pulled.
     Moving,
+    /// Files are being uploaded or downloaded.
+    Files,
     /// A pulled page changed these rows.
     Applied(Applied),
     /// A downloaded file arrived for these items.
@@ -74,7 +82,12 @@ pub(crate) struct Ctx<'a> {
 
 /// Manages `SyncEngine` and spawns the loop.
 pub fn start(app: &AppHandle) {
-    app.manage(SyncEngine { notify: Notify::new(), state: Mutex::new(SyncState::Off), running: tokio::sync::Mutex::const_new(()) });
+    app.manage(SyncEngine {
+        notify: Notify::new(),
+        state: Mutex::new(SyncState::Off),
+        sent: Mutex::new(None),
+        running: tokio::sync::Mutex::const_new(()),
+    });
     let app = app.clone();
     tauri::async_runtime::spawn(async move { run_loop(app).await });
 }
@@ -120,15 +133,20 @@ fn read_status(conn: &Connection, state: SyncState) -> AppResult<SyncStatus> {
     })
 }
 
-/// Stores `state` and sends `sync-status` when it changed or a run just synced.
+/// Stores `state` and sends `sync-status` when the status (state, last sync, counts) differs
+/// from the last one sent.
 fn set_state(app: &AppHandle, state: SyncState) {
-    let changed = std::mem::replace(&mut *app.state::<SyncEngine>().state(), state) != state;
-    if !changed && state != SyncState::Idle {
-        return;
-    }
-    match read_status(&app.state::<Db>().conn(), state) {
-        Ok(s) => events::sync_status(app, s),
-        Err(e) => eprintln!("[sync] status: {e}"),
+    let engine = app.state::<SyncEngine>();
+    *engine.state() = state;
+    let status = match read_status(&app.state::<Db>().conn(), state) {
+        Ok(s) => s,
+        Err(e) => return eprintln!("[sync] status: {e}"),
+    };
+    let mut sent = engine.sent();
+    if sent.as_ref() != Some(&status) {
+        *sent = Some(status.clone());
+        drop(sent);
+        events::sync_status(app, status);
     }
 }
 
@@ -163,10 +181,7 @@ async fn run_once(app: &AppHandle, manual: bool) -> SyncState {
     let engine = app.state::<SyncEngine>();
     let _turn = engine.running.lock().await;
     let state = match ready(app) {
-        Ok(ready) => {
-            set_state(app, SyncState::Syncing);
-            run_ready(app, ready).await
-        }
+        Ok(ready) => run_ready(app, ready).await,
         Err(state) => state,
     };
     set_state(app, state);
@@ -203,9 +218,16 @@ async fn run_ready(app: &AppHandle, ready: Ready) -> SyncState {
     let (db, paths) = (app.state::<Db>(), app.state::<Paths>());
     let cx = Ctx { db: &db, paths: &paths, keys: &ready.keys, user_id: &ready.user_id };
     let mut carrying = false;
+    let mut syncing = false;
     let result = sync_with(&cx, &remote, &mut |p| match p {
-        Progress::Moving => {
-            if !carrying {
+        Progress::Moving | Progress::Files => {
+            // `syncing` only while something moves: a run with nothing to do sends one status
+            // at most (its new last-sync time).
+            if !syncing {
+                syncing = true;
+                set_state(app, SyncState::Syncing);
+            }
+            if matches!(p, Progress::Moving) && !carrying {
                 carrying = true;
                 events::pet_flags(app, PetFlags { carrying: Some(true), ..Default::default() });
             }
@@ -561,6 +583,8 @@ mod tests {
     impl Remote for EditDuringPush<'_> {
         async fn push(&self, rows: &[RemoteRow]) -> Result<u32, SyncError> {
             if rows.iter().any(|r| r.id == self.task) {
+                // Strictly after the push began (`since`), so the entry is queued again.
+                std::thread::sleep(Duration::from_millis(2));
                 edit_task(self.device, self.task, "edited during push", now_ms() + 5);
             }
             self.inner.push(rows).await

@@ -4,14 +4,14 @@
 use std::collections::HashMap;
 
 use rusqlite::types::{ToSql, ToSqlOutput, Value as SqlValue, ValueRef};
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, params_from_iter, Connection, ErrorCode, OptionalExtension, Transaction};
 use serde_json::{Map, Value};
 
 use super::codec::open_row;
 use super::remote::RemoteRow;
 use super::{state_set, synced_table, CURSOR, SYNCED_SETTINGS};
 use crate::db::{items, now_ms, search};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::export;
 use crate::paths::Paths;
 
@@ -34,26 +34,61 @@ impl Applied {
 }
 
 /// Applies one server page (`rows` in `seq` order) in one transaction, which also stores
-/// `cursor` = the last row's `seq`. Rows of unknown tables, rows that don't decrypt and
-/// per-device settings are skipped. Items are reindexed (FTS) and their files missing here get
-/// a `down` row in `sync_blobs`; they are never queued for triage.
+/// `cursor` = the last row's `seq`. Rows of unknown tables, rows that don't decrypt, per-device
+/// settings and rows this schema rejects (a newer client's value failing a `CHECK` or
+/// `NOT NULL`) are skipped. Items are reindexed (FTS) and their files missing here get a `down`
+/// row in `sync_blobs`; they are never queued for triage.
 pub(crate) fn apply_page(
     conn: &mut Connection,
     rows: &[RemoteRow],
     record_key: &[u8; 32],
     paths: &Paths,
 ) -> AppResult<Applied> {
-    // A no-op inside a transaction, so outside it.
-    conn.pragma_update(None, "foreign_keys", "OFF")?;
-    let applied = apply_rows(conn, rows, record_key, paths);
-    let restored = conn.pragma_update(None, "foreign_keys", "ON");
-    let applied = applied?;
-    restored?;
+    let fk = ForeignKeysOff::new(conn)?;
+    let applied = apply_rows(conn, rows, record_key, paths)?;
+    fk.restore()?;
     Ok(applied)
 }
 
-fn apply_rows(conn: &mut Connection, rows: &[RemoteRow], record_key: &[u8; 32], paths: &Paths) -> AppResult<Applied> {
-    let tx = conn.transaction()?;
+/// `PRAGMA foreign_keys = OFF` until [`ForeignKeysOff::restore`], or until dropped (an error or
+/// a panic), so the shared connection never keeps foreign keys off. Set outside any
+/// transaction: inside one the pragma is a no-op.
+struct ForeignKeysOff<'c> {
+    conn: &'c Connection,
+    restored: bool,
+}
+
+impl<'c> ForeignKeysOff<'c> {
+    fn new(conn: &'c Connection) -> AppResult<Self> {
+        conn.pragma_update(None, "foreign_keys", "OFF")?;
+        Ok(ForeignKeysOff { conn, restored: false })
+    }
+
+    fn restore(mut self) -> AppResult<()> {
+        self.restored = true;
+        self.conn.pragma_update(None, "foreign_keys", "ON")?;
+        Ok(())
+    }
+}
+
+impl Drop for ForeignKeysOff<'_> {
+    fn drop(&mut self) {
+        if !self.restored {
+            if let Err(e) = self.conn.pragma_update(None, "foreign_keys", "ON") {
+                eprintln!("[sync] foreign keys back on: {e}");
+            }
+        }
+    }
+}
+
+/// Whether `e` is SQLite refusing a value (`CHECK`, `NOT NULL`, …).
+fn rejected(e: &AppError) -> bool {
+    matches!(e, AppError::Db(rusqlite::Error::SqliteFailure(f, _)) if f.code == ErrorCode::ConstraintViolation)
+}
+
+fn apply_rows(conn: &Connection, rows: &[RemoteRow], record_key: &[u8; 32], paths: &Paths) -> AppResult<Applied> {
+    // The caller holds the connection exclusively (`&mut` in `apply_page`).
+    let tx = conn.unchecked_transaction()?;
     tx.execute("UPDATE sync_guard SET applying = 1", [])?;
     let device_id = export::device_id(&tx)?;
     let now = now_ms();
@@ -76,7 +111,15 @@ fn apply_rows(conn: &mut Connection, rows: &[RemoteRow], record_key: &[u8; 32], 
         if !columns.contains_key(tbl) {
             columns.insert(tbl, table_columns(&tx, tbl)?);
         }
-        upsert(&tx, tbl, key, &columns[tbl], &row)?;
+        match upsert(&tx, tbl, key, &columns[tbl], &row) {
+            Ok(()) => {}
+            // Only this statement is undone; the page goes on.
+            Err(e) if rejected(&e) => {
+                eprintln!("[sync] rejected {}/{}", r.tbl, r.id);
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
         tx.execute("DELETE FROM sync_outbox WHERE tbl = ?1 AND id = ?2", params![tbl, r.id])?;
         match tbl {
             "items" => {
@@ -159,7 +202,7 @@ impl ToSql for Param<'_> {
 }
 
 /// Reindexes the item (no FTS row while deleted) and queues a download for each of its files
-/// that isn't on this Mac.
+/// that isn't on this Mac; a file given up as `missing` is tried afresh.
 fn after_item(tx: &Transaction, id: &str, paths: &Paths, now: i64) -> AppResult<()> {
     let item = items::get_row(tx, id)?;
     if item.deleted_at.is_some() {
@@ -170,7 +213,9 @@ fn after_item(tx: &Transaction, id: &str, paths: &Paths, now: i64) -> AppResult<
     for rel in [&item.file_path, &item.thumb_path].into_iter().flatten() {
         if !paths.abs(rel).exists() {
             tx.execute(
-                "INSERT OR IGNORE INTO sync_blobs (rel, state, updated_at) VALUES (?1, 'down', ?2)",
+                "INSERT INTO sync_blobs (rel, state, updated_at) VALUES (?1, 'down', ?2)
+                 ON CONFLICT(rel) DO UPDATE SET state = 'down', attempts = 0, updated_at = excluded.updated_at
+                 WHERE state = 'missing'",
                 params![rel, now],
             )?;
         }
@@ -281,5 +326,43 @@ mod tests {
         assert_ne!(settings::get::<Value>(&b.db.conn(), "hotkeys").unwrap()["focusPet"], "F1");
         assert_eq!(state_get(&b.db.conn(), CURSOR).unwrap().as_deref(), Some("2"), "skipped rows still advance");
         assert!(SYNC_TABLES.iter().all(|(t, _, _)| *t != "projects"));
+    }
+
+    #[test]
+    fn rows_this_schema_rejects_are_skipped() {
+        let (a, b, keys) = (device("aaaa"), device("bbbb"), keys());
+        for id in ["t1", "t2", "t3"] {
+            a.db.conn().execute("INSERT INTO tasks (id, title, created_at, updated_at) VALUES (?1, 'ok', 1, 1)", [id]).unwrap();
+        }
+        let c = a.db.conn();
+        // A newer client's status this schema's CHECK refuses, and a NULL title (NOT NULL).
+        let with = |id: &str, column: &str, value: Value, seq: i64| {
+            let mut r = sealed(&c, &keys, "tasks", id, "aaaa", seq);
+            let mut row = crate::sync::codec::open_row(&keys.record, "tasks", id, &r.payload).unwrap();
+            row.insert(column.into(), value);
+            r.payload = crate::sync::codec::seal_row(&keys.record, "tasks", id, &row);
+            r
+        };
+        let page = vec![with("t1", "status", json!("someday"), 1), with("t2", "title", Value::Null, 2), sealed(&c, &keys, "tasks", "t3", "aaaa", 3)];
+        let mut bc = b.db.conn();
+        let applied = apply_page(&mut bc, &page, &keys.record, &b.paths).unwrap();
+        assert_eq!(applied.task_ids, ["t3"]);
+        assert_eq!(count(&bc, "SELECT count(*) FROM tasks"), 1);
+        assert_eq!(state_get(&bc, CURSOR).unwrap().as_deref(), Some("3"), "the cursor moves past rejected rows");
+        assert_eq!(count(&bc, "SELECT applying FROM sync_guard"), 0);
+        assert_eq!(outbox_len(&bc), 0);
+    }
+
+    #[test]
+    fn foreign_keys_come_back_on_after_a_panic() {
+        let b = device("bbbb");
+        let c = b.db.conn();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _off = ForeignKeysOff::new(&c).unwrap();
+            assert_eq!(count(&c, "PRAGMA foreign_keys"), 0);
+            panic!("mid-page");
+        }));
+        assert!(panicked.is_err());
+        assert_eq!(count(&c, "PRAGMA foreign_keys"), 1);
     }
 }

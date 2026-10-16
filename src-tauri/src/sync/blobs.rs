@@ -1,10 +1,15 @@
 //! Library files. After a push, each pushed item's file and thumbnail that is on this Mac gets a
 //! `sync_blobs` row: `up`, or `tooLarge` when the sealed file would exceed `sync.maxFileMb` MiB
 //! (the bucket's per-object cap, so such files never leave this Mac). A pulled item's files that
-//! aren't here get `down` (`apply`). Each run moves up to 20 files: `up` seals the file with the
-//! blob key and its library path as associated data and stores it as `blob_name(rel)`; `down`
-//! fetches, opens and writes it atomically, and after 3 runs without a usable object marks it
-//! `missing`.
+//! aren't here get `down` (`apply`). Each run moves up to 20 due files: `up` seals the file with
+//! the blob key and its library path as associated data and stores it as `blob_name(rel)`;
+//! `down` fetches, opens and writes it atomically.
+//!
+//! A `down` file is never given up while its object is absent (the other Mac may not have
+//! uploaded it yet, or it is over the limit there): it is tried again later, the wait growing
+//! with the item's age (see [`absent_delay`]), with `updated_at` holding the next try. Only an
+//! object that is there but won't open counts in `attempts`, and makes the file `missing` after
+//! 3. Pulling the item again turns `missing` back into `down` (`apply`).
 use std::io::ErrorKind;
 use std::path::{Component, Path};
 
@@ -21,9 +26,18 @@ use crate::paths::Paths;
 
 /// Files moved per run.
 const PER_RUN: i64 = 20;
-/// Runs a download may find no usable object before the file is `missing`.
+/// Runs that may find an object that won't open before the file is `missing`.
 const MAX_ATTEMPTS: i64 = 3;
 const MIB: u64 = 1_048_576;
+const MIN_WAIT_MS: i64 = 60_000;
+const MAX_WAIT_MS: i64 = 60 * 60_000;
+
+/// The wait before asking again for an absent object of an item captured `age_ms` ago: the age
+/// itself, between 1 min and 1 h. Each try then comes at about twice the age of the last, so
+/// the waits double (1 min, 2 min, 4 min, …) up to one try an hour.
+fn absent_delay(age_ms: i64) -> i64 {
+    age_ms.clamp(MIN_WAIT_MS, MAX_WAIT_MS)
+}
 
 /// Whether a file of `size` bytes, once sealed, is over `max_mb` MiB.
 fn too_large(size: u64, max_mb: u64) -> bool {
@@ -53,21 +67,38 @@ pub(crate) fn register(conn: &Connection, paths: &Paths, item_ids: &[String], no
     Ok(())
 }
 
-/// Moves up to 20 files, oldest first. `Progress::Arrived` names the items whose file arrived.
+/// Moves up to 20 due files, oldest first. `Progress::Arrived` names the items whose file
+/// arrived. A server error on one file is logged and that file goes to the back; going offline
+/// or signed out ends the pass.
 pub(crate) async fn run<R: Remote>(cx: &Ctx<'_>, remote: &R, on: &mut impl FnMut(Progress)) -> Result<(), SyncError> {
     let jobs: Vec<(String, String, i64)> = {
         let conn = cx.db.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT rel, state, attempts FROM sync_blobs WHERE state IN ('up', 'down') ORDER BY updated_at, rel LIMIT ?1",
+            "SELECT rel, state, attempts FROM sync_blobs WHERE state IN ('up', 'down') AND updated_at <= ?1
+             ORDER BY updated_at, rel LIMIT ?2",
         )?;
-        let jobs = stmt.query_map([PER_RUN], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        let jobs = stmt
+            .query_map(params![now_ms(), PER_RUN], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
         jobs
     };
+    if !jobs.is_empty() {
+        on(Progress::Files);
+    }
     for (rel, state, attempts) in jobs {
-        if state == "up" {
-            upload(cx, remote, &rel).await?;
-        } else if let Some(item_ids) = download(cx, remote, &rel, attempts).await? {
-            on(Progress::Arrived(item_ids));
+        let done = if state == "up" {
+            upload(cx, remote, &rel).await.map(|()| None)
+        } else {
+            download(cx, remote, &rel, attempts).await
+        };
+        match done {
+            Ok(Some(item_ids)) => on(Progress::Arrived(item_ids)),
+            Ok(None) => {}
+            Err(SyncError::Server(message)) => {
+                eprintln!("[sync] file {rel}: {message}");
+                cx.db.conn().execute("UPDATE sync_blobs SET updated_at = ?2 WHERE rel = ?1", params![rel, now_ms()])?;
+            }
+            Err(e) => return Err(e),
         }
     }
     Ok(())
@@ -115,21 +146,29 @@ async fn download<R: Remote>(cx: &Ctx<'_>, remote: &R, rel: &str, attempts: i64)
         return Ok(None);
     }
     if !cx.paths.abs(rel).exists() {
-        let written = match remote.get_blob(&blob_name(&cx.keys.name, rel)).await? {
-            Some(sealed) => {
-                let (paths, key, rel) = (cx.paths.clone(), cx.keys.blob, rel.to_owned());
-                blocking(move || -> AppResult<bool> {
-                    let Ok(plain) = open(&key, rel.as_bytes(), &sealed) else { return Ok(false) };
-                    let staged = library::staging(&paths)?;
-                    std::fs::write(&staged, plain)?;
-                    library::commit(&paths, &staged, &rel)?;
-                    Ok(true)
-                })
-                .await??
-            }
-            None => false,
+        let Some(sealed) = remote.get_blob(&blob_name(&cx.keys.name, rel)).await? else {
+            let conn = cx.db.conn();
+            let now = now_ms();
+            let captured: Option<i64> = conn.query_row(
+                "SELECT MIN(captured_at) FROM items WHERE file_path = ?1 OR thumb_path = ?1",
+                [rel],
+                |r| r.get(0),
+            )?;
+            let next = now + absent_delay(now - captured.unwrap_or(now));
+            conn.execute("UPDATE sync_blobs SET updated_at = ?2 WHERE rel = ?1", params![rel, next])?;
+            return Ok(None);
         };
+        let (paths, key, owned) = (cx.paths.clone(), cx.keys.blob, rel.to_owned());
+        let written = blocking(move || -> AppResult<bool> {
+            let Ok(plain) = open(&key, owned.as_bytes(), &sealed) else { return Ok(false) };
+            let staged = library::staging(&paths)?;
+            std::fs::write(&staged, plain)?;
+            library::commit(&paths, &staged, &owned)?;
+            Ok(true)
+        })
+        .await??;
         if !written {
+            eprintln!("[sync] file {rel} doesn't open");
             let attempts = attempts + 1;
             let state = if attempts >= MAX_ATTEMPTS { "missing" } else { "down" };
             cx.db.conn().execute(
@@ -152,8 +191,8 @@ mod tests {
     use crate::db::items;
     use crate::sync::codec::Keys;
     use crate::sync::engine::sync_with;
-    use crate::sync::remote::MemoryRemote;
-    use crate::sync::testing::{device, file_item, keys, sync, USER};
+    use crate::sync::remote::{MemoryRemote, RemoteRow};
+    use crate::sync::testing::{device, file_item, keys, sync, sync_device, Device, USER};
 
     fn state(conn: &Connection, rel: &str) -> (String, i64) {
         conn.query_row("SELECT state, attempts FROM sync_blobs WHERE rel = ?1", [rel], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -211,16 +250,96 @@ mod tests {
         assert_eq!(blobs.len(), 1);
         assert_eq!(blobs[&blob_name(&keys.name, &fits_rel)].len() as u64, MIB);
 
-        // The other Mac tries once per run, then gives up; the item says its file is elsewhere.
-        for attempts in 1..=MAX_ATTEMPTS {
-            sync(&b, &remote, &keys).await;
-            let expected = if attempts < MAX_ATTEMPTS { "down" } else { "missing" };
-            assert_eq!(state(&b.db.conn(), &over_rel), (expected.into(), attempts));
-        }
+        // The other Mac keeps the file `down` without counting attempts, and asks again later:
+        // a minute for an item captured just now, an hour for an old one.
         sync(&b, &remote, &keys).await;
-        assert_eq!(state(&b.db.conn(), &over_rel), ("missing".into(), MAX_ATTEMPTS), "missing is final");
+        let (_, next) = due(&b.db.conn(), &over_rel);
+        assert_eq!(state(&b.db.conn(), &over_rel), ("down".into(), 0));
+        assert!((next - now_ms() - MIN_WAIT_MS).abs() < 5_000, "next try in about a minute: {}", next - now_ms());
+        sync(&b, &remote, &keys).await;
+        assert_eq!(due(&b.db.conn(), &over_rel), ("down".into(), next), "not asked again before then");
+        // An old item (written as apply would, so B doesn't queue it).
+        b.db.conn()
+            .execute_batch(&format!(
+                "UPDATE sync_guard SET applying = 1; UPDATE items SET captured_at = {} WHERE id = '{over_id}';
+                 UPDATE sync_guard SET applying = 0;",
+                now_ms() - 3 * MAX_WAIT_MS
+            ))
+            .unwrap();
+        for _ in 0..MAX_ATTEMPTS + 1 {
+            make_due(&b, &over_rel);
+            sync(&b, &remote, &keys).await;
+        }
+        let (state_now, next) = due(&b.db.conn(), &over_rel);
+        assert_eq!(state_now, "down", "an absent object never makes the file missing");
+        assert!((next - now_ms() - MAX_WAIT_MS).abs() < 5_000, "an old item waits an hour");
         assert!(b.paths.abs(&fits_rel).exists());
         assert!(!items::get_item_detail(&b.db.conn(), &over_id, &b.paths).unwrap().item.file_available);
+    }
+
+    fn due(conn: &Connection, rel: &str) -> (String, i64) {
+        conn.query_row("SELECT state, updated_at FROM sync_blobs WHERE rel = ?1", [rel], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+    }
+
+    /// As if the wait for `rel` were over.
+    fn make_due(d: &Device, rel: &str) {
+        d.db.conn().execute("UPDATE sync_blobs SET updated_at = 0 WHERE rel = ?1", [rel]).unwrap();
+    }
+
+    #[test]
+    fn absent_waits_double_up_to_an_hour() {
+        assert_eq!(absent_delay(0), MIN_WAIT_MS);
+        assert_eq!(absent_delay(5 * MIN_WAIT_MS), 5 * MIN_WAIT_MS);
+        assert_eq!(absent_delay(10 * MAX_WAIT_MS), MAX_WAIT_MS);
+    }
+
+    /// Refuses the upload of one object, as a server error.
+    struct RefuseUpload<'a> {
+        inner: &'a MemoryRemote,
+        name: String,
+    }
+
+    impl Remote for RefuseUpload<'_> {
+        async fn push(&self, rows: &[RemoteRow]) -> Result<u32, SyncError> {
+            self.inner.push(rows).await
+        }
+        async fn pull(&self, after: i64, limit: usize) -> Result<Vec<RemoteRow>, SyncError> {
+            self.inner.pull(after, limit).await
+        }
+        async fn put_blob(&self, name: &str, bytes: Vec<u8>) -> Result<(), SyncError> {
+            if name == self.name {
+                return Err(SyncError::Server("413: too big".into()));
+            }
+            self.inner.put_blob(name, bytes).await
+        }
+        async fn get_blob(&self, name: &str) -> Result<Option<Vec<u8>>, SyncError> {
+            self.inner.get_blob(name).await
+        }
+    }
+
+    #[tokio::test]
+    async fn late_upload_still_arrives() {
+        let (a, b, keys, remote) = (device("aaaa"), device("bbbb"), keys(), MemoryRemote::default());
+        let (_, one) = file_item(&a, b"first file", "txt");
+        let (_, two) = file_item(&a, b"second file", "txt");
+        // The refused file is the one the pass reaches first.
+        let (refused, other) = if one < two { (one, two) } else { (two, one) };
+        let refuse = RefuseUpload { inner: &remote, name: blob_name(&keys.name, &refused) };
+        sync_device(&a, &refuse, &keys).await.expect("a refused file doesn't fail the run");
+        assert_eq!(state(&a.db.conn(), &other).0, "done", "the pass went on after the refusal");
+        assert_eq!(state(&a.db.conn(), &refused).0, "up", "kept for the next run");
+
+        // B pulls the item before its file is uploaded: it waits instead of giving up.
+        sync(&b, &remote, &keys).await;
+        assert_eq!(state(&b.db.conn(), &refused), ("down".into(), 0));
+        assert!(b.paths.abs(&other).exists());
+        sync(&a, &remote, &keys).await;
+        assert_eq!(state(&a.db.conn(), &refused).0, "done");
+        make_due(&b, &refused);
+        sync(&b, &remote, &keys).await;
+        assert_eq!(state(&b.db.conn(), &refused), ("done".into(), 0));
+        assert_eq!(std::fs::read(b.paths.abs(&refused)).unwrap(), std::fs::read(a.paths.abs(&refused)).unwrap());
     }
 
     #[test]
@@ -239,14 +358,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wrong_blob_key_counts_as_missing() {
+    async fn unopenable_blob_goes_missing_until_pulled_again() {
         let (a, b, keys, remote) = (device("aaaa"), device("bbbb"), keys(), MemoryRemote::default());
-        let (_, rel) = file_item(&a, b"hello", "txt");
+        let (id, rel) = file_item(&a, b"hello", "txt");
         sync(&a, &remote, &keys).await;
         // Same record and name keys, another blob key: the row applies, the file can't open.
         let other = Keys { blob: [9; 32], ..crate::sync::testing::keys() };
+        for attempts in 1..=MAX_ATTEMPTS {
+            sync(&b, &remote, &other).await;
+            let expected = if attempts < MAX_ATTEMPTS { "down" } else { "missing" };
+            assert_eq!(state(&b.db.conn(), &rel), (expected.into(), attempts));
+        }
         sync(&b, &remote, &other).await;
-        assert_eq!(state(&b.db.conn(), &rel), ("down".into(), 1));
+        assert_eq!(state(&b.db.conn(), &rel), ("missing".into(), MAX_ATTEMPTS), "missing stays");
         assert!(!b.paths.abs(&rel).exists());
+
+        // The item changes on A and is pulled again: the file is fetched afresh.
+        items::set_pinned(&mut a.db.conn(), &id, true).unwrap();
+        sync(&a, &remote, &keys).await;
+        sync(&b, &remote, &keys).await;
+        assert_eq!(state(&b.db.conn(), &rel), ("done".into(), 0));
+        assert_eq!(std::fs::read(b.paths.abs(&rel)).unwrap(), b"hello");
     }
 }

@@ -437,7 +437,7 @@ pub enum SyncState {
 
 /// `pending`: changes waiting in `sync_outbox`; `blobs_pending`: files waiting to upload or
 /// download.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
     pub state: SyncState,

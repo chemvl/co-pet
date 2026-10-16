@@ -518,6 +518,8 @@ export const en = {
   'integrations.notMapped': 'Not mapped',
   'integrations.queueOne': '1 export waiting · {reason}',
   'integrations.queue': '{n} exports waiting · {reason}',
+  'integrations.queueOneBare': '1 export waiting',
+  'integrations.queueBare': '{n} exports waiting',
   'integrations.reason.rateLimited': '{provider} is rate-limiting',
   'integrations.reason.network': "Couldn't reach {provider}",
   'integrations.reason.reconnect': 'Reconnect needed',

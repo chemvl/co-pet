@@ -62,6 +62,12 @@ describe('queue line', () => {
     expect(queueLine(status({}), t)).toBeNull();
   });
 
+  it('shows only the count while jobs wait without an error', () => {
+    expect(queueLine(status({ queued: 1 }), t)).toBe('1 export waiting');
+    expect(queueLine(status({ queued: 2 }), vi)).toBe('2 việc đang chờ xuất');
+    expect(queueLine(status({ queued: 1, needsReconnect: true }), t)).toBe('1 export waiting · Reconnect needed');
+  });
+
   it('names the reason from the last error', () => {
     expect(queueLine(status({ queued: 1, lastError: 'rateLimited' }), t)).toBe('1 export waiting · Notion is rate-limiting');
     expect(queueLine(status({ queued: 2, failed: 1, lastError: 'network', provider: 'asana' }), t)).toBe(

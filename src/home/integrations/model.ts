@@ -47,8 +47,8 @@ export function exportPill(e: TaskExportState, now: number, t: TFunction): { sta
   }
 }
 
-/** Why this device's jobs of `s` wait: the last job error. */
-export function queueReason(s: ProviderStatus, t: TFunction): string {
+/** Why this device's jobs of `s` wait: the last job error. Null when nothing went wrong. */
+export function queueReason(s: ProviderStatus, t: TFunction): string | null {
   const provider = PROVIDER_NAME[s.provider];
   switch (s.lastError) {
     case 'rateLimited':
@@ -60,16 +60,19 @@ export function queueReason(s: ProviderStatus, t: TFunction): string {
       return t('integrations.reason.reconnect');
     case 'targetMissing':
       return t('integrations.reason.targetMissing');
-    default:
-      return s.needsReconnect ? t('integrations.reason.reconnect') : t('integrations.reason.failed');
+    case 'invalid':
+      return t('integrations.reason.failed');
+    case null:
+      return s.needsReconnect ? t('integrations.reason.reconnect') : null;
   }
 }
 
-/** "{n} export waiting · {reason}", or null when nothing waits. */
+/** "{n} export waiting · {reason}" ("{n} export waiting" without one), or null when nothing waits. */
 export function queueLine(s: ProviderStatus, t: TFunction): string | null {
   const n = s.queued + s.failed;
   if (n <= 0) return null;
   const reason = queueReason(s, t);
+  if (reason == null) return n === 1 ? t('integrations.queueOneBare') : t('integrations.queueBare', { n });
   return n === 1 ? t('integrations.queueOne', { reason }) : t('integrations.queue', { n, reason });
 }
 

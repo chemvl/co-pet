@@ -14,7 +14,7 @@ import { useIntegrations } from '../../shared/queries';
 import type { TaskSummary } from '../../shared/types';
 import { isTypingTarget, useDelayed, useMediaQuery } from '../hooks';
 import { EmptyState, Skeleton } from '../InboxPage';
-import { exportPill, isReady, isRetrying, PROVIDER_NAME, PROVIDERS } from '../integrations/model';
+import { exportPill, isReady, isRetrying, PROVIDER_NAME, PROVIDERS, retryInSeconds } from '../integrations/model';
 import { QueueLine } from '../integrations/parts';
 import { Menu, type MenuItem } from '../Menu';
 import { countsQuery, nextQuery, tasksQuery } from '../queries';
@@ -61,17 +61,26 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
   const tasks = useMemo(() => list.data ?? [], [list.data]);
   const { data: integrations } = useIntegrations();
 
-  // "retrying in {s} s" counts down every second while such a row is listed and the window shows.
+  // "retrying in {s} s" counts down every second while such a row still has time left and the
+  // window shows; hidden or with nothing counting, no timer runs.
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const retrying = tasks.some((x) => x.export != null && isRetrying(x.export));
+  const [visible, setVisible] = useState(() => !document.hidden);
   useEffect(() => {
-    if (!retrying) return;
-    setNowMs(Date.now());
-    const id = window.setInterval(() => {
+    const sync = () => {
+      setVisible(!document.hidden);
       if (!document.hidden) setNowMs(Date.now());
-    }, RETRY_TICK_MS);
+    };
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, []);
+  const counting = tasks.some((x) => x.export != null && isRetrying(x.export) && retryInSeconds(x.export.nextAttemptAt, nowMs) > 0);
+  useEffect(() => {
+    if (!counting || !visible) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), RETRY_TICK_MS);
     return () => window.clearInterval(id);
-  }, [retrying]);
+  }, [counting, visible]);
+  // A new retry (exports-changed) is measured from now, not from the last tick.
+  useEffect(() => setNowMs(Date.now()), [tasks]);
 
   const groups = useMemo(() => (view === 'open' ? groupTasks(tasks, now) : null), [view, tasks, now]);
   // Row order on screen; J/K and Space index into it.
@@ -375,7 +384,7 @@ function ExportTargets(): ReactElement | null {
           </div>
         );
       })}
-      {statuses.map((s) => (
+      {statuses.filter((s) => s.connected).map((s) => (
         <QueueLine key={s.provider} status={s} />
       ))}
       <span className="caption in-muted">{t('integrations.oneWay')}</span>

@@ -2,73 +2,54 @@
 // assigned to the connected user. `compact` (onboarding Apps step) shows the connect states only.
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState, type ReactElement } from 'react';
-import { Button, StatusPill } from '../../ds';
+import { Button } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { useT } from '../../shared/i18n';
 import { asanaOptions, setExportTarget } from '../../shared/ipc';
 import type { AsanaConfig, ProviderStatus } from '../../shared/types';
-import { ConnectSection, DisconnectButton, ProviderCard, QueueLine, useIntegrationRun } from './parts';
+import { ConnectionStates, DisconnectButton, ProviderCard, QueueLine, useIntegrationRun } from './parts';
 
 export function AsanaCard({ status, compact }: { status: ProviderStatus | undefined; compact?: boolean }): ReactElement {
   const t = useT();
   const [changing, setChanging] = useState(false);
-
-  if (!status?.connected) {
-    return (
-      <ProviderCard provider="asana" caption={t('integrations.asana.caption')}>
-        <ConnectSection provider="asana" compact={compact} />
-      </ProviderCard>
-    );
-  }
-  const account = status.accountLabel ?? '';
-  if (status.needsReconnect) {
-    return (
-      <ProviderCard
-        provider="asana"
-        caption={t('integrations.connectedAs', { account })}
-        pill={<StatusPill status="failed" label={t('integrations.reconnectNeeded')} />}
-      >
-        <ConnectSection provider="asana" reconnect compact={compact} />
-        {compact ? null : <QueueLine status={status} />}
-      </ProviderCard>
-    );
-  }
-  const connectedPill = <StatusPill status="synced" label={t('integrations.connected')} />;
-  const target = status.target;
-  if (compact) {
-    return <ProviderCard provider="asana" caption={t('integrations.connectedAs', { account })} pill={connectedPill} />;
-  }
-  if (!target || changing) {
-    return (
-      <ProviderCard provider="asana" caption={t('integrations.connectedAs', { account })}>
-        <TargetPicker current={target?.config as AsanaConfig | undefined} onSave={() => setChanging(true)} />
-        <div className="in-actions">
-          {target ? (
-            <Button variant="secondary" size="sm" onClick={() => setChanging(false)}>
-              {t('common.done')}
-            </Button>
-          ) : null}
-          <DisconnectButton provider="asana" />
-        </div>
-        <QueueLine status={status} />
-      </ProviderCard>
-    );
-  }
   return (
-    <ProviderCard
-      provider="asana"
-      caption={t('integrations.asana.target', { target: target.targetLabel })}
-      pill={connectedPill}
-    >
-      <p className="caption in-muted in-m0">{t('integrations.asana.note')}</p>
-      <div className="in-actions">
-        <Button variant="secondary" size="sm" onClick={() => setChanging(true)}>
-          {t('integrations.asana.change')}
-        </Button>
-        <DisconnectButton provider="asana" />
-      </div>
-      <QueueLine status={status} />
-    </ProviderCard>
+    <ConnectionStates provider="asana" status={status} compact={compact} caption={t('integrations.asana.caption')}>
+      {(s, account, connectedPill) => {
+        const target = s.target;
+        if (!target || changing) {
+          return (
+            <ProviderCard provider="asana" caption={t('integrations.connectedAs', { account })}>
+              <TargetPicker current={target?.config as AsanaConfig | undefined} onSave={() => setChanging(true)} />
+              <div className="in-actions">
+                {target ? (
+                  <Button variant="secondary" size="sm" onClick={() => setChanging(false)}>
+                    {t('common.done')}
+                  </Button>
+                ) : null}
+                <DisconnectButton provider="asana" />
+              </div>
+              <QueueLine status={s} />
+            </ProviderCard>
+          );
+        }
+        return (
+          <ProviderCard
+            provider="asana"
+            caption={t('integrations.asana.target', { target: target.targetLabel })}
+            pill={connectedPill}
+          >
+            <p className="caption in-muted in-m0">{t('integrations.asana.note')}</p>
+            <div className="in-actions">
+              <Button variant="secondary" size="sm" onClick={() => setChanging(true)}>
+                {t('integrations.asana.change')}
+              </Button>
+              <DisconnectButton provider="asana" />
+            </div>
+            <QueueLine status={s} />
+          </ProviderCard>
+        );
+      }}
+    </ConnectionStates>
   );
 }
 

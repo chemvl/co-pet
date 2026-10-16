@@ -1,15 +1,15 @@
 // Integrations › Notion: connect (OAuth or token), pick a database, map its properties.
 // `compact` (onboarding Apps step) shows the connect states only.
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useId, useState, type ReactElement } from 'react';
-import { Button, StatusPill } from '../../ds';
+import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { Button } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { useT } from '../../shared/i18n';
 import { notionDataSources, notionSchema, setExportTarget } from '../../shared/ipc';
 import { INTEGRATIONS_KEY } from '../../shared/queries';
 import type { NotionConfig, NotionMapping, NotionSchema, ProviderStatus, TargetOption } from '../../shared/types';
 import { propsOf, reconcileMapping, statusMapFor } from './model';
-import { ConnectSection, DisconnectButton, ProviderCard, QueueLine, useIntegrationRun } from './parts';
+import { ConnectionStates, DisconnectButton, ProviderCard, QueueLine, useIntegrationRun } from './parts';
 
 const schemaQuery = (id: string) =>
   queryOptions({ queryKey: ['notionSchema', id], queryFn: () => notionSchema(id), staleTime: 5 * 60_000 });
@@ -17,59 +17,43 @@ const schemaQuery = (id: string) =>
 export function NotionCard({ status, compact }: { status: ProviderStatus | undefined; compact?: boolean }): ReactElement {
   const t = useT();
   const [changing, setChanging] = useState(false);
-
-  if (!status?.connected) {
-    return (
-      <ProviderCard provider="notion" caption={t('integrations.notion.caption')}>
-        <ConnectSection provider="notion" compact={compact} />
-      </ProviderCard>
-    );
-  }
-  const account = status.accountLabel ?? '';
-  if (status.needsReconnect) {
-    return (
-      <ProviderCard
-        provider="notion"
-        caption={t('integrations.connectedAs', { account })}
-        pill={<StatusPill status="failed" label={t('integrations.reconnectNeeded')} />}
-      >
-        <ConnectSection provider="notion" reconnect compact={compact} />
-        {compact ? null : <QueueLine status={status} />}
-      </ProviderCard>
-    );
-  }
-  const connectedPill = <StatusPill status="synced" label={t('integrations.connected')} />;
-  const target = status.target;
-  if (compact) {
-    return <ProviderCard provider="notion" caption={t('integrations.connectedAs', { account })} pill={connectedPill} />;
-  }
-  if (!target || changing) {
-    return (
-      <ProviderCard provider="notion" caption={t('integrations.connectedAs', { account })}>
-        <DataSourcePicker current={(target?.config as NotionConfig | undefined)?.dataSourceId} onPicked={() => setChanging(false)} />
-        <div className="in-actions">
-          {target ? (
-            <Button variant="secondary" size="sm" onClick={() => setChanging(false)}>
-              {t('common.cancel')}
-            </Button>
-          ) : null}
-          <DisconnectButton provider="notion" />
-        </div>
-        <QueueLine status={status} />
-      </ProviderCard>
-    );
-  }
   return (
-    <ProviderCard provider="notion" caption={`${account} · ${target.targetLabel}`} pill={connectedPill}>
-      <MappingGrid config={target.config as NotionConfig} targetLabel={target.targetLabel} />
-      <div className="in-actions">
-        <Button variant="secondary" size="sm" onClick={() => setChanging(true)}>
-          {t('integrations.notion.change')}
-        </Button>
-        <DisconnectButton provider="notion" />
-      </div>
-      <QueueLine status={status} />
-    </ProviderCard>
+    <ConnectionStates provider="notion" status={status} compact={compact} caption={t('integrations.notion.caption')}>
+      {(s, account, connectedPill) => {
+        const target = s.target;
+        if (!target || changing) {
+          return (
+            <ProviderCard provider="notion" caption={t('integrations.connectedAs', { account })}>
+              <DataSourcePicker
+                current={(target?.config as NotionConfig | undefined)?.dataSourceId}
+                onPicked={() => setChanging(false)}
+              />
+              <div className="in-actions">
+                {target ? (
+                  <Button variant="secondary" size="sm" onClick={() => setChanging(false)}>
+                    {t('common.cancel')}
+                  </Button>
+                ) : null}
+                <DisconnectButton provider="notion" />
+              </div>
+              <QueueLine status={s} />
+            </ProviderCard>
+          );
+        }
+        return (
+          <ProviderCard provider="notion" caption={`${account} · ${target.targetLabel}`} pill={connectedPill}>
+            <MappingGrid config={target.config as NotionConfig} targetLabel={target.targetLabel} />
+            <div className="in-actions">
+              <Button variant="secondary" size="sm" onClick={() => setChanging(true)}>
+                {t('integrations.notion.change')}
+              </Button>
+              <DisconnectButton provider="notion" />
+            </div>
+            <QueueLine status={s} />
+          </ProviderCard>
+        );
+      }}
+    </ConnectionStates>
   );
 }
 
@@ -143,6 +127,18 @@ function MappingGrid({ config, targetLabel }: { config: NotionConfig; targetLabe
   const schema = useQuery(schemaQuery(config.dataSourceId));
   const s: NotionSchema | undefined = schema.data;
   const mapping = s ? reconcileMapping(s, config.mapping) : config.mapping;
+
+  // A property renamed or deleted in Notion since the mapping was saved: store the reconciled
+  // mapping once, so exports stop sending the vanished property.
+  const healed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!s || healed.current === config.dataSourceId) return;
+    healed.current = config.dataSourceId;
+    const fixed = reconcileMapping(s, config.mapping);
+    if (JSON.stringify(fixed) !== JSON.stringify(config.mapping)) {
+      void run(() => setExportTarget('notion', { dataSourceId: config.dataSourceId, mapping: fixed }, targetLabel));
+    }
+  }, [s, config, targetLabel, run]);
 
   const save = (patch: Partial<NotionMapping>) => {
     const next: NotionConfig = { dataSourceId: config.dataSourceId, mapping: { ...mapping, ...patch } };

@@ -2,7 +2,7 @@
 // (OAuth through the backend or a pasted token), Disconnect, and the queue line.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactElement, type ReactNode } from 'react';
-import { Button, Icon } from '../../ds';
+import { Button, Icon, StatusPill } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { useT, type I18nKey } from '../../shared/i18n';
 import { connectOauth, connectToken, disconnect, on, retryExports } from '../../shared/ipc';
@@ -168,6 +168,47 @@ export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolea
       {error ? <p className="st-error" role="alert">{error}</p> : null}
     </div>
   );
+}
+
+/**
+ * The states every provider card shares: not connected (connect block under `caption`), needs
+ * reconnect, and connected in `compact` mode (onboarding: no target pickers). Otherwise renders
+ * `children` with the connected status, its account label and the "Connected" pill.
+ */
+export function ConnectionStates(p: {
+  provider: ExportProvider;
+  status: ProviderStatus | undefined;
+  compact?: boolean;
+  caption: string;
+  children: (status: ProviderStatus, account: string, connectedPill: ReactElement) => ReactElement;
+}): ReactElement {
+  const t = useT();
+  const { provider, status, compact } = p;
+  if (!status?.connected) {
+    return (
+      <ProviderCard provider={provider} caption={p.caption}>
+        <ConnectSection provider={provider} compact={compact} />
+      </ProviderCard>
+    );
+  }
+  const account = status.accountLabel ?? '';
+  if (status.needsReconnect) {
+    return (
+      <ProviderCard
+        provider={provider}
+        caption={t('integrations.connectedAs', { account })}
+        pill={<StatusPill status="failed" label={t('integrations.reconnectNeeded')} />}
+      >
+        <ConnectSection provider={provider} reconnect compact={compact} />
+        {compact ? null : <QueueLine status={status} />}
+      </ProviderCard>
+    );
+  }
+  const connectedPill = <StatusPill status="synced" label={t('integrations.connected')} />;
+  if (compact) {
+    return <ProviderCard provider={provider} caption={t('integrations.connectedAs', { account })} pill={connectedPill} />;
+  }
+  return p.children(status, account, connectedPill);
 }
 
 export function DisconnectButton({ provider }: { provider: ExportProvider }): ReactElement {

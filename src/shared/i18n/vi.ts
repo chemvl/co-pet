@@ -519,6 +519,8 @@ export const vi: Record<keyof typeof en, string> = {
   'integrations.notMapped': 'Không ánh xạ',
   'integrations.queueOne': '1 việc đang chờ xuất · {reason}',
   'integrations.queue': '{n} việc đang chờ xuất · {reason}',
+  'integrations.queueOneBare': '1 việc đang chờ xuất',
+  'integrations.queueBare': '{n} việc đang chờ xuất',
   'integrations.reason.rateLimited': '{provider} đang giới hạn tốc độ',
   'integrations.reason.network': 'Không kết nối được tới {provider}',
   'integrations.reason.reconnect': 'Cần kết nối lại',

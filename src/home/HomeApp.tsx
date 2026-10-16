@@ -48,7 +48,7 @@ function useLiveQueries(): void {
   }, [qc]);
 }
 
-function navKey(route: Route, itemCategory: string | undefined): NavKey {
+function navKey(route: Route, itemCategory: string | undefined, firstCategory: string | undefined): NavKey {
   switch (route.page) {
     case 'inbox':
       return route.view === 'unsorted' ? 'unsorted' : 'inbox';
@@ -61,7 +61,8 @@ function navKey(route: Route, itemCategory: string | undefined): NavKey {
     case 'agents':
       return 'agents';
     case 'categories':
-      return route.id ?? '';
+      // `#/categories` edits the first category (see CategoriesPage).
+      return route.id ?? firstCategory ?? '';
     case 'integrations':
       return 'integrations';
     case 'settings':
@@ -150,7 +151,7 @@ export function HomeApp(): ReactElement {
     <div className="hm-win">
       <TitleBar ref={searchRef} page={pageName} search={search} onSearch={onSearch} />
       <div className="hm-body">
-        <HomeNav active={navKey(route, item?.categoryId)} />
+        <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
         <main className="hm-main">{page}</main>
       </div>
     </div>

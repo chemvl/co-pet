@@ -51,12 +51,14 @@ pub(crate) fn matches(rule: &Rule, item: &ItemRow) -> bool {
             item.source_app.as_deref().is_some_and(|a| fold(a.trim()) == p)
                 || item.source_bundle_id.as_deref().is_some_and(|b| b.trim().eq_ignore_ascii_case(rule.pattern.trim()))
         }
-        "regex" => match (&item.payload_text, Regex::new(&rule.pattern)) {
-            (Some(text), Ok(re)) => re.is_match(text),
-            _ => false,
-        },
+        "regex" => Regex::new(&rule.pattern).is_ok_and(|re| regex_matches(&re, item)),
         _ => false,
     }
+}
+
+/// A `regex` rule's test with its pattern already compiled (callers matching many items).
+pub(crate) fn regex_matches(re: &Regex, item: &ItemRow) -> bool {
+    item.payload_text.as_deref().is_some_and(|t| re.is_match(t))
 }
 
 fn reason(rule: &Rule, item: &ItemRow) -> String {

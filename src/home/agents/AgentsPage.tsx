@@ -1,7 +1,7 @@
 // Home › Agents (screen 12, Agents.dc.html): the MCP server state, one card per client (Add,
 // Approve writes, Manage), the stdio command and local HTTP address, and the activity log
 // with Undo. Every query lives under `AGENTS_KEY`, refreshed by `agents-changed`.
-import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Button, Icon, SegmentedControl, StatusPill } from '../../ds';
@@ -17,8 +17,7 @@ import { useToast } from '../../shared/Toast';
 import type { ActivityRow, KnownMcpClient, McpClientView } from '../../shared/types';
 import { PROVIDER_NAME } from '../integrations/model';
 import { MenuButton } from '../Menu';
-import { useDelayed } from '../hooks';
-import { Skeleton } from '../InboxPage';
+import { QueryState } from '../InboxPage';
 import { activityAction, activityText, relativeTime } from './activityText';
 import { Dialog } from '../settings/parts';
 import '../settings/settings.css';
@@ -34,7 +33,6 @@ const ACTIVITY_LIMIT = 100;
 /** "last call 2 min ago" follows the clock between data changes. */
 const CLOCK_TICK_MS = 60_000;
 const COPIED_MS = 1500;
-const SKELETON_DELAY_MS = 400;
 
 type Show = 'all' | 'writes';
 
@@ -61,23 +59,6 @@ function useAgentsRun(): { busy: string | null; run: <T>(key: string, op: () => 
 }
 
 /** A failed query's message with Try again, or a delayed skeleton while it loads; null once loaded. */
-function QueryState({ q, loading }: { q: UseQueryResult<unknown>; loading: string }): ReactElement | null {
-  const t = useT();
-  const slow = useDelayed(q.isPending, SKELETON_DELAY_MS);
-  if (q.isError) {
-    return (
-      <div className="hm-listmsg">
-        <span className="body">{errorMessage(t, q.error)}</span>
-        <Button variant="secondary" size="sm" onClick={() => void q.refetch()}>
-          {t('common.retry')}
-        </Button>
-      </div>
-    );
-  }
-  if (q.isPending) return slow ? <Skeleton label={loading} /> : null;
-  return null;
-}
-
 function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

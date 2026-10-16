@@ -18,6 +18,7 @@ import {
   BUILTIN_CATEGORY_IDS, type Category, type CategoryPatch, type ItemKind, type Rule, type SourceKind,
 } from '../../shared/types';
 import { countsQuery } from '../queries';
+import { QueryState } from '../InboxPage';
 import { navigate } from '../router';
 import { Dialog } from '../settings/parts';
 import { ruleRows, ruleText } from './RuleSentence';
@@ -35,7 +36,9 @@ const SOURCE_KINDS: readonly SourceKind[] = ['drop', 'clipboard', 'screenshot', 
 
 export function CategoriesPage({ selectedId }: { selectedId?: string }): ReactElement {
   const qc = useQueryClient();
-  const { data: categories } = useCategories();
+  const t = useT();
+  const categoriesQ = useCategories();
+  const categories = categoriesQ.data;
   const [creating, setCreating] = useState(false);
   const selected = categories?.find((c) => c.id === selectedId) ?? categories?.[0];
 
@@ -52,7 +55,13 @@ export function CategoriesPage({ selectedId }: { selectedId?: string }): ReactEl
   return (
     <div className="cg-page">
       <CategoryList categories={categories ?? []} selectedId={selected?.id} onNew={() => setCreating(true)} />
-      {selected ? <Editor key={selected.id} category={selected} /> : <div className="cg-editor" />}
+      {selected ? (
+        <Editor key={selected.id} category={selected} />
+      ) : (
+        <div className="cg-editor">
+          <QueryState q={categoriesQ} loading={t('categories.loading')} />
+        </div>
+      )}
       {creating ? <NewCategoryDialog onClose={() => setCreating(false)} /> : null}
     </div>
   );
@@ -62,9 +71,11 @@ function CategoryList(p: { categories: Category[]; selectedId?: string; onNew: (
   const t = useT();
   const qc = useQueryClient();
   const { show } = useToast();
-  const { data: counts } = useQuery(countsQuery);
+  const countsQ = useQuery(countsQuery);
+  const counts = countsQ.data;
   const [dragId, setDragId] = useState<string | null>(null);
   const headId = useId();
+  const hintId = useId();
 
   const reorder = (id: string, to: number) => {
     const order = p.categories.filter((c) => c.id !== id);
@@ -89,7 +100,8 @@ function CategoryList(p: { categories: Category[]; selectedId?: string; onNew: (
   return (
     <nav className="cg-list" aria-labelledby={headId}>
       <h1 className="cg-list__title" id={headId}>{t('home.categories')}</h1>
-      <ul className="cg-rows">
+      {countsQ.isError ? <QueryState q={countsQ} loading={t('categories.loading')} /> : null}
+      <ul className="cg-rows" aria-describedby={hintId}>
         {p.categories.map((c, index) => {
           const pinned = c.id === 'unsorted';
           const n = pinned ? counts?.unsorted : counts?.byCategory[c.id];
@@ -142,6 +154,7 @@ function CategoryList(p: { categories: Category[]; selectedId?: string; onNew: (
       </Button>
       <div className="cg-grow" />
       <span className="caption cg-muted cg-list__cap">{t('categories.caption')}</span>
+      <span className="caption cg-muted cg-list__cap" id={hintId}>{t('categories.reorderHint')}</span>
     </nav>
   );
 }
@@ -294,23 +307,27 @@ function Rules({ category: c }: { category: Category }): ReactElement {
   const qc = useQueryClient();
   const { show } = useToast();
   const headId = useId();
-  const { data: rules } = useQuery({ queryKey: ['rules', c.id], queryFn: () => listRules(c.id) });
+  const rulesQ = useQuery({ queryKey: ['rules', c.id], queryFn: () => listRules(c.id) });
+  const rules = rulesQ.data;
   const [adding, setAdding] = useState(false);
   const refresh = () => void qc.invalidateQueries({ queryKey: ['rules', c.id] });
 
   const remove = async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map(deleteRule));
-    } catch (e) {
-      show({ message: errorMessage(t, e) });
+    const results = await Promise.allSettled(ids.map(deleteRule));
+    refresh();
+    const deleted = ids.filter((_, i) => results[i].status === 'fulfilled');
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    // One toast at a time: a partial failure shows the error with Undo for what was deleted.
+    if (failed && deleted.length === 0) {
+      show({ message: errorMessage(t, failed.reason) });
       return;
-    } finally {
-      refresh();
     }
     show({
-      message: t(ids.length > 1 ? 'categories.rulesDeleted' : 'categories.ruleDeleted'),
+      message: failed
+        ? errorMessage(t, failed.reason)
+        : t(deleted.length > 1 ? 'categories.rulesDeleted' : 'categories.ruleDeleted'),
       undo: () => {
-        Promise.all(ids.map(restoreRule))
+        Promise.all(deleted.map(restoreRule))
           .catch((e) => show({ message: errorMessage(t, e) }))
           .finally(refresh);
       },
@@ -341,7 +358,8 @@ function Rules({ category: c }: { category: Category }): ReactElement {
             </li>
           ))}
         </ul>
-        {rules && rows.length === 0 ? <p className="caption cg-muted cg-m0">{t('categories.noRules')}</p> : null}
+        <QueryState q={rulesQ} loading={t('categories.loading')} />
+        {rulesQ.isSuccess && rows.length === 0 ? <p className="caption cg-muted cg-m0">{t('categories.noRules')}</p> : null}
         {adding ? (
           <AddRuleForm
             categoryId={c.id}
@@ -447,7 +465,8 @@ function Examples({ category: c }: { category: Category }): ReactElement {
   const lang = useLang();
   const qc = useQueryClient();
   const { show } = useToast();
-  const { data: examples } = useQuery({ queryKey: ['examples', c.id], queryFn: () => listExamples(c.id) });
+  const examplesQ = useQuery({ queryKey: ['examples', c.id], queryFn: () => listExamples(c.id) });
+  const examples = examplesQ.data;
   const [open, setOpen] = useState(false);
   const [notRuleable, setNotRuleable] = useState<ReadonlySet<string>>(new Set());
   const listId = useId();
@@ -460,7 +479,7 @@ function Examples({ category: c }: { category: Category }): ReactElement {
       void qc.invalidateQueries({ queryKey: ['rules'] });
     } catch (e) {
       if (errorText(e) === 'notRuleable') setNotRuleable((s) => new Set(s).add(itemId));
-      else show({ message: errorMessage(t, e) });
+      show({ message: errorMessage(t, e) });
     }
   };
 
@@ -486,6 +505,7 @@ function Examples({ category: c }: { category: Category }): ReactElement {
           {t('categories.reviewExamples')}
         </Button>
       </div>
+      <QueryState q={examplesQ} loading={t('categories.loading')} />
       {open && examples?.length ? (
         <ul className="cg-examples" id={listId}>
           {examples.map((ex) => {

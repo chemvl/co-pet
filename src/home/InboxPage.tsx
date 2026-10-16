@@ -1,10 +1,11 @@
 // Inbox (All · Pinned · Unsorted), category pages and the Unsorted queue: header, nudge,
 // inline quick note, rows with Load more, selection + bulk bar, J/K/Enter (1/2/E in the
 // queue) and the detail pane at ≥1100 px.
-import { useInfiniteQuery, useQuery, type InfiniteData } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, type InfiniteData, type UseQueryResult } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Button, Icon, Kbd, SegmentedControl } from '../ds';
 import { categoryLabel, categoryLabelOf } from '../shared/categories';
+import { errorMessage } from '../shared/errors';
 import { useT } from '../shared/i18n';
 import { captureNote, listItems } from '../shared/ipc';
 import { useCategories, useSetting } from '../shared/queries';
@@ -420,4 +421,22 @@ export function Skeleton({ label }: { label: string }): ReactElement {
       ))}
     </div>
   );
+}
+
+/** A query's error (with Try again) or, once loading is slow, a skeleton; nothing otherwise. */
+export function QueryState({ q, loading }: { q: UseQueryResult<unknown>; loading: string }): ReactElement | null {
+  const t = useT();
+  const slow = useDelayed(q.isPending, SKELETON_DELAY_MS);
+  if (q.isError) {
+    return (
+      <div className="hm-listmsg">
+        <span className="body">{errorMessage(t, q.error)}</span>
+        <Button variant="secondary" size="sm" onClick={() => void q.refetch()}>
+          {t('common.retry')}
+        </Button>
+      </div>
+    );
+  }
+  if (q.isPending) return slow ? <Skeleton label={loading} /> : null;
+  return null;
 }

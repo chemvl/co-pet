@@ -628,6 +628,7 @@ export const en = {
   'categories.notSentToAi': "Not sent to AI",
   'categories.new': "New category",
   'categories.caption': "Rules run before AI. Drag categories to change their order in the sidebar.",
+  'categories.loading': 'Loading categories…',
   'categories.reorderHint': "Alt+Up or Alt+Down moves the selected category.",
   'categories.editName': "Edit {name}",
   'categories.name': "Name",

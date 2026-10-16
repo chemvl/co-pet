@@ -100,10 +100,7 @@ pub fn list_for_category(conn: &Connection, category_id: &str) -> AppResult<Vec<
             let match_count = if rule.kind == "regex" {
                 // Compiled once per rule, not once per item.
                 match regex::Regex::new(&rule.pattern) {
-                    Ok(re) => items
-                        .iter()
-                        .filter(|i| i.payload_text.as_deref().is_some_and(|t| re.is_match(t)))
-                        .count(),
+                    Ok(re) => items.iter().filter(|i| crate::triage::rules::regex_matches(&re, i)).count(),
                     Err(_) => 0,
                 }
             } else {

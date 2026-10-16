@@ -629,6 +629,7 @@ export const vi: Record<keyof typeof en, string> = {
   'categories.notSentToAi': "Không gửi cho AI",
   'categories.new': "Danh mục mới",
   'categories.caption': "Quy tắc chạy trước AI. Kéo danh mục để đổi thứ tự trong thanh bên.",
+  'categories.loading': 'Đang tải danh mục…',
   'categories.reorderHint': "Alt+Lên hoặc Alt+Xuống để di chuyển danh mục đang chọn.",
   'categories.editName': "Sửa {name}",
   'categories.name': "Tên",

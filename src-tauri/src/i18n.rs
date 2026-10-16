@@ -1,5 +1,5 @@
-//! Rust-side strings (screenshot titles, menu bar labels). The UI's strings live in
-//! `src/shared/i18n/`.
+//! Rust-side strings (screenshot titles, menu bar labels, built-in category names). The UI's
+//! strings live in `src/shared/i18n/`.
 use tauri::AppHandle;
 
 use crate::db::settings;
@@ -39,6 +39,15 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tray.resumePet" => ("Resume pet", "Tiếp tục thú cưng"),
         "tray.settings" => ("Settings", "Cài đặt"),
         "tray.quit" => ("Quit Co-pet", "Thoát Co-pet"),
+        "category.todo" => ("To-do", "Việc cần làm"),
+        "category.read" => ("Read later", "Đọc sau"),
+        "category.reference" => ("Reference", "Tài liệu"),
+        "category.code" => ("Code snippet", "Đoạn code"),
+        "category.design" => ("Design", "Thiết kế"),
+        "category.idea" => ("Idea / note", "Ý tưởng / ghi chú"),
+        "category.contact" => ("Contact", "Liên hệ"),
+        "category.meeting" => ("Meeting", "Cuộc họp"),
+        "category.unsorted" => ("Unsorted", "Chưa phân loại"),
         _ => {
             debug_assert!(false, "unknown i18n key {key}");
             ("", "")

@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
 use crate::llm::LlmServer;
-use crate::model::{ItemRow, CATEGORY_IDS};
+use crate::model::{ItemRow, BUILTIN_CATEGORY_IDS};
 
 const TEXT_LIMIT: usize = 4000;
 const MAX_EXAMPLES: usize = 8;
@@ -49,7 +49,7 @@ pub struct TriageOut {
 }
 
 pub fn schema() -> Value {
-    let ids: Vec<&str> = CATEGORY_IDS.to_vec();
+    let ids: Vec<&str> = BUILTIN_CATEGORY_IDS.to_vec();
     json!({
         "type": "object",
         "additionalProperties": false,
@@ -95,7 +95,7 @@ pub fn user_message(item: &ItemRow, examples: &[(String, String)]) -> String {
 pub fn parse(v: Value) -> AppResult<TriageOut> {
     let mut out: TriageOut = serde_json::from_value(v)?;
     for id in [&out.category, &out.alternative] {
-        if !CATEGORY_IDS.contains(&id.as_str()) {
+        if !BUILTIN_CATEGORY_IDS.contains(&id.as_str()) {
             return Err(AppError::msg(format!("unknown category id {id:?}")));
         }
     }

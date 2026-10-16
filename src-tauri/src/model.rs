@@ -5,8 +5,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Category ids in design-system order; `unsorted` is last.
-pub const CATEGORY_IDS: [&str; 9] =
+/// Built-in category ids in design-system order; `unsorted` is last. Users add more rows to
+/// `categories` (`db::categories`).
+pub const BUILTIN_CATEGORY_IDS: [&str; 9] =
     ["todo", "read", "reference", "code", "design", "idea", "contact", "meeting", "unsorted"];
 
 /// Full `items` row. Library paths (`file_path`, `thumb_path`) are relative to `Paths::library`.
@@ -96,6 +97,33 @@ pub struct Rule {
     pub pattern: String,
     pub builtin: bool,
     pub position: i64,
+}
+
+/// A live `categories` row. `None` name/icon/color: the built-in i18n name `category.<id>`, the
+/// icon named like the id, the colour of the id. `color` is otherwise a built-in id.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Category {
+    pub id: String,
+    pub name: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub position: i64,
+    pub exclude_from_ai: bool,
+    pub exclude_from_mcp: bool,
+    pub builtin: bool,
+}
+
+/// `update_category`: `None` fields keep their value.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // built by `update_category` (Task 1.4)
+pub struct CategoryPatch {
+    pub name: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub exclude_from_ai: Option<bool>,
+    pub exclude_from_mcp: Option<bool>,
 }
 
 // ---------- IPC ----------

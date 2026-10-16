@@ -1,9 +1,9 @@
 //! Rule and category-example storage. Matching lives in `triage::rules`.
 use rusqlite::{params, Connection};
 
-use crate::db::{new_id, now_ms};
+use crate::db::{categories, new_id, now_ms};
 use crate::error::{AppError, AppResult};
-use crate::model::{Rule, CATEGORY_IDS};
+use crate::model::Rule;
 
 /// Active rules, user rules first, each group in ascending `position`.
 pub fn list_active(conn: &Connection) -> AppResult<Vec<Rule>> {
@@ -34,8 +34,8 @@ pub fn insert_user_rule(
     kind: &str,
     pattern: &str,
 ) -> AppResult<Rule> {
-    if !CATEGORY_IDS.contains(&category_id) {
-        return Err(AppError::msg(format!("unknown category {category_id}")));
+    if !categories::exists(conn, category_id)? {
+        return Err(AppError::Code("notFound"));
     }
     let tx = conn.transaction()?;
     let now = now_ms();

@@ -1,15 +1,15 @@
 //! Item reads and writes. Every write: one transaction, `updated_at`, FTS row, `item_events`.
 use rusqlite::types::Value as SqlValue;
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, Transaction};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-use crate::db::{new_id, now_ms, search, Db};
+use crate::db::{categories, new_id, now_ms, search, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::{
     Counts, Cursor, ItemDetail, ItemEvent, ItemPage, ItemQuery, ItemRow, ItemSummary, NewItem,
-    TriageUpdate, CATEGORY_IDS,
+    TriageUpdate,
 };
 use crate::paths::Paths;
 
@@ -133,11 +133,11 @@ fn triage_state(row: &ItemRow) -> Value {
     })
 }
 
-fn check_category(category_id: &str) -> AppResult<()> {
-    if CATEGORY_IDS.contains(&category_id) {
+fn check_category(conn: &Connection, category_id: &str) -> AppResult<()> {
+    if categories::exists(conn, category_id)? {
         Ok(())
     } else {
-        Err(AppError::msg(format!("unknown category {category_id}")))
+        Err(AppError::Code("notFound"))
     }
 }
 
@@ -180,7 +180,7 @@ pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
 /// Writes the triage result. `None` fields keep their current value; `triage_status` becomes
 /// `done` and a `recategorize` event (actor `triage`) records the category change.
 pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppResult<()> {
-    check_category(&u.category_id)?;
+    check_category(conn, &u.category_id)?;
     let tx = conn.transaction()?;
     let before = triage_state(&get_row(&tx, id)?);
     let now = now_ms();
@@ -232,12 +232,26 @@ pub fn recategorize(
     category_id: &str,
     actor: &str,
 ) -> AppResult<Vec<String>> {
-    check_category(category_id)?;
     let tx = conn.transaction()?;
+    let events = recategorize_in(&tx, ids, category_id, actor, actor == "user")?;
+    tx.commit()?;
+    Ok(events)
+}
+
+/// `recategorize` inside the caller's transaction. A `user` move marks the source/reason
+/// `user`; `teach` also records a `category_examples` row per non-sensitive item.
+pub fn recategorize_in(
+    tx: &Transaction,
+    ids: &[String],
+    category_id: &str,
+    actor: &str,
+    teach: bool,
+) -> AppResult<Vec<String>> {
+    check_category(tx, category_id)?;
     let now = now_ms();
     let mut events = Vec::with_capacity(ids.len());
     for id in ids {
-        let row = get_row(&tx, id)?;
+        let row = get_row(tx, id)?;
         let before = triage_state(&row);
         if actor == "user" {
             tx.execute(
@@ -245,23 +259,23 @@ pub fn recategorize(
                    triage_reason = 'user', updated_at = ?3 WHERE id = ?1",
                 params![id, category_id, now],
             )?;
-            // Sensitive titles must never reach the model as few-shot examples.
-            if !row.sensitive {
-                tx.execute(
-                    "INSERT INTO category_examples (id, item_id, category_id, title, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                    params![new_id(), id, category_id, row.title, now],
-                )?;
-            }
         } else {
             tx.execute(
                 "UPDATE items SET category_id = ?2, updated_at = ?3 WHERE id = ?1",
                 params![id, category_id, now],
             )?;
         }
-        let after = triage_state(&reindex(&tx, id)?);
+        // Sensitive titles must never reach the model as few-shot examples.
+        if teach && !row.sensitive {
+            tx.execute(
+                "INSERT INTO category_examples (id, item_id, category_id, title, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                params![new_id(), id, category_id, row.title, now],
+            )?;
+        }
+        let after = triage_state(&reindex(tx, id)?);
         events.push(add_event(
-            &tx,
+            tx,
             id,
             actor,
             "recategorize",
@@ -270,7 +284,6 @@ pub fn recategorize(
             now,
         )?);
     }
-    tx.commit()?;
     Ok(events)
 }
 
@@ -597,8 +610,8 @@ pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<
 /// triaged items left in `unsorted`, not ones still waiting for triage.
 pub fn counts(conn: &Connection) -> AppResult<Counts> {
     let mut c = Counts::default();
-    for id in CATEGORY_IDS {
-        c.by_category.insert(id.to_string(), 0);
+    for cat in categories::list(conn)? {
+        c.by_category.insert(cat.id, 0);
     }
     let mut stmt = conn.prepare(
         "SELECT category_id, COUNT(*), SUM(pinned),

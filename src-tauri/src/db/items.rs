@@ -519,11 +519,18 @@ fn abs_string(paths: &Paths, rel: &str) -> String {
     paths.abs(rel).to_string_lossy().into_owned()
 }
 
-fn to_summary(row: ItemRow, paths: &Paths) -> ItemSummary {
+fn to_summary(conn: &Connection, row: ItemRow, paths: &Paths) -> AppResult<ItemSummary> {
     let sensitive = row.sensitive;
     let file_available = row.file_path.as_deref().is_none_or(|rel| paths.abs(rel).exists());
-    ItemSummary {
+    let file_too_large = match row.file_path.as_deref() {
+        Some(rel) => conn
+            .prepare_cached("SELECT EXISTS (SELECT 1 FROM sync_blobs WHERE rel = ?1 AND state = 'tooLarge')")?
+            .query_row([rel], |r| r.get(0))?,
+        None => false,
+    };
+    Ok(ItemSummary {
         file_available,
+        file_too_large,
         summary: if sensitive { None } else { row.summary },
         thumb_path: if sensitive {
             None
@@ -554,7 +561,7 @@ fn to_summary(row: ItemRow, paths: &Paths) -> ItemSummary {
         updated_at: row.updated_at,
         added_by: row.added_by,
         task_suggestion: row.task_suggestion,
-    }
+    })
 }
 
 /// Keyset-paginated list by `(captured_at, id)`.
@@ -618,7 +625,7 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
         None
     };
     Ok(ItemPage {
-        items: rows.into_iter().map(|r| to_summary(r, paths)).collect(),
+        items: rows.into_iter().map(|r| to_summary(conn, r, paths)).collect::<AppResult<_>>()?,
         next_cursor,
     })
 }
@@ -644,7 +651,7 @@ pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<
     };
     let file_path = row.file_path.as_deref().map(|p| abs_string(paths, p));
     Ok(ItemDetail {
-        item: to_summary(row, paths),
+        item: to_summary(conn, row, paths)?,
         payload_text,
         payload_html,
         extracted_text,
@@ -934,6 +941,26 @@ mod tests {
             assert_eq!(s.task_suggestion.as_deref(), Some("Send the deck"));
             assert_eq!(s.added_by.as_deref(), Some("client-1"));
         }
+    }
+
+    #[test]
+    fn summary_flags_too_large_file() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Clip", "", "h1")).unwrap();
+        conn.execute("UPDATE items SET file_path = 'library/ab/clip.mov' WHERE id = ?1", [&id]).unwrap();
+        let paths = Paths::new("/tmp/copet-test".into());
+        let flag = |conn: &Connection| {
+            let listed = list_items(conn, &query(""), &paths).unwrap().items.remove(0);
+            let detail = get_item_detail(conn, &id, &paths).unwrap().item;
+            (listed.file_too_large, detail.file_too_large)
+        };
+        assert_eq!(flag(&conn), (false, false));
+        conn.execute("INSERT INTO sync_blobs (rel, state, updated_at) VALUES ('library/ab/clip.mov', 'up', 1)", [])
+            .unwrap();
+        assert_eq!(flag(&conn), (false, false));
+        conn.execute("UPDATE sync_blobs SET state = 'tooLarge'", []).unwrap();
+        assert_eq!(flag(&conn), (true, true));
     }
 
     fn triaged(conn: &mut Connection, title: &str, hash: &str) -> String {

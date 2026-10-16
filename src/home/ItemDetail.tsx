@@ -15,7 +15,7 @@ import { useToast } from '../shared/Toast';
 import type { ItemDetail as Item } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
 import { useDelayed } from './hooks';
-import { KindTile } from './ItemRow';
+import { KindTile, LocalPill } from './ItemRow';
 import { detailMeta, extOf, historyText, hostOf, whenShort, whyText } from './itemText';
 import { categoryMenuItems, Menu, MenuButton } from './Menu';
 import { itemQuery } from './queries';
@@ -154,7 +154,7 @@ function ItemPane({ item }: { item: Item }): ReactElement {
         <History item={item} />
       </div>
       <div className="hm-det__foot">
-        <StatusPill status="local" label={t('common.localOnly')} />
+        <LocalPill item={item} localByDefault />
         <span className="caption hm-muted">{t('item.trayHint')}</span>
       </div>
     </div>
@@ -509,7 +509,7 @@ function PrivacyPills({ item }: { item: Item }): ReactElement {
   const t = useT();
   return (
     <div className="hm-tags">
-      <StatusPill status="local" label={t('common.localOnly')} />
+      <LocalPill item={item} localByDefault />
       {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
       {item.addedBy ? <AgentPill clientId={item.addedBy} /> : null}
     </div>

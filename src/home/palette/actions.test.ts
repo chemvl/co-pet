@@ -10,7 +10,7 @@ const notion: ProviderStatus = {
 };
 const ctx = (query: string, extra: Partial<PaletteContext> = {}): PaletteContext => ({
   t, query, selection: { itemIds: [] }, integrations: [], navigate: () => {}, toast: () => {},
-  setSearch: () => {}, convertToTask: async () => {}, petPaused: false, ...extra,
+  setSearch: () => {}, convertToTask: async () => {}, petPaused: false, syncState: undefined, ...extra,
 });
 const ids = (c: PaletteContext) => matchActions(c).map((m) => m.action.id);
 
@@ -33,5 +33,11 @@ describe('matchActions', () => {
     const [m] = matchActions(ctx('add note'));
     expect(m.label).toBe('Add note “add note”');
     expect(m.ranges).toEqual([]);
+  });
+
+  it('offers Sync now only while sync is idle, offline or failed', () => {
+    const offered = (syncState: PaletteContext['syncState']) => ids(ctx('sync', { syncState })).includes('sync.now');
+    expect(['idle', 'offline', 'error'].every((s) => offered(s as PaletteContext['syncState']))).toBe(true);
+    for (const s of [undefined, 'off', 'paused', 'needsKey', 'signedOut', 'syncing'] as const) expect(offered(s)).toBe(false);
   });
 });

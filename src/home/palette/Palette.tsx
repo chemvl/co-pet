@@ -8,7 +8,7 @@ import type { IconName } from '../../ds/types';
 import { errorMessage } from '../../shared/errors';
 import { useT } from '../../shared/i18n';
 import { copyItems, exportTask, getItem, listItems } from '../../shared/ipc';
-import { useIntegrations, useSetting } from '../../shared/queries';
+import { useIntegrations, useSetting, useSyncStatus } from '../../shared/queries';
 import { useToast } from '../../shared/Toast';
 import type { ItemSummary, TaskSummary } from '../../shared/types';
 import { CategoryTag } from '../CategoryTag';
@@ -72,6 +72,7 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
   const selection = useHomeSelection();
   const { data: integrations } = useIntegrations();
   const petPaused = useSetting<boolean>('pet.paused', false);
+  const syncState = useSyncStatus().data?.state;
   const listId = useId();
 
   const [input, setInput] = useState('');
@@ -115,6 +116,7 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
       }
     },
     petPaused,
+    syncState,
   };
 
   const actionRows = matchActions(ctx);

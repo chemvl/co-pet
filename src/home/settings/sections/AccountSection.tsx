@@ -1,14 +1,16 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactElement } from 'react';
-import { Button } from '../../../ds';
-import { useT } from '../../../shared/i18n';
+import { Button, StatusPill } from '../../../ds';
+import { useLang, useT } from '../../../shared/i18n';
 import {
   confirmRecoveryKey, copyConcealedText, createRecoveryKey, deleteCloudData, enterRecoveryKey, on, saveTextFile,
-  sendEmailCode, signInGoogle, signOut, verifyEmailCode,
+  sendEmailCode, signInGoogle, signOut, syncNow, verifyEmailCode,
 } from '../../../shared/ipc';
-import { ACCOUNT_KEY, useAccountStatus, useSetSetting, useSetting } from '../../../shared/queries';
+import { ACCOUNT_KEY, useAccountStatus, useSetSetting, useSetting, useSyncStatus } from '../../../shared/queries';
+import { syncPill } from '../../../shared/sync';
 import { useToast } from '../../../shared/Toast';
 import type { AccountStatus } from '../../../shared/types';
+import { relativeTime } from '../../agents/activityText';
 import { QueryState } from '../../InboxPage';
 import { Group, SettingRow, TypedConfirmDialog, useCopied } from '../parts';
 import { accountError, accountView } from './account';
@@ -312,6 +314,7 @@ function Ready({ status, r }: { status: AccountStatus; r: Run }): ReactElement {
   return (
     <Group title={t('settings.account')}>
       <SignedInRow status={status} r={r} />
+      <SyncRow r={r} />
       <SettingRow label={t('settings.account.deviceName')} htmlFor={nameId}>
         <input
           id={nameId}
@@ -345,6 +348,31 @@ function Ready({ status, r }: { status: AccountStatus; r: Run }): ReactElement {
         />
       ) : null}
     </Group>
+  );
+}
+
+/** "{pill} · Last synced {time}", "{n} changes waiting" and Sync now. */
+function SyncRow({ r }: { r: Run }): ReactElement | null {
+  const t = useT();
+  const lang = useLang();
+  const sync = useSyncStatus().data;
+  if (!sync) return null;
+  const pill = syncPill(sync.state);
+  return (
+    <div className="st-row">
+      <div className="st-row__text">
+        <p className="st-body">
+          <StatusPill status={pill.status} icon={pill.icon} label={t(pill.label)} />
+          {sync.lastSyncedAt != null
+            ? ` · ${t('settings.account.lastSynced', { time: relativeTime(sync.lastSyncedAt, Date.now(), t, lang) })}`
+            : null}
+        </p>
+        {sync.pending > 0 ? <p className="st-desc">{t('settings.account.waiting', { n: sync.pending })}</p> : null}
+      </div>
+      <Button size="sm" icon="sync" disabled={r.busy || sync.state === 'syncing'} onClick={() => void r.run(syncNow)}>
+        {t('sync.now')}
+      </Button>
+    </div>
   );
 }
 

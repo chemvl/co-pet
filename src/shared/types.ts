@@ -74,6 +74,8 @@ export interface ItemSummary {
   /** False when the item's library file isn't on this Mac (synced from another Mac, not
    *  downloaded yet or over the size limit): drag-out, Copy, Paste and Open file can't use it. */
   fileAvailable: boolean;
+  /** The item's file is over `sync.maxFileMb` and never leaves this Mac. */
+  fileTooLarge: boolean;
 }
 
 export type EventAction =

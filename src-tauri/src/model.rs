@@ -190,6 +190,9 @@ pub struct ItemSummary {
     /// `false` when the item's library file isn't on this Mac (synced from another Mac, not
     /// downloaded yet or over the size limit).
     pub file_available: bool,
+    /// The item's file is over `sync.maxFileMb` and never leaves this Mac (`sync_blobs`
+    /// `tooLarge`).
+    pub file_too_large: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

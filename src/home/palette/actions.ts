@@ -3,9 +3,10 @@
 import type { IconName } from '../../ds/types';
 import { errorMessage } from '../../shared/errors';
 import type { TFunction } from '../../shared/i18n';
-import { captureNote, exportTask, retryExports, setSetting } from '../../shared/ipc';
+import { captureNote, exportTask, retryExports, setSetting, syncNow } from '../../shared/ipc';
+import { canSyncNow } from '../../shared/sync';
 import type { ShowToast } from '../../shared/Toast';
-import type { ExportProvider, ProviderStatus } from '../../shared/types';
+import type { ExportProvider, ProviderStatus, SyncState } from '../../shared/types';
 import { isReady, PROVIDER_NAME, PROVIDERS } from '../integrations/model';
 import type { HomeSelection } from '../selection';
 import { matchRanges } from './match';
@@ -23,6 +24,8 @@ export interface PaletteContext {
   /** Converts the item to a task and opens it; toasts its own errors (never rejects). */
   convertToTask: (itemId: string) => Promise<void>;
   petPaused: boolean;
+  /** Undefined until `sync_status` answers. */
+  syncState: SyncState | undefined;
 }
 
 export interface PaletteAction {
@@ -138,6 +141,13 @@ export const ACTIONS: readonly PaletteAction[] = [
     label: (t) => t('item.convertToTask'),
     when: (ctx) => ctx.selection.itemIds.length === 1,
     run: (ctx) => ctx.convertToTask(ctx.selection.itemIds[0]),
+  },
+  {
+    id: 'sync.now',
+    icon: 'sync',
+    label: (t) => t('sync.now'),
+    when: (ctx) => canSyncNow(ctx.syncState),
+    run: (ctx) => attempt(ctx, syncNow),
   },
   {
     id: 'pet.pause',

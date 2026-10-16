@@ -1,17 +1,21 @@
 // 44 px title bar over the native traffic lights (TitleBarStyle::Overlay): wordmark, page
-// name, the centred search button that opens the command palette (⌘K) and the "Local only"
-// status pill. Empty areas drag the window.
+// name, the centred search button that opens the command palette (⌘K) and the sync status pill,
+// which opens Settings › Account. Empty areas drag the window.
 import type { ReactElement } from 'react';
 import { Icon, Kbd, StatusPill } from '../ds';
 import { useT } from '../shared/i18n';
+import { useSyncStatus } from '../shared/queries';
+import { syncPill } from '../shared/sync';
 
 interface TitleBarProps {
   page: string;
   onOpenPalette: () => void;
+  onNavigate: (route: string) => void;
 }
 
 export function TitleBar(p: TitleBarProps): ReactElement {
   const t = useT();
+  const pill = syncPill(useSyncStatus().data?.state ?? 'off');
   return (
     <header className="hm-titlebar" data-tauri-drag-region>
       <div className="hm-titlebar__lead" data-tauri-drag-region>
@@ -25,7 +29,9 @@ export function TitleBar(p: TitleBarProps): ReactElement {
         <Kbd keys={['⌘', 'K']} />
       </button>
       <div className="hm-titlebar__trail" data-tauri-drag-region>
-        <StatusPill status="local" label={t('common.localOnly')} />
+        <button type="button" className="hm-titlebar__sync" onClick={() => p.onNavigate('settings/account')}>
+          <StatusPill status={pill.status} icon={pill.icon} label={t(pill.label)} />
+        </button>
       </div>
     </header>
   );

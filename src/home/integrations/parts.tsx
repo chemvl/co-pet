@@ -187,6 +187,10 @@ export function ConnectionStates(p: {
   if (!status?.connected) {
     return (
       <ProviderCard provider={provider} caption={p.caption}>
+        {/* Synced from a Mac that holds the token; connecting here uses that target as-is. */}
+        {status?.target ? (
+          <p className="caption in-muted in-m0">{t('integrations.setUpElsewhere', { target: status.target.targetLabel })}</p>
+        ) : null}
         <ConnectSection provider={provider} compact={compact} />
       </ProviderCard>
     );

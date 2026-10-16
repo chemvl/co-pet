@@ -4,12 +4,23 @@ import type { ReactElement, Ref } from 'react';
 import { Icon, KIND_ICON, Kbd, StatusPill } from '../ds';
 import { categoryLabelOf } from '../shared/categories';
 import { useLang, useT } from '../shared/i18n';
-import { useAddedBy, useCategories } from '../shared/queries';
+import { useAddedBy, useCategories, useSyncStatus } from '../shared/queries';
+import { localPillLabel } from '../shared/sync';
 import type { Category, CategoryId, ItemSummary } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
 import { rowMeta } from './itemText';
 import { categoryMenuItems, MenuButton } from './Menu';
 import { useItemActions } from './useItemActions';
+
+/**
+ * The `local` pill for content that never leaves this Mac: while sync runs, only a file over the
+ * size limit; otherwise when `localByDefault`.
+ */
+export function LocalPill({ item, localByDefault }: { item: ItemSummary; localByDefault: boolean }): ReactElement | null {
+  const t = useT();
+  const label = localPillLabel(item, useSyncStatus().data?.state, localByDefault);
+  return label ? <StatusPill status="local" label={t(label)} /> : null;
+}
 
 export function KindTile({ item, large }: { item: ItemSummary; large?: boolean }): ReactElement {
   const thumb = !item.sensitive && item.thumbPath ? convertFileSrc(item.thumbPath) : null;
@@ -81,7 +92,7 @@ export function ItemRow(p: RowProps): ReactElement {
           )}
           {item.sensitive ? <StatusPill status="sensitive" label={t('common.sensitive')} /> : null}
           {item.addedBy ? <StatusPill status="agent" label={addedBy(item.addedBy)} /> : null}
-          {item.kind === 'screenshot' ? <StatusPill status="local" label={t('common.localOnly')} /> : null}
+          <LocalPill item={item} localByDefault={item.kind === 'screenshot'} />
           <span className="caption hm-muted hm-ellipsis">{rowMeta(item, t, lang)}</span>
         </div>
       </div>

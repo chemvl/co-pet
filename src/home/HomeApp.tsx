@@ -141,7 +141,7 @@ export function HomeApp(): ReactElement {
   return (
     <SelectionProvider>
       <div className="hm-win">
-        <TitleBar page={pageName} onOpenPalette={() => setPaletteOpen(true)} />
+        <TitleBar page={pageName} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} />
         <div className="hm-body">
           <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
           <main className="hm-main">{page}</main>

@@ -1,16 +1,16 @@
 // Shared react-query hooks for settings, categories, the local-model status, the export
 // integrations, the MCP clients and the account. Each hook keeps its cache live from Rust
 // events: `settings-changed`, `categories-changed`, `integration-changed`, `exports-changed`,
-// `agents-changed` and `account-changed` invalidate their query; `ai-status` replaces the AI
-// status in place.
+// `agents-changed` and `account-changed` invalidate their query; `ai-status` and `sync-status`
+// replace theirs in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { useT } from './i18n';
 import {
-  accountStatus, aiStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
+  accountStatus, aiStatus, syncStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
   setSetting,
 } from './ipc';
-import type { AiStatus, Json } from './types';
+import type { AiStatus, Json, SyncStatus } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
 export const AI_STATUS_KEY = ['aiStatus'] as const;
@@ -21,6 +21,7 @@ export const BACKEND_KEY = ['backendStatus'] as const;
 export const AGENTS_KEY = ['agents'] as const;
 export const MCP_CLIENTS_KEY = [...AGENTS_KEY, 'clients'] as const;
 export const ACCOUNT_KEY = ['account'] as const;
+export const SYNC_KEY = ['sync'] as const;
 
 export type Settings = Record<string, Json>;
 
@@ -31,6 +32,7 @@ const categoriesSubscribed = new WeakSet<QueryClient>();
 const integrationsSubscribed = new WeakSet<QueryClient>();
 const agentsSubscribed = new WeakSet<QueryClient>();
 const accountSubscribed = new WeakSet<QueryClient>();
+const syncSubscribed = new WeakSet<QueryClient>();
 
 export function useSettings() {
   const qc = useQueryClient();
@@ -135,6 +137,17 @@ export function useAccountStatus() {
     });
   }, [qc]);
   return useQuery({ queryKey: ACCOUNT_KEY, queryFn: accountStatus, staleTime: Infinity });
+}
+
+/** The sync engine's status (`sync_status`), replaced in place by `sync-status`. */
+export function useSyncStatus() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (syncSubscribed.has(qc)) return;
+    syncSubscribed.add(qc);
+    void on('sync-status', (s) => qc.setQueryData<SyncStatus>(SYNC_KEY, s));
+  }, [qc]);
+  return useQuery({ queryKey: SYNC_KEY, queryFn: syncStatus, staleTime: Infinity });
 }
 
 /** "Added by {name}" for an `addedBy` client id; an id unknown on this Mac reads "Added by agent". */

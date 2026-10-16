@@ -18,6 +18,7 @@ import { categoryMenuItems, MenuButton } from './Menu';
 import { countsQuery } from './queries';
 import { navigate, type InboxView, type Route } from './router';
 import { useItemActions } from './useItemActions';
+import { useSetSelection } from './selection';
 
 const PAGE_SIZE = 100;
 const SKELETON_DELAY_MS = 400;
@@ -86,6 +87,7 @@ export function InboxPage({ route, search, onClearSearch }: InboxPageProps): Rea
   }, [active]);
 
   const selectedItems = items.filter((it) => selected.has(it.id));
+  useSetSelection(undefined, selectedItems.length ? selectedItems.map((it) => it.id) : active ? [active.id] : []);
   const clearSelection = () => setSelected(new Set());
   const open = (it: ItemSummary) => navigate(`item/${encodeURIComponent(it.id)}`);
   const pick = (it: ItemSummary, cat: CategoryId) => {

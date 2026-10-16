@@ -712,6 +712,21 @@ export const en = {
   'icon.clock': "Clock",
   'icon.language': "Language",
   'icon.moon': "Moon",
+  'palette.goInbox': "Go to Inbox",
+  'palette.goTasks': "Go to Tasks",
+  'palette.goAgents': "Go to Agents",
+  'palette.goIntegrations': "Go to Integrations",
+  'palette.goCategories': "Go to Categories",
+  'palette.openSettings': "Open Settings",
+  'palette.newTask': "New task",
+  'palette.addNote': "Add note “{query}”",
+  'palette.saved': "Saved",
+  'palette.searchInbox': "Search inbox for “{query}”",
+  'palette.exportTask': "Export selected task to {provider}",
+  'palette.openNotionMapping': "Open Integrations › {provider} field mapping",
+  'palette.openAsanaProject': "Open Integrations › {provider} project",
+  'palette.retryExports': "Retry failed {provider} exports",
+  'palette.waiting': "{n} waiting",
 } as const;
 
 export type I18nKey = keyof typeof en;

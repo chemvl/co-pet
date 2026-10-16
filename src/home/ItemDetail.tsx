@@ -19,6 +19,7 @@ import { detailMeta, extOf, historyText, hostOf, whenShort, whyText } from './it
 import { categoryMenuItems, Menu, MenuButton } from './Menu';
 import { itemQuery } from './queries';
 import { useItemActions } from './useItemActions';
+import { useSetSelection } from './selection';
 
 const COPIED_MS = 1500;
 
@@ -53,6 +54,7 @@ export function ItemDetail({ id, mode, onBack }: ItemDetailProps): ReactElement 
 function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactElement {
   const t = useT();
   const lang = useLang();
+  useSetSelection(undefined, [item.id]);
   return (
     <div className="hm-item">
       <div className="hm-item__bar">

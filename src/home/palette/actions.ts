@@ -1,0 +1,142 @@
+// The command palette's action registry, in display order. Each action is pure data plus a
+// `run` over the palette context; Palette.tsx filters by `when` and matches labels.
+import type { IconName } from '../../ds/types';
+import { errorMessage } from '../../shared/errors';
+import type { TFunction } from '../../shared/i18n';
+import { captureNote, exportTask, retryExports, setSetting } from '../../shared/ipc';
+import type { ShowToast } from '../../shared/Toast';
+import type { ExportProvider, ProviderStatus } from '../../shared/types';
+import { isReady, PROVIDER_NAME, PROVIDERS } from '../integrations/model';
+import type { HomeSelection } from '../selection';
+
+export interface PaletteContext {
+  t: TFunction;
+  /** The trimmed palette input. */
+  query: string;
+  selection: HomeSelection;
+  integrations: ProviderStatus[];
+  navigate: (path: string) => void;
+  /** Home's services the actions drive. */
+  toast: ShowToast;
+  setSearch: (q: string) => void;
+  convertToTask: (itemId: string) => Promise<void>;
+  petPaused: boolean;
+}
+
+export interface PaletteAction {
+  id: string;
+  label: (t: TFunction, ctx: PaletteContext) => string;
+  icon: IconName;
+  keywords?: string[];
+  when?: (ctx: PaletteContext) => boolean;
+  hint?: (t: TFunction, ctx: PaletteContext) => string | undefined;
+  run: (ctx: PaletteContext) => void | Promise<void>;
+}
+
+const CARD_SCROLL_FRAMES = 30;
+
+/** Scrolls the Integrations card of `provider` into view once the page has rendered it. */
+function scrollToCard(provider: ExportProvider): void {
+  let frames = 0;
+  const step = () => {
+    const card = document.querySelector(`.in-page [data-provider="${provider}"]`);
+    if (card) card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    else if (++frames < CARD_SCROLL_FRAMES) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+const status = (ctx: PaletteContext, p: ExportProvider) => ctx.integrations.find((s) => s.provider === p);
+const waiting = (s: ProviderStatus | undefined) => (s ? s.queued + s.failed : 0);
+
+async function attempt(ctx: PaletteContext, work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch (err) {
+    ctx.toast({ message: errorMessage(ctx.t, err) });
+  }
+}
+
+const goTo = (id: string, icon: IconName, key: Parameters<TFunction>[0], path: string): PaletteAction => ({
+  id,
+  icon,
+  label: (t) => t(key),
+  run: (ctx) => ctx.navigate(path),
+});
+
+export const ACTIONS: readonly PaletteAction[] = [
+  goTo('go.inbox', 'inbox', 'palette.goInbox', 'inbox'),
+  goTo('go.tasks', 'tasks', 'palette.goTasks', 'tasks'),
+  goTo('go.agents', 'agent', 'palette.goAgents', 'agents'),
+  goTo('go.integrations', 'export', 'palette.goIntegrations', 'integrations'),
+  goTo('go.categories', 'reference', 'palette.goCategories', 'categories'),
+  goTo('go.settings', 'settings', 'palette.openSettings', 'settings'),
+  goTo('task.new', 'plus', 'palette.newTask', 'tasks/new'),
+  {
+    id: 'note.add',
+    icon: 'note',
+    label: (t, ctx) => t('palette.addNote', { query: ctx.query }),
+    when: (ctx) => ctx.query !== '',
+    run: (ctx) =>
+      attempt(ctx, async () => {
+        await captureNote(ctx.query);
+        ctx.toast({ message: ctx.t('palette.saved') });
+      }),
+  },
+  {
+    id: 'inbox.search',
+    icon: 'search',
+    label: (t, ctx) => t('palette.searchInbox', { query: ctx.query }),
+    when: (ctx) => ctx.query !== '',
+    run: (ctx) => {
+      ctx.setSearch(ctx.query);
+      ctx.navigate('inbox');
+    },
+  },
+  ...PROVIDERS.map(
+    (p): PaletteAction => ({
+      id: `export.${p}`,
+      icon: 'export',
+      label: (t) => t('palette.exportTask', { provider: PROVIDER_NAME[p] }),
+      when: (ctx) => !!ctx.selection.taskId && isReady(status(ctx, p)),
+      run: (ctx) => {
+        const taskId = ctx.selection.taskId;
+        if (taskId) return attempt(ctx, () => exportTask(taskId, p));
+      },
+    }),
+  ),
+  ...PROVIDERS.map(
+    (p): PaletteAction => ({
+      id: `integrations.${p}`,
+      icon: 'settings',
+      label: (t) => t(p === 'notion' ? 'palette.openNotionMapping' : 'palette.openAsanaProject', { provider: PROVIDER_NAME[p] }),
+      run: (ctx) => {
+        ctx.navigate('integrations');
+        scrollToCard(p);
+      },
+    }),
+  ),
+  ...PROVIDERS.map(
+    (p): PaletteAction => ({
+      id: `retry.${p}`,
+      icon: 'sync',
+      label: (t) => t('palette.retryExports', { provider: PROVIDER_NAME[p] }),
+      when: (ctx) => waiting(status(ctx, p)) > 0,
+      hint: (t, ctx) => t('palette.waiting', { n: waiting(status(ctx, p)) }),
+      run: (ctx) => attempt(ctx, () => retryExports(p)),
+    }),
+  ),
+  {
+    id: 'item.convert',
+    icon: 'tasks',
+    label: (t) => t('item.convertToTask'),
+    when: (ctx) => ctx.selection.itemIds.length === 1,
+    run: (ctx) => ctx.convertToTask(ctx.selection.itemIds[0]),
+  },
+  {
+    id: 'pet.pause',
+    icon: 'pause',
+    label: (t, ctx) => t(ctx.petPaused ? 'pet.menu.resume' : 'pet.menu.pause'),
+    run: (ctx) => attempt(ctx, () => setSetting('pet.paused', !ctx.petPaused)),
+  },
+];

@@ -23,6 +23,7 @@ import { dueText, GROUP_KEYS, groupTasks, isDueSoon, type GroupKey } from './gro
 import { NextCardView, type CardAction } from '../../shared/NextCardView';
 import { TaskEditor } from './TaskEditor';
 import { useTaskActions } from './useTaskActions';
+import { useSetSelection } from '../selection';
 import './tasks.css';
 
 const SKELETON_DELAY_MS = 400;
@@ -42,6 +43,7 @@ export function TasksPage({ route, search, onClearSearch }: TasksPageProps): Rea
   const t = useT();
   const lang = useLang();
   const actions = useTaskActions();
+  useSetSelection(route.new ? undefined : route.id, []);
   const wide = useMediaQuery('(min-width: 1100px)');
   const { data: c } = useQuery(countsQuery);
   const { view } = route;

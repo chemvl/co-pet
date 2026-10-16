@@ -39,7 +39,7 @@ export function ProviderCard(p: {
 }): ReactElement {
   const name = PROVIDER_NAME[p.provider];
   return (
-    <article className="in-card" aria-label={name}>
+    <article className="in-card" aria-label={name} data-provider={p.provider}>
       <div className="in-card__head">
         <span className="in-logo" aria-hidden="true">{name[0]}</span>
         <div className="in-card__title">

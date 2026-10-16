@@ -18,6 +18,7 @@ import { navigate, routePath, useRoute, type Route } from './router';
 import { SettingsPage } from './settings/SettingsPage';
 import { TasksPage } from './tasks/TasksPage';
 import { TitleBar } from './TitleBar';
+import { SelectionProvider } from './selection';
 import { useDebounced } from './hooks';
 
 const SEARCH_DEBOUNCE_MS = 150;
@@ -148,12 +149,14 @@ export function HomeApp(): ReactElement {
   }
 
   return (
-    <div className="hm-win">
-      <TitleBar ref={searchRef} page={pageName} search={search} onSearch={onSearch} />
-      <div className="hm-body">
-        <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
-        <main className="hm-main">{page}</main>
+    <SelectionProvider>
+      <div className="hm-win">
+        <TitleBar ref={searchRef} page={pageName} search={search} onSearch={onSearch} />
+        <div className="hm-body">
+          <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
+          <main className="hm-main">{page}</main>
+        </div>
       </div>
-    </div>
+    </SelectionProvider>
   );
 }

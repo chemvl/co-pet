@@ -7,7 +7,7 @@ export interface ToastOptions {
   action?: { label: string; run: () => void };
   undo?: () => void;
 }
-type ShowToast = (opts: ToastOptions) => void;
+export type ShowToast = (opts: ToastOptions) => void;
 
 const AUTO_DISMISS_MS = 6000;
 

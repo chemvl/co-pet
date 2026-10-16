@@ -266,6 +266,70 @@ INSERT INTO settings (key, value, updated_at) VALUES
   ('sync.userId', 'null', 0), ('sync.email', 'null', 0), ('sync.deviceName', 'null', 0), ('sync.maxFileMb', '50', 0);
 "#;
 
+/// Schema v8: local change tracking for sync. Triggers queue every local write of a synced row
+/// in `sync_outbox`; the sync engine sets `sync_guard.applying = 1` while applying remote rows so
+/// they are not echoed back. Settings only sync the cross-device keys (`sync::SYNCED_SETTINGS`).
+const V8: &str = r#"
+CREATE TABLE sync_outbox (tbl TEXT NOT NULL, id TEXT NOT NULL, queued_at INTEGER NOT NULL, PRIMARY KEY (tbl, id));
+CREATE TABLE sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE sync_guard (applying INTEGER NOT NULL);
+INSERT INTO sync_guard (applying) VALUES (0);
+CREATE TABLE sync_blobs (
+  rel TEXT PRIMARY KEY,
+  state TEXT NOT NULL CHECK (state IN ('up','down','done','tooLarge','missing')),
+  attempts INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
+CREATE TRIGGER sync_categories_ins AFTER INSERT ON categories WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('categories', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_categories_upd AFTER UPDATE ON categories WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('categories', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_settings_ins AFTER INSERT ON settings WHEN (SELECT applying FROM sync_guard) = 0
+  AND NEW.key IN ('ui.language','pet.name','pet.style','pet.skin','pet.size','pet.sleepHours','capture.removeOriginal','capture.excludedApps','triage.confidenceThreshold','privacy.secretDetection','whatsNext.onReturn','whatsNext.afterDone','whatsNext.idleMinutes','whatsNext.workHours','whatsNext.maxPerHour')
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_settings_upd AFTER UPDATE ON settings WHEN (SELECT applying FROM sync_guard) = 0
+  AND NEW.key IN ('ui.language','pet.name','pet.style','pet.skin','pet.size','pet.sleepHours','capture.removeOriginal','capture.excludedApps','triage.confidenceThreshold','privacy.secretDetection','whatsNext.onReturn','whatsNext.afterDone','whatsNext.idleMinutes','whatsNext.workHours','whatsNext.maxPerHour')
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_rules_ins AFTER INSERT ON rules WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('rules', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_rules_upd AFTER UPDATE ON rules WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('rules', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_items_ins AFTER INSERT ON items WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('items', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_items_upd AFTER UPDATE ON items WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('items', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_category_examples_ins AFTER INSERT ON category_examples WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('category_examples', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_category_examples_upd AFTER UPDATE ON category_examples WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('category_examples', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_tasks_ins AFTER INSERT ON tasks WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('tasks', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_tasks_upd AFTER UPDATE ON tasks WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('tasks', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_export_targets_ins AFTER INSERT ON export_targets WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('export_targets', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_export_targets_upd AFTER UPDATE ON export_targets WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('export_targets', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_task_exports_ins AFTER INSERT ON task_exports WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('task_exports', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_task_exports_upd AFTER UPDATE ON task_exports WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('task_exports', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8)])
 });

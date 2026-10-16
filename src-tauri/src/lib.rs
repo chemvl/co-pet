@@ -24,6 +24,7 @@ mod links;
 mod export;
 mod agent;
 mod account;
+mod sync;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;

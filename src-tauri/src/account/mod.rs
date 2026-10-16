@@ -67,7 +67,7 @@ pub async fn delete_cloud_data(app: &AppHandle, confirmation: &str) -> AppResult
     let b = server(app)?;
     let token = auth::access_token(app).await?;
     delete_account(&b, &token).await?;
-    auth::forget_session(app)?;
+    auth::forget_session(app).await?;
     settings::set(app, "sync.userId", &Value::Null)?;
     events::account_changed(app, None);
     Ok(())

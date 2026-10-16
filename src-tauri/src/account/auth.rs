@@ -170,6 +170,13 @@ fn claim_verifier(pending: Option<(String, Instant)>, now: Instant) -> Option<St
     pending.and_then(|(verifier, at)| (now.duration_since(at) < GOOGLE_TTL).then_some(verifier))
 }
 
+/// Whether the keychain still holds the session a refresh started from. Not when the user
+/// signed out (or Delete everything ran, or a new sign-in replaced it) while the refresh was
+/// in flight: its result must then not be stored, nor its refusal delete anything.
+fn still_stored(stored: Option<&Session>, used: &Session) -> bool {
+    stored.is_some_and(|s| s.refresh_token == used.refresh_token)
+}
+
 // ---------- app ----------
 
 /// Rejects with `localOnly`, `notConfigured`, `network`, `rateLimited`, `invalid`.
@@ -250,7 +257,12 @@ pub(crate) async fn session(app: &AppHandle) -> AppResult<Session> {
     if !needs_refresh(current.expires_at, now_ms()) {
         return Ok(current);
     }
-    match refresh(&b, &current.refresh_token).await {
+    let outcome = refresh(&b, &current.refresh_token).await;
+    let stored = stored_session()?;
+    if !still_stored(stored.as_ref(), &current) {
+        return stored.ok_or(AppError::Code("signedOut"));
+    }
+    match outcome {
         Ok(fresh) => {
             secrets::set_json(SESSION, &fresh)?;
             Ok(fresh)
@@ -270,14 +282,16 @@ pub async fn access_token(app: &AppHandle) -> AppResult<String> {
 
 /// Deletes the session and this user's sync key and clears `sync.email`. `sync.userId` stays,
 /// so this Mac's data can't be merged into a different account.
-pub fn sign_out(app: &AppHandle) -> AppResult<()> {
-    forget_session(app)?;
+pub async fn sign_out(app: &AppHandle) -> AppResult<()> {
+    forget_session(app).await?;
     events::account_changed(app, None);
     Ok(())
 }
 
-/// [`sign_out`] without the event.
-pub(crate) fn forget_session(app: &AppHandle) -> AppResult<()> {
+/// [`sign_out`] without the event. Waits for a refresh in flight, so it can't store the
+/// session again after this deleted it.
+pub(crate) async fn forget_session(app: &AppHandle) -> AppResult<()> {
+    let _turn = REFRESH.lock().await;
     secrets::delete(SESSION)?;
     if let Some(user_id) = settings::read::<Option<String>>(app, "sync.userId")? {
         secrets::delete(&keys::key_account(&user_id))?;
@@ -337,6 +351,23 @@ mod tests {
         assert!(may_adopt(None, "u1"));
         assert!(may_adopt(Some("u1"), "u1"));
         assert!(!may_adopt(Some("u1"), "u2"));
+    }
+
+    #[test]
+    fn refreshed_session_kept_only_while_still_stored() {
+        let s = |refresh: &str| Session {
+            access_token: "at".into(),
+            refresh_token: refresh.into(),
+            expires_at: 0,
+            user_id: "u1".into(),
+            email: None,
+        };
+        let used = s("r1");
+        assert!(still_stored(Some(&s("r1")), &used));
+        // Signed out (or Delete everything) during the refresh.
+        assert!(!still_stored(None, &used));
+        // A new sign-in stored another session during the refresh.
+        assert!(!still_stored(Some(&s("r2")), &used));
     }
 
     #[test]

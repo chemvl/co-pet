@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useT, type I18nKey } from '../../shared/i18n';
 import { AboutSection } from './sections/AboutSection';
+import { AccountSection } from './sections/AccountSection';
 import { AppearanceSection } from './sections/AppearanceSection';
 import { CaptureSection } from './sections/CaptureSection';
 import { DataSection } from './sections/DataSection';
@@ -14,7 +15,8 @@ import { WhatsNextSection } from './sections/WhatsNextSection';
 import './settings.css';
 
 export type SettingsSectionId =
-  | 'general' | 'capture' | 'triage' | 'whatsnext' | 'notifications' | 'privacy' | 'appearance' | 'data' | 'about';
+  | 'general' | 'capture' | 'triage' | 'whatsnext' | 'notifications' | 'privacy' | 'appearance' | 'data' | 'account'
+  | 'about';
 
 export const SETTINGS_SECTIONS: readonly { id: SettingsSectionId; label: I18nKey }[] = [
   { id: 'general', label: 'settings.general' },
@@ -25,6 +27,7 @@ export const SETTINGS_SECTIONS: readonly { id: SettingsSectionId; label: I18nKey
   { id: 'privacy', label: 'settings.privacy' },
   { id: 'appearance', label: 'settings.appearance' },
   { id: 'data', label: 'settings.data' },
+  { id: 'account', label: 'settings.account' },
   { id: 'about', label: 'settings.about' },
 ];
 
@@ -53,6 +56,7 @@ export function SettingsPage({ section, onNavigate }: SettingsPageProps) {
     case 'privacy': body = <PrivacySection onNavigate={onNavigate} />; break;
     case 'appearance': body = <AppearanceSection />; break;
     case 'data': body = <DataSection />; break;
+    case 'account': body = <AccountSection onNavigate={onNavigate} />; break;
     case 'about': body = <AboutSection />; break;
   }
 

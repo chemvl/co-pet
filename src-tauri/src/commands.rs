@@ -733,12 +733,19 @@ pub async fn enter_recovery_key(app: AppHandle, key: String) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn sign_out(app: AppHandle) -> AppResult<()> {
-    crate::account::auth::sign_out(&app)
+pub async fn sign_out(app: AppHandle) -> AppResult<()> {
+    crate::account::auth::sign_out(&app).await
 }
 
 /// Rejects with `confirmation`, `signedOut`, `localOnly`, `notConfigured` or `network`.
 #[tauri::command]
 pub async fn delete_cloud_data(app: AppHandle, confirmation: String) -> AppResult<()> {
     crate::account::delete_cloud_data(&app, &confirmation).await
+}
+
+/// Writes `text` to the file the user just picked in a save dialog. Rejects with `invalid` for
+/// any other path.
+#[tauri::command]
+pub fn write_text_file(app: AppHandle, path: String, text: String) -> AppResult<()> {
+    crate::data::write_text_file(&app, &path, &text)
 }

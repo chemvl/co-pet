@@ -1,5 +1,5 @@
 //! Settings › Capture and Settings › Data (Step 12): excluded apps, export and "Delete
-//! everything".
+//! everything"; saving text (the recovery key) to a file the user picked.
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -199,6 +199,31 @@ fn unique_dir(dir: &Path, base: &str) -> PathBuf {
     }
 }
 
+// ---------- save as file ----------
+
+/// Writes `text` to `path`, which must be the file the user just picked in a save dialog (the
+/// dialog plugin adds it to the asset scope); never a path in Co-pet's own folder. Error
+/// `invalid` for any other path. The text is never logged.
+pub fn write_text_file(app: &AppHandle, path: &str, text: &str) -> AppResult<()> {
+    let path = Path::new(path);
+    let picked = app.asset_protocol_scope().is_allowed(path);
+    if !may_write(path, &app.state::<Paths>().root, picked) {
+        return Err(AppError::Code("invalid"));
+    }
+    std::fs::write(path, text)?;
+    Ok(())
+}
+
+/// An absolute file path, without `..`, outside Co-pet's folder (whose files the asset scope
+/// allows anyway), that the save dialog `picked`.
+fn may_write(path: &Path, app_root: &Path, picked: bool) -> bool {
+    picked
+        && path.is_absolute()
+        && !path.components().any(|c| c == std::path::Component::ParentDir)
+        && !path.starts_with(app_root)
+        && !path.is_dir()
+}
+
 // ---------- delete everything ----------
 
 /// Whether `typed`, after trimming, NFC, lowercasing and collapsing whitespace, is one of
@@ -251,8 +276,25 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
 
 #[cfg(test)]
 mod tests {
-    use super::{phrase_ok, CONFIRMATIONS};
+    use std::path::Path;
+
+    use super::{may_write, phrase_ok, CONFIRMATIONS};
     use crate::account::CLOUD_PHRASES;
+
+    #[test]
+    fn writes_only_the_picked_file_outside_the_app_folder() {
+        let root = Path::new("/Users/u/Library/Application Support/com.copet.app");
+        let file = Path::new("/Users/u/Documents/Co-pet recovery key.txt");
+        assert!(may_write(file, root, true));
+        // Not picked in the save dialog.
+        assert!(!may_write(file, root, false));
+        // Co-pet's own files are in the asset scope already.
+        assert!(!may_write(&root.join("library/x.txt"), root, true));
+        assert!(!may_write(Path::new("relative.txt"), root, true));
+        assert!(!may_write(Path::new("/Users/u/Documents/../Library/x.txt"), root, true));
+        let dir = std::env::temp_dir();
+        assert!(!may_write(&dir, root, true));
+    }
 
     #[test]
     fn confirmation_accepts_both_languages_however_typed() {

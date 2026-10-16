@@ -1,12 +1,12 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../../../ds';
 import { errorText } from '../../../shared/errors';
 import { useT } from '../../../shared/i18n';
 import { deleteEverything, exportAll } from '../../../shared/ipc';
 import { useToast } from '../../../shared/Toast';
-import { Group, SettingRow } from '../parts';
+import { Group, SettingRow, TypedConfirmDialog } from '../parts';
 
 export function DataSection() {
   const t = useT();
@@ -50,77 +50,19 @@ export function DataSection() {
           {t('settings.data.delete')}
         </Button>
       </div>
-      {confirming ? <DeleteDialog onClose={() => setConfirming(false)} /> : null}
-    </>
-  );
-}
-
-/** Folds the two Vietnamese tone placements ("xoá" / "xóa") and case before comparing. */
-function normalize(s: string): string {
-  return s.normalize('NFC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/oá/g, 'óa');
-}
-
-function DeleteDialog({ onClose }: { onClose: () => void }) {
-  const t = useT();
-  const titleId = useId();
-  const descId = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const phrase = t('settings.data.deletePhrase');
-  const matches = normalize(text) === normalize(phrase);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const confirm = async () => {
-    if (!matches || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      // Rust stops the worker and the model, deletes the library and restarts the app.
-      await deleteEverything(phrase);
-    } catch (e) {
-      setError(t('settings.data.deleteFailed', { reason: errorText(e) }));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="hm-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="st-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
-        <h2 className="st-dialog__title" id={titleId}>{t('settings.data.deleteTitle')}</h2>
-        <p className="st-body" id={descId}>{t('settings.data.deleteBody')}</p>
-        <label className="st-row__label" htmlFor="st-delete-confirm">
-          {t('settings.data.deletePrompt', { phrase })}
-        </label>
-        <input
-          id="st-delete-confirm"
-          ref={inputRef}
-          className="st-input"
-          value={text}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void confirm();
-          }}
+      {confirming ? (
+        <TypedConfirmDialog
+          title={t('settings.data.deleteTitle')}
+          body={t('settings.data.deleteBody')}
+          phrase={t('settings.data.deletePhrase')}
+          action={t('settings.data.delete')}
+          variant="danger"
+          // Rust stops the worker and the model, deletes the library and restarts the app.
+          onConfirm={deleteEverything}
+          failed={(e) => t('settings.data.deleteFailed', { reason: errorText(e) })}
+          onClose={() => setConfirming(false)}
         />
-        {error ? <p className="st-error" role="alert">{error}</p> : null}
-        <div className="st-dialog__actions">
-          <Button variant="quiet" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="danger" icon="trash" disabled={!matches || busy} onClick={() => void confirm()}>
-            {t('settings.data.delete')}
-          </Button>
-        </div>
-      </div>
-    </div>
+      ) : null}
+    </>
   );
 }

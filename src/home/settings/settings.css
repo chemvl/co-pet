@@ -105,6 +105,22 @@
 .st-dialog__title { margin: 0; font: 600 16px/24px var(--font-sans); }
 .st-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 
+/* account and sync */
+.st-fieldset { display: flex; flex-direction: column; gap: 20px; min-width: 0; margin: 0; padding: 0; border: 0; }
+/* Local-only mode: the whole section at 45% ("Permission missing"); its buttons don't dim twice. */
+.st-fieldset:disabled { opacity: .45; }
+.st-fieldset:disabled .cp-btn:disabled { opacity: 1; }
+.st-acct__form { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.st-acct__actions { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.st-input--code { width: 120px; font-family: var(--font-mono); letter-spacing: .1em; }
+.st-input--key { width: 360px; max-width: 100%; font-family: var(--font-mono); }
+.st-or { display: flex; align-items: center; gap: 12px; font: 400 12px/18px var(--font-sans); color: var(--ink-muted); }
+.st-or::before, .st-or::after { content: ""; flex: 1 1 0; border-top: 1px solid var(--line); }
+.st-key { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: var(--space-2) var(--space-2) var(--space-2) 14px; border-radius: var(--radius-md); background: var(--surface-sunken); }
+.st-key__text { flex: 1 1 240px; min-width: 0; font: 500 14px/22px var(--font-mono); overflow-wrap: anywhere; user-select: all; }
+.st-check { display: flex; align-items: center; gap: 8px; font: 500 14px/22px var(--font-sans); color: var(--ink); cursor: pointer; }
+.st-check input { margin: 0; accent-color: var(--clover); }
+
 /* about */
 .st-about { display: flex; align-items: center; gap: 16px; }
 .st-about__art { width: 64px; height: 64px; flex: none; }

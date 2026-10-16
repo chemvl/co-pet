@@ -19,7 +19,7 @@ import { PROVIDER_NAME } from '../integrations/model';
 import { MenuButton } from '../Menu';
 import { QueryState } from '../InboxPage';
 import { activityAction, activityText, relativeTime } from './activityText';
-import { Dialog } from '../settings/parts';
+import { Dialog, useCopied } from '../settings/parts';
 import '../settings/settings.css';
 import './agents.css';
 
@@ -32,7 +32,6 @@ function isKnown(key: string): key is KnownMcpClient {
 const ACTIVITY_LIMIT = 100;
 /** "last call 2 min ago" follows the clock between data changes. */
 const CLOCK_TICK_MS = 60_000;
-const COPIED_MS = 1500;
 
 type Show = 'all' | 'writes';
 
@@ -66,25 +65,6 @@ function useNow(): number {
     return () => window.clearInterval(id);
   }, []);
   return now;
-}
-
-/** A button label that reads "Copied" for a moment after `copy` succeeds. */
-function useCopied(): [boolean, (text: string) => void] {
-  const t = useT();
-  const { show } = useToast();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const id = window.setTimeout(() => setCopied(false), COPIED_MS);
-    return () => window.clearTimeout(id);
-  }, [copied]);
-  const copy = (text: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => setCopied(true),
-      (e) => show({ message: errorMessage(t, e) }),
-    );
-  };
-  return [copied, copy];
 }
 
 export function AgentsPage(): ReactElement {

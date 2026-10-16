@@ -1,8 +1,11 @@
 // Building blocks shared by the Settings sections, onboarding and other Home screens.
-import { useEffect, useId, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Button } from '../../ds';
 import { CatArt, LOOKS, SKINS, type CatLook, type CatSkin } from '../../pet/CatArt';
 import { poseFor } from '../../pet/pose';
+import { errorMessage } from '../../shared/errors';
 import { useT, type I18nKey } from '../../shared/i18n';
+import { useToast } from '../../shared/Toast';
 import './settings.css';
 
 export function Group({ title, desc, children }: { title?: string; desc?: string; children: ReactNode }) {
@@ -172,6 +175,111 @@ export function Dialog(p: {
         <h2 className="st-dialog__title" id={titleId}>{p.title}</h2>
         {p.children}
         <div className="st-dialog__actions">{p.actions}</div>
+      </div>
+    </div>
+  );
+}
+
+const COPIED_MS = 1500;
+
+/** A button label that reads "Copied" for a moment after `copy` succeeds. */
+export function useCopied(): [boolean, (text: string) => void] {
+  const t = useT();
+  const { show } = useToast();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const id = window.setTimeout(() => setCopied(false), COPIED_MS);
+    return () => window.clearTimeout(id);
+  }, [copied]);
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => setCopied(true),
+      (e) => show({ message: errorMessage(t, e) }),
+    );
+  };
+  return [copied, copy];
+}
+
+/** Folds the two Vietnamese tone placements ("xoá" / "xóa") and case before comparing. */
+function normalizePhrase(s: string): string {
+  return s.normalize('NFC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/oá/g, 'óa');
+}
+
+/**
+ * An irreversible action confirmed by typing `phrase` (Delete everything, Delete cloud data).
+ * `onConfirm` gets the phrase for the command; a rejection shows `failed(e)` and keeps it open.
+ */
+export function TypedConfirmDialog(p: {
+  title: string;
+  body: string;
+  phrase: string;
+  action: string;
+  variant: 'danger' | 'secondary';
+  onConfirm: (phrase: string) => Promise<void>;
+  failed: (e: unknown) => string;
+  onClose: () => void;
+}): ReactElement {
+  const t = useT();
+  const titleId = useId();
+  const descId = useId();
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const matches = normalizePhrase(text) === normalizePhrase(p.phrase);
+  const { onClose } = p;
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const confirm = async () => {
+    if (!matches || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await p.onConfirm(p.phrase);
+      onClose();
+    } catch (e) {
+      setError(p.failed(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="hm-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="st-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
+        <h2 className="st-dialog__title" id={titleId}>{p.title}</h2>
+        <p className="st-body" id={descId}>{p.body}</p>
+        <label className="st-row__label" htmlFor={inputId}>
+          {t('settings.data.deletePrompt', { phrase: p.phrase })}
+        </label>
+        <input
+          id={inputId}
+          ref={inputRef}
+          className="st-input"
+          value={text}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void confirm();
+          }}
+        />
+        {error ? <p className="st-error" role="alert">{error}</p> : null}
+        <div className="st-dialog__actions">
+          <Button variant="quiet" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant={p.variant} icon="trash" disabled={!matches || busy} onClick={() => void confirm()}>
+            {p.action}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -1,12 +1,14 @@
 // Shared react-query hooks for settings, categories, the local-model status, the export
-// integrations and the MCP clients. Each hook keeps its cache live from Rust events:
-// `settings-changed`, `categories-changed`, `integration-changed`, `exports-changed` and
-// `agents-changed` invalidate their query; `ai-status` replaces the AI status in place.
+// integrations, the MCP clients and the account. Each hook keeps its cache live from Rust
+// events: `settings-changed`, `categories-changed`, `integration-changed`, `exports-changed`,
+// `agents-changed` and `account-changed` invalidate their query; `ai-status` replaces the AI
+// status in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { useT } from './i18n';
 import {
-  aiStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on, setSetting,
+  accountStatus, aiStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
+  setSetting,
 } from './ipc';
 import type { AiStatus, Json } from './types';
 
@@ -18,6 +20,7 @@ export const BACKEND_KEY = ['backendStatus'] as const;
 /** Prefix of every Agents screen query (clients, server status, activity). */
 export const AGENTS_KEY = ['agents'] as const;
 export const MCP_CLIENTS_KEY = [...AGENTS_KEY, 'clients'] as const;
+export const ACCOUNT_KEY = ['account'] as const;
 
 export type Settings = Record<string, Json>;
 
@@ -27,6 +30,7 @@ const aiSubscribed = new WeakSet<QueryClient>();
 const categoriesSubscribed = new WeakSet<QueryClient>();
 const integrationsSubscribed = new WeakSet<QueryClient>();
 const agentsSubscribed = new WeakSet<QueryClient>();
+const accountSubscribed = new WeakSet<QueryClient>();
 
 export function useSettings() {
   const qc = useQueryClient();
@@ -118,6 +122,19 @@ export function useMcpClients() {
     });
   }, [qc]);
   return useQuery({ queryKey: MCP_CLIENTS_KEY, queryFn: listMcpClients, staleTime: Infinity });
+}
+
+/** Sign-in and sync-key state (`account_status`). */
+export function useAccountStatus() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (accountSubscribed.has(qc)) return;
+    accountSubscribed.add(qc);
+    void on('account-changed', () => {
+      void qc.invalidateQueries({ queryKey: ACCOUNT_KEY });
+    });
+  }, [qc]);
+  return useQuery({ queryKey: ACCOUNT_KEY, queryFn: accountStatus, staleTime: Infinity });
 }
 
 /** "Added by {name}" for an `addedBy` client id; an id unknown on this Mac reads "Added by agent". */

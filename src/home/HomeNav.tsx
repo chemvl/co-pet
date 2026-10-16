@@ -72,7 +72,18 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
         count={<span className="hm-nav__count">{c?.tasksOpen ?? ''}</span>}
       />
       <NavLink href="#/agents" active={active === 'agents'} icon="agent" label={t('agents.title')} />
-      <div className="hm-nav__heading">{t('home.categories')}</div>
+      <div className="hm-nav__heading">
+        <span>{t('home.categories')}</span>
+        {categories?.length ? (
+          <a
+            className="hm-link hm-nav__edit"
+            href={`#/categories/${encodeURIComponent((categories.find((x) => x.id === active) ?? categories[0]).id)}`}
+            aria-label={t('categories.editCategories')}
+          >
+            {t('categories.edit')}
+          </a>
+        ) : null}
+      </div>
       {categories?.map((cat) => (
         <NavLink
           key={cat.id}

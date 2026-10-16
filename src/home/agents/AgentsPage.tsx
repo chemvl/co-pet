@@ -20,6 +20,7 @@ import { MenuButton } from '../Menu';
 import { useDelayed } from '../hooks';
 import { Skeleton } from '../InboxPage';
 import { activityAction, activityText, relativeTime } from './activityText';
+import { Dialog } from '../settings/parts';
 import '../settings/settings.css';
 import './agents.css';
 
@@ -397,33 +398,6 @@ function Activity(): ReactElement {
       <QueryState q={activity} loading={t('agents.loadingActivity')} />
       <div className="caption ag-muted ag-foot">{t('agents.footer')}</div>
     </section>
-  );
-}
-
-function Dialog(p: {
-  title: string;
-  role?: 'dialog' | 'alertdialog';
-  onClose: () => void;
-  children: ReactNode;
-  actions: ReactNode;
-}): ReactElement {
-  const titleId = useId();
-  const { onClose } = p;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  return (
-    <div className="st-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="st-dialog" role={p.role ?? 'dialog'} aria-modal="true" aria-labelledby={titleId}>
-        <h2 className="st-dialog__title" id={titleId}>{p.title}</h2>
-        {p.children}
-        <div className="st-dialog__actions">{p.actions}</div>
-      </div>
-    </div>
   );
 }
 

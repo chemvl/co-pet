@@ -46,7 +46,8 @@ body { margin: 0; overflow: hidden; background: var(--surface); color: var(--ink
 .hm-nav__label { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hm-nav__count { font: 500 12px/18px var(--font-sans); color: var(--ink-muted); }
 .hm-nav__count.is-attn { background: var(--badge); color: var(--on-badge); font: 700 11px/16px var(--font-sans); padding: 1px 7px; border-radius: var(--radius-pill); }
-.hm-nav__heading { padding: 14px 10px var(--space-1); font: 600 12px/18px var(--font-sans); color: var(--ink-muted); }
+.hm-nav__heading { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 10px var(--space-1); font: 600 12px/18px var(--font-sans); color: var(--ink-muted); }
+.hm-nav__edit { font: 500 12px/18px var(--font-sans); }
 .hm-nav__spacer { flex: 1 1 0; min-height: var(--space-3); }
 
 /* ---------- menu ---------- */

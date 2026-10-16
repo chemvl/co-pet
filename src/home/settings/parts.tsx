@@ -1,5 +1,5 @@
-// Building blocks shared by the Settings sections and onboarding.
-import { useId, type ReactNode } from 'react';
+// Building blocks shared by the Settings sections, onboarding and other Home screens.
+import { useEffect, useId, type ReactElement, type ReactNode } from 'react';
 import { CatArt, LOOKS, SKINS, type CatLook, type CatSkin } from '../../pet/CatArt';
 import { poseFor } from '../../pet/pose';
 import { useT, type I18nKey } from '../../shared/i18n';
@@ -147,4 +147,32 @@ export function asLook(v: unknown): CatLook {
 
 export function asSkin(v: unknown): CatSkin {
   return v === 'tabby' || v === 'midnight' ? v : 'peach';
+}
+
+/** A modal dialog: Escape and a click on the scrim close it. */
+export function Dialog(p: {
+  title: string;
+  role?: 'dialog' | 'alertdialog';
+  onClose: () => void;
+  children: ReactNode;
+  actions: ReactNode;
+}): ReactElement {
+  const titleId = useId();
+  const { onClose } = p;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="st-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="st-dialog" role={p.role ?? 'dialog'} aria-modal="true" aria-labelledby={titleId}>
+        <h2 className="st-dialog__title" id={titleId}>{p.title}</h2>
+        {p.children}
+        <div className="st-dialog__actions">{p.actions}</div>
+      </div>
+    </div>
+  );
 }

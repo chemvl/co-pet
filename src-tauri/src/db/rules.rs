@@ -97,8 +97,18 @@ pub fn list_for_category(conn: &Connection, category_id: &str) -> AppResult<Vec<
         .into_iter()
         .filter(|r| r.category_id == category_id)
         .map(|rule| {
-            let match_count =
-                items.iter().filter(|i| crate::triage::rules::matches(&rule, i)).count() as i64;
+            let match_count = if rule.kind == "regex" {
+                // Compiled once per rule, not once per item.
+                match regex::Regex::new(&rule.pattern) {
+                    Ok(re) => items
+                        .iter()
+                        .filter(|i| i.payload_text.as_deref().is_some_and(|t| re.is_match(t)))
+                        .count(),
+                    Err(_) => 0,
+                }
+            } else {
+                items.iter().filter(|i| crate::triage::rules::matches(&rule, i)).count()
+            } as i64;
             RuleView { rule, match_count }
         })
         .collect())
@@ -134,7 +144,7 @@ fn normalize(kind: &str, pattern: &str) -> AppResult<String> {
         "source_app" => (!p.is_empty() && p.chars().count() <= 100)
             .then(|| p.to_string())
             .ok_or_else(invalid),
-        "regex" => (pattern.chars().count() <= 500 && regex::Regex::new(pattern).is_ok())
+        "regex" => (!p.is_empty() && pattern.chars().count() <= 500 && regex::Regex::new(pattern).is_ok())
             .then(|| pattern.to_string())
             .ok_or_else(invalid),
         _ => Err(invalid()),
@@ -224,7 +234,31 @@ mod tests {
         let mut conn = db.conn();
         assert!(matches!(add_rule(&mut conn, "read", "regex", "(unclosed"), Err(AppError::Code("invalid"))));
         assert!(matches!(add_rule(&mut conn, "read", "regex", &"a".repeat(501)), Err(AppError::Code("invalid"))));
+        assert!(matches!(add_rule(&mut conn, "read", "regex", ""), Err(AppError::Code("invalid"))));
+        assert!(matches!(add_rule(&mut conn, "read", "regex", "  \t "), Err(AppError::Code("invalid"))));
         assert!(add_rule(&mut conn, "read", "regex", "^todo").is_ok());
+    }
+
+    #[test]
+    fn regex_match_count_uses_payload_text() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.conn();
+        let rule = add_rule(&mut conn, "read", "regex", "^invoice").unwrap();
+        let mut ids = Vec::new();
+        for (hash, text) in [("a", "invoice 42"), ("b", "Invoice later"), ("c", "an invoice")] {
+            let new = crate::model::NewItem {
+                kind: "text".into(),
+                title: hash.into(),
+                payload_text: Some(text.into()),
+                source_kind: "clipboard".into(),
+                content_hash: hash.into(),
+                ..Default::default()
+            };
+            ids.push(crate::db::items::insert_item(&mut conn, &new).unwrap());
+        }
+        crate::db::items::recategorize(&mut conn, &ids, "read", &crate::model::Actor::User).unwrap();
+        let views = list_for_category(&conn, "read").unwrap();
+        assert_eq!(views.iter().find(|v| v.rule.id == rule.id).unwrap().match_count, 1);
     }
 
     #[test]

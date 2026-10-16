@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Co-pet windows",
+  "windows": [
+    "pet",
+    "home",
+    "onboarding"
+  ],
+  "permissions": [
+    "core:default",
+    "drag:default",
+    "opener:default",
+    "dialog:default"
+  ]
+}

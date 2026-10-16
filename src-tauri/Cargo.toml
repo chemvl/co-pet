@@ -1,0 +1,64 @@
+[package]
+name = "copet"
+version = "0.1.0"
+description = "Co-pet desktop pet inbox"
+edition = "2021"
+
+[lib]
+name = "copet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+calamine = "0.36"
+chrono = { version = "0.4", features = ["serde"] }
+dom_smoothie = "0.18"
+enigo = "0.6"
+hex = "0.4.3"
+htmd = "0.5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+infer = "0.22"
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+objc2-vision = "0.3"
+pdf-extract = "0.12"
+quick-xml = "0.41"
+regex = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite_migration = "2.6"
+scraper = "0.27"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11"
+sysinfo = "0.39"
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "protocol-asset", "image-png"] }
+tauri-nspanel = "2.1"
+tauri-plugin-autostart = "2.7"
+tauri-plugin-dialog = "2"
+tauri-plugin-drag = "2.1.1"
+tauri-plugin-global-shortcut = "2.4"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2.5"
+thiserror = "2"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "sync", "time", "process", "fs", "macros"] }
+unicode-normalization = "0.1"
+url = "2"
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+uuid = { version = "1", features = ["v7", "v4"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+# Every crates.io release of `zip` except 9.0.3 is yanked; calamine 0.36 needs ^8.6.
+[patch.crates-io]
+zip = { git = "https://github.com/zip-rs/zip2", tag = "v8.6.0" }

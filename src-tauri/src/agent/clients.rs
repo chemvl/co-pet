@@ -7,8 +7,8 @@ use sha2::{Digest, Sha256};
 use crate::db::new_id;
 use crate::error::{AppError, AppResult};
 
-const KEY_MAX: usize = 80;
-const NAME_MAX: usize = 100;
+pub const KEY_MAX: usize = 80;
+pub const NAME_MAX: usize = 100;
 
 /// The `client` of a socket request. `token` is set in HTTP mode only.
 #[derive(Debug, Clone, Deserialize)]

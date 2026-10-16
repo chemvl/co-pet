@@ -74,24 +74,27 @@ fn ids(s: &str) -> AppResult<Vec<String>> {
 }
 
 /// Undoes a write call: its item and task events (newest first; ones already undone are
-/// skipped), then trashes the items it added. Returns the changed item and task ids. `notFound`,
-/// `alreadyUndone`, `notUndoable` (reads, failed calls, `export_task`).
+/// skipped), then trashes the items it added. A call that failed part-way is undoable for the
+/// changes it recorded. Returns the changed item and task ids. `notFound`, `alreadyUndone`,
+/// `notUndoable` (reads, `export_task`, calls that changed nothing).
 #[allow(dead_code)] // Task 5.3: the `undo_agent_activity` command.
 pub fn undo_activity(conn: &mut Connection, id: &str) -> AppResult<Vec<String>> {
-    let row: Option<(String, bool, Option<String>, Option<i64>, String, String, String)> = conn
+    let row: Option<(String, bool, Option<i64>, String, String, String)> = conn
         .query_row(
-            "SELECT tool, is_write, error, undone_at, item_event_ids, task_event_ids, added_item_ids
+            "SELECT tool, is_write, undone_at, item_event_ids, task_event_ids, added_item_ids
              FROM agent_activity WHERE id = ?1",
             [id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
         )
         .optional()?;
-    let (tool, is_write, error, undone_at, item_events, task_events, added) =
+    let (tool, is_write, undone_at, item_events, task_events, added) =
         row.ok_or(AppError::Code("notFound"))?;
     if undone_at.is_some() {
         return Err(AppError::Code("alreadyUndone"));
     }
-    if !is_write || error.is_some() || tool == "export_task" {
+    let (item_events, task_events, added) = (ids(&item_events)?, ids(&task_events)?, ids(&added)?);
+    let changed_nothing = item_events.is_empty() && task_events.is_empty() && added.is_empty();
+    if !is_write || tool == "export_task" || changed_nothing {
         return Err(AppError::Code("notUndoable"));
     }
     let mut changed: Vec<String> = Vec::new();
@@ -100,14 +103,14 @@ pub fn undo_activity(conn: &mut Connection, id: &str) -> AppResult<Vec<String>> 
             changed.push(id);
         }
     };
-    for ev in ids(&item_events)?.iter().rev() {
+    for ev in item_events.iter().rev() {
         match items::undo_event(conn, ev) {
             Ok(item) => push(item),
             Err(AppError::Code("alreadyUndone")) => {}
             Err(e) => return Err(e),
         }
     }
-    for ev in ids(&task_events)?.iter().rev() {
+    for ev in task_events.iter().rev() {
         match tasks::undo_event(conn, ev) {
             Ok(task) => push(task),
             Err(AppError::Code("alreadyUndone")) => {}
@@ -115,7 +118,7 @@ pub fn undo_activity(conn: &mut Connection, id: &str) -> AppResult<Vec<String>> 
         }
     }
     let mut live = Vec::new();
-    for item in ids(&added)? {
+    for item in added {
         let row = items::get_row(conn, &item)?;
         if row.deleted_at.is_none() {
             live.push(item);

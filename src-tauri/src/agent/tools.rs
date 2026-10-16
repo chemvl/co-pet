@@ -13,7 +13,7 @@ use serde_json::{json, Map, Value};
 
 use crate::agent::activity::{self, Entry};
 use crate::agent::clients::{self, Client, ClientRef};
-use crate::capture::{CaptureInput, CaptureSource};
+use crate::capture::{char_prefix, CaptureInput, CaptureSource};
 use crate::db::{categories, items, now_ms, settings, tasks, Db};
 use crate::error::AppError;
 use crate::export::{self, Provider};
@@ -109,9 +109,18 @@ impl From<rusqlite::Error> for ToolError {
 
 type ToolResult = Result<Value, ToolError>;
 
+/// A notification a write asks for; [`dispatch`] sends it after the activity row is stored.
+pub enum Effect {
+    ItemsChanged(Vec<String>),
+    TasksChanged(Vec<String>),
+    TaskDone,
+    ExportQueued(String),
+}
+
 /// Runs one call for `client` and logs it (unless the client can't be identified). Paused →
 /// `paused`; unknown tool → `invalid`; a write by a client without approval →
-/// `writesNotApproved`. Successful reads make the pet glance.
+/// `writesNotApproved`; a write whose activity row can't be stored → `internal`. Successful
+/// reads make the pet glance.
 pub fn dispatch(host: &impl Host, client: &ClientRef, tool: &str, args: Value) -> ToolResult {
     let now = now_ms();
     let (who, paused) = {
@@ -121,14 +130,19 @@ pub fn dispatch(host: &impl Host, client: &ClientRef, tool: &str, args: Value) -
                 "unauthorized",
                 "The HTTP token is missing or doesn't match. Create one in Co-pet › Agents.",
             ),
-            AppError::Code("invalid") => ToolError::invalid("client.key and client.name must be 1 to 100 characters."),
+            AppError::Code("invalid") => ToolError::invalid(format!(
+                "client.key must be 1 to {} characters and client.name 1 to {}.",
+                clients::KEY_MAX,
+                clients::NAME_MAX
+            )),
             other => ToolError::from(other),
         })?;
         (who, settings::get::<bool>(&conn, "mcp.paused")?)
     };
     let is_write = TOOLS.iter().find(|(name, _)| *name == tool).map(|(_, w)| *w);
     let mut log = Entry::new(&who.id, tool, is_write.unwrap_or(false));
-    let result = match is_write {
+    let mut effects = Vec::new();
+    let mut result = match is_write {
         _ if paused => Err(ToolError::new(
             "paused",
             "Co-pet's MCP server is paused. Resume it in Co-pet › Agents.",
@@ -138,13 +152,25 @@ pub fn dispatch(host: &impl Host, client: &ClientRef, tool: &str, args: Value) -
             "writesNotApproved",
             format!("Writes are not approved for {} yet. Approve writes in Co-pet › Agents.", who.name),
         )),
-        Some(_) => run(host, &who, tool, args, &mut log),
+        Some(_) => run(host, &who, tool, args, &mut log, &mut effects),
     };
     if let Err(e) = &result {
         log.error = Some(e.code);
     }
     if let Err(e) = activity::insert(&host.db().conn(), &log, now) {
-        eprintln!("[agent] activity log failed: {e}");
+        eprintln!("[agent] activity log failed for {tool}: {e}");
+        // A change nobody can see or undo must not look like a success.
+        if is_write == Some(true) && result.is_ok() {
+            result = Err(ToolError::internal());
+        }
+    }
+    for effect in effects {
+        match effect {
+            Effect::ItemsChanged(ids) => host.items_changed(ids),
+            Effect::TasksChanged(ids) => host.tasks_changed(ids),
+            Effect::TaskDone => host.task_done(),
+            Effect::ExportQueued(task_id) => host.export_queued(task_id),
+        }
     }
     if result.is_ok() && is_write == Some(false) {
         host.glance();
@@ -152,18 +178,18 @@ pub fn dispatch(host: &impl Host, client: &ClientRef, tool: &str, args: Value) -
     result
 }
 
-fn run(host: &impl Host, who: &Client, tool: &str, args: Value, log: &mut Entry) -> ToolResult {
+fn run(host: &impl Host, who: &Client, tool: &str, args: Value, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
     match tool {
         "search_items" => search_items(host, parse(args)?, log),
         "get_item" => get_item(host, parse(args)?, log),
         "list_tasks" => list_tasks(host, parse(args)?, log),
         "whats_next" => whats_next(host, parse(args)?, log),
         "add_item" => add_item(host, who, parse(args)?, log),
-        "update_item" => update_item(host, who, parse(args)?, log),
-        "create_task" => create_task(host, who, parse(args)?, log),
-        "update_task" => update_task(host, who, parse(args)?, log),
-        "complete_task" => complete_task(host, who, parse(args)?, log),
-        "export_task" => export_task(host, parse(args)?, log),
+        "update_item" => update_item(host, who, parse(args)?, log, fx),
+        "create_task" => create_task(host, who, parse(args)?, log, fx),
+        "update_task" => update_task(host, who, parse(args)?, log, fx),
+        "complete_task" => complete_task(host, who, parse(args)?, log, fx),
+        "export_task" => export_task(host, parse(args)?, log, fx),
         _ => unreachable!("dispatch checks the tool name"),
     }
 }
@@ -182,13 +208,6 @@ fn iso(ms: i64) -> Value {
         .timestamp_millis_opt(ms)
         .single()
         .map_or(Value::Null, |d| Value::String(d.to_rfc3339_opts(SecondsFormat::Secs, false)))
-}
-
-fn cut(s: &str, max: usize) -> String {
-    match s.char_indices().nth(max) {
-        Some((at, _)) => s[..at].to_owned(),
-        None => s.to_owned(),
-    }
 }
 
 /// A live category agents may see (not hidden from agents).
@@ -373,9 +392,9 @@ fn get_item(host: &impl Host, a: GetItemArgs, log: &mut Entry) -> ToolResult {
                 md.push('\n');
                 md.push_str(body);
             }
-            cut(&md, CONTENT_MAX)
+            char_prefix(&md, CONTENT_MAX).to_owned()
         }
-        Format::Text => cut(body.unwrap_or_default(), CONTENT_MAX),
+        Format::Text => char_prefix(body.unwrap_or_default(), CONTENT_MAX).to_owned(),
         Format::Path => file_path
             .clone()
             .ok_or_else(|| ToolError::invalid("format path needs a file item; this item has no file."))?,
@@ -517,7 +536,11 @@ fn add_item(host: &impl Host, who: &Client, a: AddItemArgs, log: &mut Entry) -> 
     let result = host.capture(input, source);
     match result.status {
         "saved" => log.added_item_ids = result.item_ids.clone(),
-        "duplicate" => {}
+        // An existing item the agent may not see answers like an unknown one.
+        "duplicate" => match result.item_ids.first() {
+            Some(id) if items::agent_visible(&host.db().conn(), id)? => {}
+            _ => return Err(ToolError::new("notFound", "Co-pet couldn't add it.")),
+        },
         "skipped" => return Err(ToolError::invalid("Nothing to add: the text or URL is empty.")),
         _ => {
             eprintln!("[agent] add_item failed: {}", result.message.unwrap_or_default());
@@ -539,7 +562,7 @@ struct UpdateItemArgs {
     archive: Option<bool>,
 }
 
-fn update_item(host: &impl Host, who: &Client, a: UpdateItemArgs, log: &mut Entry) -> ToolResult {
+fn update_item(host: &impl Host, who: &Client, a: UpdateItemArgs, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
     if a.category.is_none() && a.tags.is_none() && a.archive.is_none() {
         return Err(ToolError::invalid("Give at least one of category, tags or archive."));
     }
@@ -564,20 +587,29 @@ fn update_item(host: &impl Host, who: &Client, a: UpdateItemArgs, log: &mut Entr
         None => None,
     };
     let row = items::get_row(&conn, &a.id)?;
-    let mut events = Vec::new();
-    if let Some(cat) = &a.category {
-        events.extend(items::recategorize(&mut conn, &ids, cat, &actor)?);
-    }
-    if let Some(tags) = &tags {
-        events.push(items::set_tags(&mut conn, &a.id, tags, &actor)?);
-    }
-    match a.archive {
-        Some(true) if row.status != "archived" => events.extend(items::archive(&mut conn, &ids, &actor)?),
-        Some(false) if row.status == "archived" => events.extend(items::unarchive(&mut conn, &ids, &actor)?),
-        _ => {}
-    }
+    // Each step commits on its own; its events are logged at once so a later failure still
+    // leaves the earlier steps undoable.
+    let events = &mut log.item_event_ids;
+    let steps = (|| -> Result<(), ToolError> {
+        if let Some(cat) = &a.category {
+            events.extend(items::recategorize(&mut conn, &ids, cat, &actor)?);
+        }
+        if let Some(tags) = &tags {
+            events.push(items::set_tags(&mut conn, &a.id, tags, &actor)?);
+        }
+        match a.archive {
+            Some(true) if row.status != "archived" => events.extend(items::archive(&mut conn, &ids, &actor)?),
+            Some(false) if row.status == "archived" => events.extend(items::unarchive(&mut conn, &ids, &actor)?),
+            _ => {}
+        }
+        Ok(())
+    })();
     drop(conn);
-    log.item_event_ids = events.clone();
+    if !log.item_event_ids.is_empty() {
+        fx.push(Effect::ItemsChanged(ids.to_vec()));
+    }
+    steps?;
+    let events = log.item_event_ids.clone();
     let mut detail = Map::new();
     detail.insert("title".into(), json!(row.title));
     if let (Some(cat), Some(name)) = (a.category, category_name) {
@@ -591,7 +623,6 @@ fn update_item(host: &impl Host, who: &Client, a: UpdateItemArgs, log: &mut Entr
         detail.insert("archived".into(), json!(archive));
     }
     log.detail = Value::Object(detail);
-    host.items_changed(ids.to_vec());
     Ok(json!({ "eventIds": events }))
 }
 
@@ -606,7 +637,7 @@ struct CreateTaskArgs {
     source_item_id: Option<String>,
 }
 
-fn create_task(host: &impl Host, who: &Client, a: CreateTaskArgs, log: &mut Entry) -> ToolResult {
+fn create_task(host: &impl Host, who: &Client, a: CreateTaskArgs, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
     let title = check_title(&a.title)?;
     let due = a.due.as_deref().map(parse_due).transpose()?;
     check_task_numbers(a.priority, a.estimate_min)?;
@@ -630,7 +661,7 @@ fn create_task(host: &impl Host, who: &Client, a: CreateTaskArgs, log: &mut Entr
     drop(conn);
     log.task_event_ids = vec![event];
     log.detail = json!({ "title": task.title });
-    host.tasks_changed(vec![task.id]);
+    fx.push(Effect::TasksChanged(vec![task.id]));
     Ok(out)
 }
 
@@ -647,7 +678,7 @@ struct UpdateTaskArgs {
     priority: Option<i64>,
 }
 
-fn update_task(host: &impl Host, who: &Client, a: UpdateTaskArgs, log: &mut Entry) -> ToolResult {
+fn update_task(host: &impl Host, who: &Client, a: UpdateTaskArgs, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
     if a.title.is_none() && a.notes.is_none() && a.due.is_none() && a.estimate_min.is_none() && a.priority.is_none() {
         return Err(ToolError::invalid("Give at least one of title, notes, due, estimateMin or priority."));
     }
@@ -675,7 +706,7 @@ fn update_task(host: &impl Host, who: &Client, a: UpdateTaskArgs, log: &mut Entr
     drop(conn);
     log.task_event_ids = events;
     log.detail = json!({ "title": task.title });
-    host.tasks_changed(vec![task.id]);
+    fx.push(Effect::TasksChanged(vec![task.id]));
     Ok(out)
 }
 
@@ -685,7 +716,7 @@ struct IdArgs {
     id: String,
 }
 
-fn complete_task(host: &impl Host, who: &Client, a: IdArgs, log: &mut Entry) -> ToolResult {
+fn complete_task(host: &impl Host, who: &Client, a: IdArgs, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
     let mut conn = host.db().conn();
     visible_task(&conn, &a.id)?;
     let events = tasks::set_done(&mut conn, &a.id, true, &Actor::Agent(who.id.clone()))?;
@@ -695,9 +726,9 @@ fn complete_task(host: &impl Host, who: &Client, a: IdArgs, log: &mut Entry) -> 
     let became_done = !events.is_empty();
     log.task_event_ids = events;
     log.detail = json!({ "title": task.title });
-    host.tasks_changed(vec![task.id]);
+    fx.push(Effect::TasksChanged(vec![task.id]));
     if became_done {
-        host.task_done();
+        fx.push(Effect::TaskDone);
     }
     Ok(out)
 }
@@ -709,7 +740,7 @@ struct ExportArgs {
     provider: String,
 }
 
-fn export_task(host: &impl Host, a: ExportArgs, log: &mut Entry) -> ToolResult {
+fn export_task(host: &impl Host, a: ExportArgs, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
     let p: Provider = a.provider.parse().map_err(|_| ToolError::invalid("provider must be notion or asana."))?;
     let name = match p {
         Provider::Notion => "Notion",
@@ -733,7 +764,8 @@ fn export_task(host: &impl Host, a: ExportArgs, log: &mut Entry) -> ToolResult {
     let state = export::enqueue(&conn, &a.id, p, Some(&log.id), now_ms())?;
     drop(conn);
     log.detail = json!({ "title": title, "provider": p.as_str() });
-    host.export_queued(a.id);
+    // After the activity row exists: the worker writes its `result_url`.
+    fx.push(Effect::ExportQueued(a.id));
     Ok(json!({ "state": state.state }))
 }
 
@@ -747,11 +779,23 @@ pub(crate) mod tests {
     pub(crate) struct TestHost {
         pub db: Db,
         pub paths: Paths,
+        /// `agent_activity` row count seen by each `items_changed` / `tasks_changed`.
+        pub logged_at_notify: std::cell::RefCell<Vec<i64>>,
     }
 
     impl TestHost {
         pub fn new() -> Self {
-            TestHost { db: Db::open_in_memory().unwrap(), paths: Paths::new("/tmp/copet-test".into()) }
+            TestHost {
+                db: Db::open_in_memory().unwrap(),
+                paths: Paths::new("/tmp/copet-test".into()),
+                logged_at_notify: Default::default(),
+            }
+        }
+
+        fn note_notify(&self) {
+            // -1 once a test has dropped the table.
+            let n = self.db.conn().query_row("SELECT COUNT(*) FROM agent_activity", [], |r| r.get(0)).unwrap_or(-1);
+            self.logged_at_notify.borrow_mut().push(n);
         }
     }
 
@@ -771,8 +815,12 @@ pub(crate) mod tests {
         fn whats_next(&self) -> Result<Option<NextCard>, AppError> {
             Ok(None)
         }
-        fn items_changed(&self, _: Vec<String>) {}
-        fn tasks_changed(&self, _: Vec<String>) {}
+        fn items_changed(&self, _: Vec<String>) {
+            self.note_notify();
+        }
+        fn tasks_changed(&self, _: Vec<String>) {
+            self.note_notify();
+        }
         fn task_done(&self) {}
         fn export_queued(&self, _: String) {}
         fn glance(&self) {}
@@ -972,6 +1020,77 @@ pub(crate) mod tests {
     fn approve_after_first_call(h: &TestHost) {
         call(h, "cursor", "whats_next", json!({})).unwrap();
         approve(h, "cursor");
+    }
+
+    #[test]
+    fn write_without_audit_row_is_internal() {
+        let h = TestHost::new();
+        approve_after_first_call(&h);
+        h.db.conn().execute_batch("DROP TABLE agent_activity").unwrap();
+        let err = call(&h, "cursor", "create_task", json!({ "title": "Unlogged" })).unwrap_err();
+        assert_eq!(err.code, "internal");
+        // Reads still answer.
+        assert!(call(&h, "cursor", "list_tasks", json!({})).is_ok());
+    }
+
+    #[test]
+    fn notifications_follow_the_audit_row() {
+        let h = TestHost::new();
+        approve_after_first_call(&h);
+        let task = call(&h, "cursor", "create_task", json!({ "title": "Ship it" })).unwrap();
+        call(&h, "cursor", "complete_task", json!({ "id": task["id"] })).unwrap();
+        // Each notification saw its own call's row (whats_next is row 1).
+        assert_eq!(*h.logged_at_notify.borrow(), [2, 3]);
+    }
+
+    #[test]
+    fn partial_update_item_stays_undoable() {
+        let h = TestHost::new();
+        approve_after_first_call(&h);
+        let id = item(&h, "Spec", "read", false);
+        h.db.conn()
+            .execute_batch(
+                "CREATE TRIGGER no_tags BEFORE UPDATE OF tags ON items BEGIN SELECT RAISE(ABORT, 'no tags'); END;",
+            )
+            .unwrap();
+        let err = call(&h, "cursor", "update_item", json!({ "id": id, "category": "code", "tags": ["x"] })).unwrap_err();
+        assert_eq!(err.code, "internal");
+        assert_eq!(items::get_row(&h.db.conn(), &id).unwrap().category_id, "code");
+        let activity = last_activity(&h);
+        assert_eq!(activity.1.as_deref(), Some("internal"));
+        assert_eq!(undo_activity(&mut h.db.conn(), &activity.0).unwrap(), [id.clone()]);
+        assert_eq!(items::get_row(&h.db.conn(), &id).unwrap().category_id, "read");
+        // A failed call that changed nothing has nothing to undo.
+        call(&h, "cursor", "update_item", json!({ "id": "nope", "archive": true })).unwrap_err();
+        let failed = last_activity(&h).0;
+        assert!(matches!(undo_activity(&mut h.db.conn(), &failed), Err(AppError::Code("notUndoable"))));
+    }
+
+    #[test]
+    fn duplicate_of_hidden_item_reveals_nothing() {
+        let h = TestHost::new();
+        approve_after_first_call(&h);
+        let add = |text: &str| call(&h, "cursor", "add_item", json!({ "text": text }));
+        let triage = |id: &str, sensitive: bool| {
+            let u = TriageUpdate {
+                extract_status: "skipped".into(),
+                category_id: "read".into(),
+                triage_source: "rule".into(),
+                triage_reason: "test".into(),
+                sensitive,
+                ..Default::default()
+            };
+            items::update_triage(&mut h.db.conn(), id, &u).unwrap();
+        };
+        let shared = add("Shared notes").unwrap()["id"].as_str().unwrap().to_owned();
+        let secret = add("Secret notes").unwrap()["id"].as_str().unwrap().to_owned();
+        // Still waiting for triage: hidden, so a repeat reveals nothing.
+        assert_eq!(add("Shared notes").unwrap_err().code, "notFound");
+        triage(&shared, false);
+        triage(&secret, true);
+        assert_eq!(add("Shared notes").unwrap()["id"], shared.as_str());
+        let err = add("Secret notes").unwrap_err();
+        assert_eq!((err.code, err.message.as_str()), ("notFound", "Co-pet couldn't add it."));
     }
 
     #[test]

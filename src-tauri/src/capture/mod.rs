@@ -350,9 +350,19 @@ fn text_title(s: &str) -> String {
 }
 
 fn cut(s: &str, max: usize) -> String {
+    let head = char_prefix(s, max);
+    if head.len() < s.len() {
+        format!("{}…", head.trim_end())
+    } else {
+        s.to_string()
+    }
+}
+
+/// The first `max` characters of `s` (all of it when shorter).
+pub(crate) fn char_prefix(s: &str, max: usize) -> &str {
     match s.char_indices().nth(max) {
-        Some((at, _)) => format!("{}…", s[..at].trim_end()),
-        None => s.to_string(),
+        Some((at, _)) => &s[..at],
+        None => s,
     }
 }
 

@@ -442,3 +442,10 @@ pub async fn whats_next(app: AppHandle, trigger: String) -> AppResult<Option<cra
 pub fn next_action(app: AppHandle, task_id: String, action: String, trigger: String) -> AppResult<()> {
     crate::next::act(&app, &task_id, &action, &trigger)
 }
+
+// ---------- M4: export ----------
+
+#[tauri::command]
+pub fn backend_status() -> crate::model::BackendStatus {
+    crate::model::BackendStatus { configured: crate::backend::config().is_some() }
+}

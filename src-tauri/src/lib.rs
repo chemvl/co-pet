@@ -18,8 +18,12 @@ mod data;
 mod hotkeys;
 mod system;
 mod tray_icon;
+mod secrets;
+mod backend;
+mod links;
 
 use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
 
 use crate::db::Db;
 use crate::paths::Paths;
@@ -37,6 +41,7 @@ pub fn run() {
                 eprintln!("[app] second launch: {e}");
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_nspanel::init())
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_opener::init())
@@ -76,6 +81,17 @@ pub fn run() {
                 system::apply_autostart(&handle);
             } else {
                 windows::open_onboarding(&handle)?;
+            }
+            // `copet://` links: while running, and the one that launched the app.
+            let links_handle = handle.clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    links::handle(&links_handle, url);
+                }
+            });
+            match app.deep_link().get_current() {
+                Ok(urls) => urls.into_iter().flatten().for_each(|url| links::handle(&handle, url)),
+                Err(e) => eprintln!("[links] launch link: {e}"),
             }
             Ok(())
         })
@@ -135,6 +151,7 @@ pub fn run() {
             commands::undo_task_event,
             commands::whats_next,
             commands::next_action,
+            commands::backend_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

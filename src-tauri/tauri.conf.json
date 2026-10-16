@@ -23,6 +23,13 @@
       }
     }
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["copet"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": [

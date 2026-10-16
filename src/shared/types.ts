@@ -259,6 +259,9 @@ export interface PermissionsStatus { screenRecording: boolean; accessibility: bo
 /** `pet_status`: the current `pet-visibility` and `pet-flags.sleep` values. */
 export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | null; sleep: boolean }
 
+/** `backend_status`: whether this build has a Supabase URL and key. */
+export interface BackendStatus { configured: boolean }
+
 export interface Rule {
   id: string;
   categoryId: CategoryId;

@@ -17,6 +17,7 @@ use crate::error::{AppError, AppResult};
 use crate::llm::LlmServer;
 use crate::model::ExcludedApp;
 use crate::paths::Paths;
+use crate::secrets;
 use crate::windows;
 
 const EXCLUDED_APPS: &str = "capture.excludedApps";
@@ -205,8 +206,8 @@ fn confirmation_ok(typed: &str) -> bool {
     CONFIRMATIONS.contains(&typed.as_str())
 }
 
-/// Deletes the database and the library (models stay), then restarts into onboarding. Error
-/// `confirmation` when the typed phrase doesn't match.
+/// Deletes the export tokens from the keychain, the database and the library (models stay),
+/// then restarts into onboarding. Error `confirmation` when the typed phrase doesn't match.
 pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult<()> {
     if !confirmation_ok(confirmation) {
         return Err(AppError::Code("confirmation"));
@@ -214,6 +215,9 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     app.state::<LlmServer>().stop().await;
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+        for account in ["notion", "asana"] {
+            secrets::delete(account)?;
+        }
         let paths = app.state::<Paths>().inner().clone();
         let db = app.state::<Db>();
         // Held until the process restarts: the triage worker and every command wait on it.
@@ -228,7 +232,7 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
         if paths.library.exists() {
             std::fs::remove_dir_all(&paths.library)?;
         }
-        eprintln!("[data] deleted the database and the library; restarting");
+        eprintln!("[data] deleted the keychain tokens, the database and the library; restarting");
         // Exits through `RunEvent::Exit` (which stops `llama-server` again) and relaunches.
         app.restart();
     })

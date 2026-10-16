@@ -347,6 +347,13 @@ pub struct PetStatus {
     pub sleep: bool,
 }
 
+/// `backend_status`: whether this build has a Supabase URL and key.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendStatus {
+    pub configured: bool,
+}
+
 /// Who made a task change; maps to the `task_events.actor` / `client_id` columns. Not serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Actor {

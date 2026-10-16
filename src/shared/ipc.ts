@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-  AiStatus, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
+  AiStatus, BackendStatus, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
 } from './types';
@@ -116,6 +116,9 @@ export const whatsNext = (trigger: 'bubble' | 'home') => invoke<NextCard | null>
  *  Rejects with `"invalid"` or `"notFound"`. */
 export const nextAction = (taskId: string, action: NextAction, trigger: NextTrigger) =>
   invoke<void>('next_action', { taskId, action, trigger });
+
+// Phase 2 M4 — export
+export const backendStatus = () => invoke<BackendStatus>('backend_status');
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

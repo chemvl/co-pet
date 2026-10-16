@@ -121,7 +121,7 @@ mod tests {
                 ..Default::default()
             };
             let id = crate::db::items::insert_item(&mut conn, &new).unwrap();
-            crate::db::items::recategorize(&mut conn, &[id], cat, "user").unwrap();
+            crate::db::items::recategorize(&mut conn, &[id], cat, &crate::model::Actor::User).unwrap();
         }
         conn.execute_batch(
             "UPDATE categories SET deleted_at = 1 WHERE id = 'meeting';

@@ -166,7 +166,8 @@ pub fn recategorize(
     ids: Vec<String>,
     category_id: String,
 ) -> AppResult<crate::model::EventIds> {
-    let event_ids = crate::db::items::recategorize(&mut db.conn(), &ids, &category_id, "user")?;
+    let event_ids =
+        crate::db::items::recategorize(&mut db.conn(), &ids, &category_id, &crate::model::Actor::User)?;
     crate::db::items::notify_changed(&app, ids);
     Ok(crate::model::EventIds { event_ids })
 }
@@ -196,7 +197,7 @@ pub fn archive(
     db: State<'_, Db>,
     ids: Vec<String>,
 ) -> AppResult<crate::model::EventIds> {
-    let event_ids = crate::db::items::archive(&mut db.conn(), &ids)?;
+    let event_ids = crate::db::items::archive(&mut db.conn(), &ids, &crate::model::Actor::User)?;
     crate::db::items::notify_changed(&app, ids);
     Ok(crate::model::EventIds { event_ids })
 }
@@ -207,7 +208,7 @@ pub fn trash(
     db: State<'_, Db>,
     ids: Vec<String>,
 ) -> AppResult<crate::model::EventIds> {
-    let event_ids = crate::db::items::trash(&mut db.conn(), &ids)?;
+    let event_ids = crate::db::items::trash(&mut db.conn(), &ids, &crate::model::Actor::User)?;
     crate::db::items::notify_changed(&app, ids);
     Ok(crate::model::EventIds { event_ids })
 }
@@ -559,7 +560,7 @@ pub fn export_task(
         if crate::export::target(&conn, p)?.is_none() {
             return Err(crate::error::AppError::Code("noTarget"));
         }
-        crate::export::enqueue(&conn, &task_id, p, crate::db::now_ms())?
+        crate::export::enqueue(&conn, &task_id, p, None, crate::db::now_ms())?
     };
     app.state::<crate::export::queue::ExportQueue>().poke();
     crate::events::exports_changed(&app, vec![task_id]);

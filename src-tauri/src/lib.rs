@@ -22,6 +22,7 @@ mod secrets;
 mod backend;
 mod links;
 mod export;
+mod agent;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -78,6 +79,8 @@ pub fn run() {
             platform::macos::idle::start(&handle);
             next::start(&handle);
             export::queue::start(&handle);
+            // After the export queue: `export_task` pokes it.
+            agent::start(&handle);
             system::watch_autostart(&handle);
             if settings_bool(&handle, "onboarding.completed") {
                 windows::create_pet_window(&handle)?;

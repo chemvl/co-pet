@@ -236,5 +236,29 @@ CREATE TABLE task_exports (
 INSERT INTO settings (key, value, updated_at) VALUES ('sync.deviceId', '"' || lower(hex(randomblob(16))) || '"', 0);
 "#;
 
-pub static MIGRATIONS: LazyLock<Migrations<'static>> =
-    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5)]));
+/// Schema v6: MCP clients and the agent activity log.
+const V6: &str = r#"
+CREATE TABLE mcp_clients (
+  id TEXT PRIMARY KEY,
+  key TEXT NOT NULL,               -- 'claude-code' | 'cursor' | 'codex' | 'gemini-cli' | 'other:<slug>' | 'http:<slug>'
+  name TEXT NOT NULL,              -- display name
+  write_approved INTEGER NOT NULL DEFAULT 0,
+  token_hash TEXT,                 -- hex sha256 of the HTTP bearer token; NULL = no HTTP access
+  config_path TEXT,                -- client config file Co-pet wrote, for Remove
+  created_at INTEGER NOT NULL, approved_at INTEGER, last_call_at INTEGER,
+  updated_at INTEGER NOT NULL, deleted_at INTEGER);
+CREATE UNIQUE INDEX mcp_clients_key ON mcp_clients(key) WHERE deleted_at IS NULL;
+CREATE TABLE agent_activity (
+  id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES mcp_clients(id), at INTEGER NOT NULL,
+  tool TEXT NOT NULL, is_write INTEGER NOT NULL,
+  detail TEXT NOT NULL,            -- JSON the UI formats per tool (query, count, title, ids…)
+  item_event_ids TEXT NOT NULL DEFAULT '[]', task_event_ids TEXT NOT NULL DEFAULT '[]',
+  added_item_ids TEXT NOT NULL DEFAULT '[]',
+  result_url TEXT, error TEXT, undone_at INTEGER);
+CREATE INDEX agent_activity_at ON agent_activity(at DESC);
+INSERT INTO settings (key, value, updated_at) VALUES ('mcp.paused', 'false', 0), ('mcp.httpPort', '4823', 0);
+"#;
+
+pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6)])
+});

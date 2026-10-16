@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use crate::db::{items, new_id, now_ms, search};
 use crate::error::{AppError, AppResult};
 use crate::i18n::{tr, Lang};
-use crate::model::{Category, CategoryPatch, BUILTIN_CATEGORY_IDS};
+use crate::model::{Actor, Category, CategoryPatch, BUILTIN_CATEGORY_IDS};
 
 /// The ds `IconName`s (`src/ds/icons.ts`); a custom category's icon is one of these.
 const ICONS: &[&str] = &[
@@ -224,7 +224,7 @@ pub fn delete(conn: &mut Connection, id: &str) -> AppResult<(Vec<String>, Vec<St
         )?
         .query_map([id], |r| r.get(0))?
         .collect::<rusqlite::Result<Vec<String>>>()?;
-    let events = items::recategorize_in(&tx, &ids, UNSORTED, "user", false)?;
+    let events = items::recategorize_in(&tx, &ids, UNSORTED, &Actor::User, false)?;
     let now = now_ms();
     tx.execute(
         "UPDATE rules SET deleted_at = ?2, updated_at = ?2 WHERE category_id = ?1 AND deleted_at IS NULL",

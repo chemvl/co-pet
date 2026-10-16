@@ -8,8 +8,8 @@ use crate::db::{categories, new_id, now_ms, search, tasks, undo, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::{
-    Counts, Cursor, ItemDetail, ItemEvent, ItemPage, ItemQuery, ItemRow, ItemSummary, NewItem,
-    TriageUpdate,
+    Actor, Counts, Cursor, ItemDetail, ItemEvent, ItemPage, ItemQuery, ItemRow, ItemSummary,
+    NewItem, TriageUpdate,
 };
 use crate::paths::Paths;
 
@@ -28,14 +28,22 @@ const LIST_COLS: &str = "id, kind, title, summary, tags, NULL, NULL, url, file_p
     deleted_at, added_by, task_suggestion";
 
 /// Columns `undo_event` may restore from `before_json`.
-const UNDOABLE: [&str; 6] = [
+const UNDOABLE: [&str; 7] = [
     "category_id",
     "triage_source",
     "triage_reason",
     "pinned",
     "status",
     "deleted_at",
+    "tags",
 ];
+
+/// The items agents may see (MCP): live, not trashed, not sensitive, triaged (a just-captured
+/// secret is not flagged yet) and in a live category not hidden from agents. Columns are
+/// qualified with `items.`; hidden ids behave like missing ones.
+pub const AGENT_VISIBLE: &str = "items.deleted_at IS NULL AND items.status != 'trashed' \
+    AND items.sensitive = 0 AND items.triage_status = 'done' \
+    AND items.category_id IN (SELECT id FROM categories WHERE deleted_at IS NULL AND exclude_from_mcp = 0)";
 
 const PAGE_MAX: i64 = 500;
 
@@ -94,24 +102,27 @@ fn map_event(r: &Row<'_>) -> rusqlite::Result<ItemEvent> {
     })
 }
 
+/// `who`: the `(actor, client_id)` column values.
 fn add_event(
     conn: &Connection,
     item_id: &str,
-    actor: &str,
+    who: (&str, Option<&str>),
     action: &str,
     before: Option<&Value>,
     after: Option<&Value>,
     now: i64,
 ) -> AppResult<String> {
     let id = new_id();
+    let (actor, client_id) = who;
     conn.execute(
-        "INSERT INTO item_events (id, item_id, at, actor, action, before_json, after_json, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?3)",
+        "INSERT INTO item_events (id, item_id, at, actor, client_id, action, before_json, after_json, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?3)",
         params![
             id,
             item_id,
             now,
             actor,
+            client_id,
             action,
             before.map(Value::to_string),
             after.map(Value::to_string)
@@ -145,6 +156,8 @@ fn check_category(conn: &Connection, category_id: &str) -> AppResult<()> {
 
 // ---------- writes ----------
 
+/// Inserts a captured item; the `captured` event's actor is the agent of `added_by`, else the
+/// user.
 pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
     let tx = conn.transaction()?;
     let id = new_id();
@@ -152,8 +165,8 @@ pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
     tx.execute(
         "INSERT INTO items (id, kind, title, payload_text, payload_html, url, file_path, file_name,
            mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, content_hash,
-           captured_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)",
+           added_by, captured_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?17)",
         params![
             id,
             new.kind,
@@ -170,11 +183,16 @@ pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
             new.source_bundle_id,
             new.source_kind,
             new.content_hash,
+            new.added_by,
             now
         ],
     )?;
     reindex(&tx, &id)?;
-    add_event(&tx, &id, "user", "captured", None, None, now)?;
+    let who = match &new.added_by {
+        Some(client) => ("agent", Some(client.as_str())),
+        None => ("user", None),
+    };
+    add_event(&tx, &id, who, "captured", None, None, now)?;
     tx.commit()?;
     Ok(id)
 }
@@ -217,7 +235,7 @@ pub fn update_triage(conn: &mut Connection, id: &str, u: &TriageUpdate) -> AppRe
     add_event(
         &tx,
         id,
-        "triage",
+        ("triage", None),
         "recategorize",
         Some(&before),
         Some(&after),
@@ -233,10 +251,10 @@ pub fn recategorize(
     conn: &mut Connection,
     ids: &[String],
     category_id: &str,
-    actor: &str,
+    actor: &Actor,
 ) -> AppResult<Vec<String>> {
     let tx = conn.transaction()?;
-    let events = recategorize_in(&tx, ids, category_id, actor, actor == "user")?;
+    let events = recategorize_in(&tx, ids, category_id, actor, *actor == Actor::User)?;
     tx.commit()?;
     Ok(events)
 }
@@ -247,16 +265,17 @@ pub fn recategorize_in(
     tx: &Transaction,
     ids: &[String],
     category_id: &str,
-    actor: &str,
+    actor: &Actor,
     teach: bool,
 ) -> AppResult<Vec<String>> {
+    let who = (actor.item_actor()?, actor.client_id());
     check_category(tx, category_id)?;
     let now = now_ms();
     let mut events = Vec::with_capacity(ids.len());
     for id in ids {
         let row = get_row(tx, id)?;
         let before = triage_state(&row);
-        if actor == "user" {
+        if *actor == Actor::User {
             tx.execute(
                 "UPDATE items SET category_id = ?2, triage_status = 'done', triage_source = 'user',
                    triage_reason = 'user', updated_at = ?3 WHERE id = ?1",
@@ -280,7 +299,7 @@ pub fn recategorize_in(
         events.push(add_event(
             tx,
             id,
-            actor,
+            who,
             "recategorize",
             Some(&before),
             Some(&after),
@@ -288,6 +307,30 @@ pub fn recategorize_in(
         )?);
     }
     Ok(events)
+}
+
+/// Replaces the item's tags (event `tag`, before/after `{tags}`). Returns the event id.
+pub fn set_tags(conn: &mut Connection, id: &str, tags: &[String], actor: &Actor) -> AppResult<String> {
+    let who = (actor.item_actor()?, actor.client_id());
+    let tx = conn.transaction()?;
+    let row = get_row(&tx, id)?;
+    let now = now_ms();
+    tx.execute(
+        "UPDATE items SET tags = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, serde_json::to_string(tags)?, now],
+    )?;
+    reindex(&tx, id)?;
+    let event = add_event(
+        &tx,
+        id,
+        who,
+        "tag",
+        Some(&json!({ "tags": row.tags })),
+        Some(&json!({ "tags": tags })),
+        now,
+    )?;
+    tx.commit()?;
+    Ok(event)
 }
 
 pub fn set_pinned(conn: &mut Connection, id: &str, pinned: bool) -> AppResult<String> {
@@ -303,7 +346,7 @@ pub fn set_pinned(conn: &mut Connection, id: &str, pinned: bool) -> AppResult<St
     let event = add_event(
         &tx,
         id,
-        "user",
+        ("user", None),
         action,
         Some(&json!({ "pinned": row.pinned })),
         Some(&json!({ "pinned": pinned })),
@@ -320,7 +363,9 @@ fn set_status(
     status: &str,
     deleted: bool,
     action: &str,
+    actor: &Actor,
 ) -> AppResult<Vec<String>> {
+    let who = (actor.item_actor()?, actor.client_id());
     let tx = conn.transaction()?;
     let now = now_ms();
     let deleted_at = deleted.then_some(now);
@@ -337,7 +382,7 @@ fn set_status(
         events.push(add_event(
             &tx,
             id,
-            "user",
+            who,
             action,
             Some(&before),
             Some(&after),
@@ -348,13 +393,18 @@ fn set_status(
     Ok(events)
 }
 
-pub fn archive(conn: &mut Connection, ids: &[String]) -> AppResult<Vec<String>> {
-    set_status(conn, ids, "archived", false, "archive")
+pub fn archive(conn: &mut Connection, ids: &[String], actor: &Actor) -> AppResult<Vec<String>> {
+    set_status(conn, ids, "archived", false, "archive", actor)
+}
+
+/// Archived items back to the inbox.
+pub fn unarchive(conn: &mut Connection, ids: &[String], actor: &Actor) -> AppResult<Vec<String>> {
+    set_status(conn, ids, "inbox", false, "unarchive", actor)
 }
 
 /// Soft delete: status `trashed` + `deleted_at`. The blob stays so Undo can restore it.
-pub fn trash(conn: &mut Connection, ids: &[String]) -> AppResult<Vec<String>> {
-    set_status(conn, ids, "trashed", true, "trash")
+pub fn trash(conn: &mut Connection, ids: &[String], actor: &Actor) -> AppResult<Vec<String>> {
+    set_status(conn, ids, "trashed", true, "trash", actor)
 }
 
 /// Restores the event's `before_json` onto its item and marks the event undone. Appends no new
@@ -421,6 +471,15 @@ pub fn get_row(conn: &Connection, id: &str) -> AppResult<ItemRow> {
 /// Rows in the order of `ids`; unknown ids are an error.
 pub fn get_rows(conn: &Connection, ids: &[String]) -> AppResult<Vec<ItemRow>> {
     ids.iter().map(|id| get_row(conn, id)).collect()
+}
+
+/// Whether agents may see item `id` (`AGENT_VISIBLE`).
+pub fn agent_visible(conn: &Connection, id: &str) -> AppResult<bool> {
+    Ok(conn.query_row(
+        &format!("SELECT EXISTS (SELECT 1 FROM items WHERE items.id = ?1 AND {AGENT_VISIBLE})"),
+        [id],
+        |r| r.get(0),
+    )?)
 }
 
 /// A live (not trashed, not deleted) item with this content hash.
@@ -510,6 +569,13 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
     if let Some(cat) = &q.category_id {
         args.push(SqlValue::Text(cat.clone()));
         sql.push_str(&format!(" AND category_id = ?{}", args.len()));
+    }
+    if q.agent_visible {
+        sql.push_str(&format!(" AND {AGENT_VISIBLE}"));
+    }
+    if let Some(since) = q.captured_since {
+        args.push(SqlValue::Integer(since));
+        sql.push_str(&format!(" AND captured_at >= ?{}", args.len()));
     }
     if let Some(m) = q.search.as_deref().and_then(search::search_query) {
         args.push(SqlValue::Text(m));
@@ -660,6 +726,8 @@ mod tests {
             sort: None,
             limit: 50,
             cursor: None,
+            agent_visible: false,
+            captured_since: None,
         }
     }
 
@@ -763,7 +831,7 @@ mod tests {
         u.sensitive = false;
         u.triage_reason = "none:no-model".into();
         update_triage(&mut conn, &id, &u).unwrap();
-        let events = recategorize(&mut conn, &[id.clone()], "read", "user").unwrap();
+        let events = recategorize(&mut conn, &[id.clone()], "read", &Actor::User).unwrap();
         assert_eq!(get_row(&conn, &id).unwrap().category_id, "read");
         assert_eq!(rules_examples(&conn), 1);
 
@@ -785,7 +853,7 @@ mod tests {
         let mut conn = db.conn();
         let id = insert_item(&mut conn, &new_text("Secret", "", "h1")).unwrap();
         update_triage(&mut conn, &id, &sensitive_update("unsorted")).unwrap();
-        recategorize(&mut conn, &[id], "read", "user").unwrap();
+        recategorize(&mut conn, &[id], "read", &Actor::User).unwrap();
         assert_eq!(rules_examples(&conn), 0);
         assert!(crate::db::rules::recent_examples(&conn, 8).unwrap().is_empty());
     }
@@ -804,7 +872,7 @@ mod tests {
         let db = db();
         let mut conn = db.conn();
         let id = insert_item(&mut conn, &new_text("Note", "", "h1")).unwrap();
-        let ev = trash(&mut conn, &[id.clone()]).unwrap();
+        let ev = trash(&mut conn, &[id.clone()], &Actor::User).unwrap();
         assert_eq!(counts(&conn).unwrap().inbox, 0);
         undo_event(&mut conn, &ev[0]).unwrap();
         let row = get_row(&conn, &id).unwrap();
@@ -817,7 +885,7 @@ mod tests {
         let mut conn = db.conn();
         let id = insert_item(&mut conn, &new_text("A", "", "same")).unwrap();
         assert_eq!(find_live_by_hash(&conn, "same").unwrap(), Some(id.clone()));
-        trash(&mut conn, &[id]).unwrap();
+        trash(&mut conn, &[id], &Actor::User).unwrap();
         assert_eq!(find_live_by_hash(&conn, "same").unwrap(), None);
     }
 
@@ -863,5 +931,63 @@ mod tests {
             assert_eq!(s.task_suggestion.as_deref(), Some("Send the deck"));
             assert_eq!(s.added_by.as_deref(), Some("client-1"));
         }
+    }
+
+    fn triaged(conn: &mut Connection, title: &str, hash: &str) -> String {
+        let id = insert_item(conn, &new_text(title, "", hash)).unwrap();
+        let mut u = sensitive_update("read");
+        u.sensitive = false;
+        update_triage(conn, &id, &u).unwrap();
+        id
+    }
+
+    #[test]
+    fn agent_filter_applies_before_limit() {
+        let db = db();
+        let mut conn = db.conn();
+        let visible = triaged(&mut conn, "Old note", "h1");
+        for (title, hash) in [("Secret one", "h2"), ("Secret two", "h3")] {
+            let id = insert_item(&mut conn, &new_text(title, "", hash)).unwrap();
+            update_triage(&mut conn, &id, &sensitive_update("read")).unwrap();
+        }
+        let paths = Paths::new("/tmp/copet-test".into());
+        let mut q = query("");
+        q.limit = 1;
+        assert_ne!(list_items(&conn, &q, &paths).unwrap().items[0].id, visible);
+        q.agent_visible = true;
+        let page = list_items(&conn, &q, &paths).unwrap();
+        assert_eq!(page.items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), [visible.as_str()]);
+        assert!(page.next_cursor.is_none());
+    }
+
+    #[test]
+    fn untriaged_item_hidden_from_agents() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Fresh", "", "h1")).unwrap();
+        assert!(!agent_visible(&conn, &id).unwrap());
+        let mut u = sensitive_update("read");
+        u.sensitive = false;
+        update_triage(&mut conn, &id, &u).unwrap();
+        assert!(agent_visible(&conn, &id).unwrap());
+        conn.execute("UPDATE categories SET exclude_from_mcp = 1 WHERE id = 'read'", []).unwrap();
+        assert!(!agent_visible(&conn, &id).unwrap());
+    }
+
+    #[test]
+    fn agent_tags_are_attributed_and_undoable() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = triaged(&mut conn, "Note", "h1");
+        let agent = Actor::Agent("client-1".into());
+        let ev = set_tags(&mut conn, &id, &["a".into(), "b".into()], &agent).unwrap();
+        assert_eq!(get_row(&conn, &id).unwrap().tags, ["a", "b"]);
+        let who: (String, Option<String>) = conn
+            .query_row("SELECT actor, client_id FROM item_events WHERE id = ?1", [&ev], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(who, ("agent".into(), Some("client-1".into())));
+        undo_event(&mut conn, &ev).unwrap();
+        assert!(get_row(&conn, &id).unwrap().tags.is_empty());
+        assert!(matches!(archive(&mut conn, &[id], &Actor::Next), Err(AppError::Code("invalid"))));
     }
 }

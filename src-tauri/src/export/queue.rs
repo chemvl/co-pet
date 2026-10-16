@@ -265,7 +265,10 @@ async fn run_job(app: &AppHandle, job: Job) {
     events::exports_changed(app, vec![job.task_id]);
 }
 
+/// Writes the outcome. An export an agent asked for also stores the page/task URL on its
+/// `agent_activity` row.
 fn write(conn: &Connection, id: &str, u: &Update, now: i64) -> AppResult<()> {
+    let url = u.exported.as_ref().map(|e| e.external_url.as_str());
     conn.execute(
         "UPDATE task_exports SET state = ?2, attempts = ?3, next_attempt_at = ?4, error = ?5,
            external_id = COALESCE(?6, external_id), external_url = COALESCE(?7, external_url), updated_at = ?8
@@ -277,10 +280,17 @@ fn write(conn: &Connection, id: &str, u: &Update, now: i64) -> AppResult<()> {
             u.next_attempt_at,
             u.error,
             u.exported.as_ref().map(|e| e.external_id.as_str()),
-            u.exported.as_ref().map(|e| e.external_url.as_str()),
+            url,
             now
         ],
     )?;
+    if let Some(url) = url {
+        conn.execute(
+            "UPDATE agent_activity SET result_url = ?2
+             WHERE id = (SELECT activity_id FROM task_exports WHERE id = ?1)",
+            params![id, url],
+        )?;
+    }
     Ok(())
 }
 
@@ -330,8 +340,8 @@ mod tests {
         assert_eq!(device.len(), 32);
         let a = task(&conn, "A");
         let b = task(&conn, "B");
-        enqueue(&conn, &a, Provider::Notion, 1).unwrap();
-        enqueue(&conn, &b, Provider::Notion, 1).unwrap();
+        enqueue(&conn, &a, Provider::Notion, None, 1).unwrap();
+        enqueue(&conn, &b, Provider::Notion, None, 1).unwrap();
         conn.execute("UPDATE task_exports SET state = 'exporting'", []).unwrap();
         conn.execute("UPDATE task_exports SET device_id = 'other' WHERE task_id = ?1", [&b]).unwrap();
         assert_eq!(reset_exporting(&conn, &device, 2).unwrap(), 1);
@@ -350,7 +360,7 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         let conn = db.conn();
         let a = task(&conn, "A");
-        enqueue(&conn, &a, Provider::Asana, 1).unwrap();
+        enqueue(&conn, &a, Provider::Asana, None, 1).unwrap();
         conn.execute("UPDATE task_exports SET next_attempt_at = 10000", []).unwrap();
         assert!(matches!(next_step(&conn, 4_000).unwrap(), Step::Wait(6_000)));
         assert!(matches!(next_step(&conn, 10_000).unwrap(), Step::Run(Job { attempts: 0, .. })));
@@ -376,7 +386,7 @@ mod tests {
         let cfg = serde_json::json!({ "workspaceGid": "w", "projectGid": "p", "sectionGid": null });
         crate::export::set_target(conn, Provider::Asana, cfg, "Co-pet", "me@x.y", 1).unwrap();
         let a = task(conn, "A");
-        enqueue(conn, &a, Provider::Asana, 1).unwrap();
+        enqueue(conn, &a, Provider::Asana, None, 1).unwrap();
         job(conn, &a)
     }
 
@@ -413,5 +423,29 @@ mod tests {
         let j = queued_asana(&conn);
         conn.execute("UPDATE tasks SET deleted_at = 2", []).unwrap();
         assert!(matches!(prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 2), Err(ExportError::Invalid(_))));
+    }
+
+    #[test]
+    fn export_of_agent_sets_activity_url() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        conn.execute_batch(
+            "INSERT INTO mcp_clients (id, key, name, created_at, updated_at) VALUES ('c1', 'cursor', 'Cursor', 1, 1);
+             INSERT INTO agent_activity (id, client_id, at, tool, is_write, detail) VALUES ('a1', 'c1', 1, 'export_task', 1, '{}');",
+        )
+        .unwrap();
+        let (agent, user) = (task(&conn, "A"), task(&conn, "B"));
+        enqueue(&conn, &agent, Provider::Notion, Some("a1"), 1).unwrap();
+        enqueue(&conn, &user, Provider::Notion, None, 1).unwrap();
+        let url = |conn: &Connection| -> Option<String> {
+            conn.query_row("SELECT result_url FROM agent_activity WHERE id = 'a1'", [], |r| r.get(0)).unwrap()
+        };
+        let ok = |u: &str| outcome(0, Ok(Exported { external_id: "p".into(), external_url: u.into() }), 2);
+        write(&conn, &format!("{user}:notion"), &ok("https://n/user"), 2).unwrap();
+        assert_eq!(url(&conn), None);
+        write(&conn, &format!("{agent}:notion"), &outcome(0, Err(ExportError::Retryable), 2), 2).unwrap();
+        assert_eq!(url(&conn), None);
+        write(&conn, &format!("{agent}:notion"), &ok("https://n/agent"), 3).unwrap();
+        assert_eq!(url(&conn).as_deref(), Some("https://n/agent"));
     }
 }

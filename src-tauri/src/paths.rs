@@ -13,6 +13,8 @@ pub struct Paths {
     pub thumbs: PathBuf,
     pub models: PathBuf,
     pub tmp: PathBuf,
+    /// Unix socket the `copet-mcp` sidecar talks to.
+    pub sock: PathBuf,
 }
 
 impl Paths {
@@ -23,6 +25,7 @@ impl Paths {
             thumbs: root.join("library").join("thumbs"),
             models: root.join("models"),
             tmp: root.join("tmp"),
+            sock: root.join("mcp.sock"),
             root,
         }
     }

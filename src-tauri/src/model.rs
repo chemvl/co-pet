@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
+use crate::error::{AppError, AppResult};
+
 /// Built-in category ids in design-system order; `unsorted` is last. Users add more rows to
 /// `categories` (`db::categories`).
 pub const BUILTIN_CATEGORY_IDS: [&str; 9] =
@@ -72,6 +74,8 @@ pub struct NewItem {
     pub source_bundle_id: Option<String>,
     pub source_kind: String,
     pub content_hash: String,
+    /// `mcp_clients.id` of the agent that added it; `None` = the user.
+    pub added_by: Option<String>,
 }
 
 /// What the triage worker writes back after extraction + rules/AI.
@@ -212,6 +216,12 @@ pub struct ItemQuery {
     pub sort: Option<String>,
     pub limit: i64,
     pub cursor: Option<Cursor>,
+    /// Rust-only (agents): keep items agents may see (`items::AGENT_VISIBLE`).
+    #[serde(skip)]
+    pub agent_visible: bool,
+    /// Rust-only (agents): captured at or after this epoch ms.
+    #[serde(skip)]
+    pub captured_since: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -354,26 +364,47 @@ pub struct BackendStatus {
     pub configured: bool,
 }
 
-/// Who made a task change; maps to the `task_events.actor` / `client_id` columns. Not serialized.
+/// Who made an item or task change; maps to the `actor` / `client_id` columns of
+/// `item_events` and `task_events`. Not serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Actor {
     User,
     /// The What's Next card's Done / Snooze.
     Next,
+    /// An MCP client (`mcp_clients.id`).
+    Agent(String),
 }
 
 impl Actor {
-    /// `(actor, client_id)` column values.
-    pub fn columns(&self) -> (&'static str, Option<&str>) {
+    /// `item_events.actor`. `invalid` for `Next`, which the column's CHECK rejects.
+    pub fn item_actor(&self) -> AppResult<&'static str> {
         match self {
-            Actor::User => ("user", None),
-            Actor::Next => ("next", None),
+            Actor::User => Ok("user"),
+            Actor::Agent(_) => Ok("agent"),
+            Actor::Next => Err(AppError::Code("invalid")),
+        }
+    }
+
+    /// `task_events.actor`.
+    pub fn task_actor(&self) -> AppResult<&'static str> {
+        Ok(match self {
+            Actor::User => "user",
+            Actor::Next => "next",
+            Actor::Agent(_) => "agent",
+        })
+    }
+
+    /// The `client_id` column: the agent's client id, else `None`.
+    pub fn client_id(&self) -> Option<&str> {
+        match self {
+            Actor::Agent(id) => Some(id),
+            Actor::User | Actor::Next => None,
         }
     }
 }
 
 /// `Some(None)` for an explicit `null`, `None` (via `#[serde(default)]`) when the key is absent.
-fn double_option<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+pub(crate) fn double_option<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     d: D,
 ) -> Result<Option<Option<T>>, D::Error> {
     Option::<T>::deserialize(d).map(Some)
@@ -462,6 +493,9 @@ pub struct TaskDetail {
 pub struct TaskQuery {
     pub view: String,
     pub search: Option<String>,
+    /// Rust-only (agents): keep tasks whose source item agents may see.
+    #[serde(skip)]
+    pub agent_visible: bool,
 }
 
 /// The What's Next card. `reason` is the model's sentence; `reason_key` the ranking reason

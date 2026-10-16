@@ -452,7 +452,7 @@ mod tests {
                 },
             )
             .unwrap();
-            items::recategorize(&mut conn, std::slice::from_ref(&id), "reference", "user").unwrap();
+            items::recategorize(&mut conn, std::slice::from_ref(&id), "reference", &crate::model::Actor::User).unwrap();
             id
         };
         let url = insert("url", Some("https://www.Example.com/a?b=1"), None, "u");

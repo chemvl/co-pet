@@ -117,7 +117,7 @@ fn add_event(
     now: i64,
 ) -> AppResult<String> {
     let id = new_id();
-    let (actor, client_id) = actor.columns();
+    let (actor, client_id) = (actor.task_actor()?, actor.client_id());
     conn.execute(
         "INSERT INTO task_events (id, task_id, at, actor, client_id, action, before_json, after_json, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?3)",
@@ -180,7 +180,7 @@ pub fn notify_changed(app: &AppHandle, ids: Vec<String>) {
 
 // ---------- validation ----------
 
-fn valid_title(title: &str) -> AppResult<String> {
+pub(crate) fn valid_title(title: &str) -> AppResult<String> {
     let t = title.trim();
     let n = t.chars().count();
     if n == 0 || n > 300 {
@@ -190,7 +190,7 @@ fn valid_title(title: &str) -> AppResult<String> {
 }
 
 /// Validates the due pair and returns it normalized (`%Y-%m-%d`, `%H:%M`).
-fn validate_due(
+pub(crate) fn validate_due(
     due_date: Option<&str>,
     due_time: Option<&str>,
 ) -> AppResult<(Option<String>, Option<String>)> {
@@ -209,7 +209,7 @@ fn validate_due(
     ))
 }
 
-fn validate_priority(p: i64) -> AppResult<()> {
+pub(crate) fn validate_priority(p: i64) -> AppResult<()> {
     if (0..=3).contains(&p) {
         Ok(())
     } else {
@@ -217,7 +217,7 @@ fn validate_priority(p: i64) -> AppResult<()> {
     }
 }
 
-fn validate_estimate(e: Option<i64>) -> AppResult<()> {
+pub(crate) fn validate_estimate(e: Option<i64>) -> AppResult<()> {
     match e {
         Some(m) if !(1..=1440).contains(&m) => Err(AppError::Code("invalid")),
         _ => Ok(()),
@@ -255,7 +255,7 @@ pub fn create(
     }
     let id = new_id();
     let now = now_ms();
-    let (_, client_id) = actor.columns();
+    let client_id = actor.client_id();
     tx.execute(
         "INSERT INTO tasks (id, title, notes, due_date, due_time, priority, estimate_min, first_step,
            source_item_id, added_by, created_at, updated_at)
@@ -404,7 +404,32 @@ pub fn undo_event(conn: &mut Connection, event_id: &str) -> AppResult<String> {
 
 // ---------- reads ----------
 
-fn summary(conn: &Connection, id: &str) -> AppResult<TaskSummary> {
+/// `AND …` keeping tasks agents may see: no source item, or one passing `items::AGENT_VISIBLE`.
+/// Empty unless `agent_visible`.
+fn agent_filter(agent_visible: bool) -> String {
+    if agent_visible {
+        format!(
+            " AND (t.source_item_id IS NULL OR t.source_item_id IN (SELECT items.id FROM items WHERE {}))",
+            items::AGENT_VISIBLE
+        )
+    } else {
+        String::new()
+    }
+}
+
+/// Whether task `id` is live and agents may see it.
+pub fn agent_visible(conn: &Connection, id: &str) -> AppResult<bool> {
+    Ok(conn.query_row(
+        &format!(
+            "SELECT EXISTS (SELECT 1 FROM tasks t WHERE t.id = ?1 AND t.deleted_at IS NULL{})",
+            agent_filter(true)
+        ),
+        [id],
+        |r| r.get(0),
+    )?)
+}
+
+pub fn summary(conn: &Connection, id: &str) -> AppResult<TaskSummary> {
     conn.query_row(
         &format!("{SUMMARY_SELECT} WHERE t.id = ?1 AND t.deleted_at IS NULL"),
         [id],
@@ -426,7 +451,8 @@ pub fn list(conn: &Connection, q: &TaskQuery) -> AppResult<Vec<TaskSummary>> {
         _ => return Err(AppError::Code("invalid")),
     };
     let mut stmt = conn.prepare(&format!(
-        "{SUMMARY_SELECT} WHERE t.deleted_at IS NULL AND t.status = ?1 ORDER BY {order}"
+        "{SUMMARY_SELECT} WHERE t.deleted_at IS NULL AND t.status = ?1{} ORDER BY {order}",
+        agent_filter(q.agent_visible)
     ))?;
     let rows = stmt.query_map([status], map_summary)?;
     let tokens: Vec<String> = q
@@ -473,11 +499,13 @@ pub fn for_item(conn: &Connection, item_id: &str) -> AppResult<Vec<TaskSummary>>
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
-/// Live open tasks not snoozed at `now_ms` (`snoozed_until` NULL or ≤ now), unordered.
-pub fn open_unsnoozed(conn: &Connection, now_ms: i64) -> AppResult<Vec<TaskSummary>> {
+/// Live open tasks not snoozed at `now_ms` (`snoozed_until` NULL or ≤ now), unordered;
+/// `agent_visible` keeps only tasks agents may see.
+pub fn open_unsnoozed(conn: &Connection, now_ms: i64, agent_visible: bool) -> AppResult<Vec<TaskSummary>> {
     let mut stmt = conn.prepare(&format!(
         "{SUMMARY_SELECT} WHERE t.deleted_at IS NULL AND t.status = 'open'
-           AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?1)"
+           AND (t.snoozed_until IS NULL OR t.snoozed_until <= ?1){}",
+        agent_filter(agent_visible)
     ))?;
     let rows = stmt.query_map([now_ms], map_summary)?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -547,6 +575,10 @@ mod tests {
         NewTask { title: title.into(), ..Default::default() }
     }
 
+    fn query(view: &str, search: Option<&str>) -> TaskQuery {
+        TaskQuery { view: view.into(), search: search.map(Into::into), agent_visible: false }
+    }
+
     fn item(conn: &mut Connection, title: &str) -> String {
         insert_item(
             conn,
@@ -582,7 +614,7 @@ mod tests {
 
         assert_eq!(undo_event(&mut conn, &event).unwrap(), task.id);
         assert!(matches!(get(&conn, &task.id), Err(AppError::Code("notFound"))));
-        assert!(list(&conn, &TaskQuery { view: "open".into(), search: None }).unwrap().is_empty());
+        assert!(list(&conn, &query("open", None)).unwrap().is_empty());
         assert!(matches!(undo_event(&mut conn, &event), Err(AppError::Code("alreadyUndone"))));
         assert!(matches!(undo_event(&mut conn, "nope"), Err(AppError::Code("notFound"))));
     }
@@ -782,15 +814,15 @@ mod tests {
                 .unwrap();
         }
         conn.execute("UPDATE tasks SET done_at = 5000 WHERE id = ?1", [&ids[2]]).unwrap();
-        let done = list(&conn, &TaskQuery { view: "done".into(), search: None }).unwrap();
+        let done = list(&conn, &query("done", None)).unwrap();
         let got: Vec<&str> = done.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(got, [ids[2].as_str(), ids[0].as_str(), ids[1].as_str()]);
-        assert!(list(&conn, &TaskQuery { view: "open".into(), search: None }).unwrap().is_empty());
+        assert!(list(&conn, &query("open", None)).unwrap().is_empty());
 
-        let found = list(&conn, &TaskQuery { view: "done".into(), search: Some("doc".into()) }).unwrap();
+        let found = list(&conn, &query("done", Some("doc"))).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].id, ids[0]);
-        let found = list(&conn, &TaskQuery { view: "done".into(), search: Some("re bo".into()) }).unwrap();
+        let found = list(&conn, &query("done", Some("re bo"))).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].id, ids[2]);
     }
@@ -800,7 +832,7 @@ mod tests {
         let db = db();
         let mut conn = db.conn();
         let item_id = item(&mut conn, "Paper");
-        recategorize(&mut conn, &[item_id.clone()], "read", "user").unwrap();
+        recategorize(&mut conn, &[item_id.clone()], "read", &Actor::User).unwrap();
         let (task, _) = create(
             &mut conn,
             &NewTask { source_item_id: Some(item_id.clone()), ..new_task("Read paper") },
@@ -811,12 +843,43 @@ mod tests {
         assert_eq!(task.source_title.as_deref(), Some("Paper"));
         assert_eq!(for_item(&conn, &item_id).unwrap().len(), 1);
 
-        recategorize(&mut conn, &[item_id.clone()], "code", "user").unwrap();
+        recategorize(&mut conn, &[item_id.clone()], "code", &Actor::User).unwrap();
         assert_eq!(get(&conn, &task.id).unwrap().task.category_id, "code");
 
-        trash_items(&mut conn, &[item_id.clone()]).unwrap();
+        trash_items(&mut conn, &[item_id.clone()], &Actor::User).unwrap();
         let t = get(&conn, &task.id).unwrap().task;
         assert_eq!(t.category_id, "todo");
         assert_eq!(t.source_title, None);
+    }
+
+    #[test]
+    fn agents_see_tasks_of_visible_sources_only() {
+        let db = db();
+        let mut conn = db.conn();
+        let plain = create(&mut conn, &new_task("No source"), &Actor::User).unwrap().0.id;
+        let item_id = item(&mut conn, "Paper");
+        // Still waiting for triage: hidden until it is triaged.
+        let sourced = create(
+            &mut conn,
+            &NewTask { source_item_id: Some(item_id.clone()), ..new_task("Read paper") },
+            &Actor::User,
+        )
+        .unwrap()
+        .0
+        .id;
+        let mut q = query("open", None);
+        q.agent_visible = true;
+        let ids = |conn: &Connection, q: &TaskQuery| -> Vec<String> {
+            list(conn, q).unwrap().into_iter().map(|t| t.id).collect()
+        };
+        assert_eq!(ids(&conn, &q), [plain.clone()]);
+        assert!(!agent_visible(&conn, &sourced).unwrap());
+        recategorize(&mut conn, &[item_id.clone()], "read", &Actor::User).unwrap();
+        assert_eq!(ids(&conn, &q).len(), 2);
+        assert!(agent_visible(&conn, &sourced).unwrap());
+        conn.execute("UPDATE categories SET exclude_from_mcp = 1 WHERE id = 'read'", []).unwrap();
+        assert_eq!(ids(&conn, &q), [plain]);
+        assert_eq!(open_unsnoozed(&conn, now_ms(), true).unwrap().len(), 1);
+        assert_eq!(open_unsnoozed(&conn, now_ms(), false).unwrap().len(), 2);
     }
 }

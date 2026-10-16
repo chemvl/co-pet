@@ -17,7 +17,7 @@ use tauri::{AppHandle, Manager};
 use crate::db::{items, settings, Db};
 use crate::error::AppResult;
 use crate::events::{self, PetReaction};
-use crate::i18n;
+use crate::i18n::{self, Lang};
 use crate::library::{self, StoredFile};
 use crate::model::{CaptureResult, NewItem};
 use crate::paths::Paths;
@@ -45,16 +45,20 @@ pub struct CaptureSource {
     pub kind: &'static str,
     pub app_name: Option<String>,
     pub bundle_id: Option<String>,
+    /// `mcp_clients.id` when an agent added it (`items.added_by`).
+    pub added_by: Option<String>,
+    /// Replaces the title derived from the input (an agent's `add_item` title).
+    pub title: Option<String>,
 }
 
 impl CaptureSource {
     pub fn new(kind: &'static str, app: Option<FrontApp>) -> Self {
         let (app_name, bundle_id) = app.map(|a| (a.name, a.bundle_id)).unwrap_or_default();
-        CaptureSource { kind, app_name, bundle_id }
+        CaptureSource { kind, app_name, bundle_id, added_by: None, title: None }
     }
 }
 
-enum Outcome {
+pub(crate) enum Outcome {
     Saved(String),
     Duplicate(String),
     Skipped,
@@ -64,25 +68,36 @@ enum Outcome {
 /// Stores the input, inserts the items and hands them to triage. Blocking (file copies, hashing):
 /// async callers use [`capture_blocking`].
 pub fn capture(app: &AppHandle, input: CaptureInput, source: CaptureSource) -> CaptureResult {
-    let paths = app.state::<Paths>();
-    let db = app.state::<Db>();
     let screenshot = matches!(input, CaptureInput::Screenshot { .. });
+    let lang = i18n::lang(app);
+    let outcomes = store(&app.state::<Db>(), &app.state::<Paths>(), lang, input, &source);
+    finish(app, outcomes, screenshot)
+}
+
+/// The storage half of [`capture`]: blobs copied, rows inserted. No events, no triage.
+pub(crate) fn store(db: &Db, paths: &Paths, lang: Lang, input: CaptureInput, source: &CaptureSource) -> Vec<Outcome> {
     let prepared: Vec<AppResult<Option<NewItem>>> = match input {
         CaptureInput::Files { paths: files } => {
-            let remove_original = settings::read::<bool>(app, "capture.removeOriginal").unwrap_or(false);
-            files.iter().map(|f| prepare_file(&paths, f, remove_original, &source)).collect()
+            // An agent's file is never moved out of its folder.
+            let remove_original = source.added_by.is_none()
+                && settings::get::<bool>(&db.conn(), "capture.removeOriginal").unwrap_or(false);
+            files.iter().map(|f| prepare_file(paths, f, remove_original, source)).collect()
         }
-        other => vec![prepare(app, &paths, other, &source)],
+        other => vec![prepare(lang, paths, other, source)],
     };
-    let outcomes = prepared
+    prepared
         .into_iter()
         .map(|p| match p {
-            Ok(Some(new)) => commit(&mut db.conn(), &paths, &new).unwrap_or_else(|e| Outcome::Failed(e.to_string())),
+            Ok(Some(mut new)) => {
+                if let Some(title) = source.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                    new.title = title.to_owned();
+                }
+                commit(&mut db.conn(), paths, &new).unwrap_or_else(|e| Outcome::Failed(e.to_string()))
+            }
             Ok(None) => Outcome::Skipped,
             Err(e) => Outcome::Failed(e.to_string()),
         })
-        .collect();
-    finish(app, outcomes, screenshot)
+        .collect()
 }
 
 /// [`capture`] on the blocking pool.
@@ -148,7 +163,7 @@ fn prepare_file(
     Ok(Some(new))
 }
 
-fn prepare(app: &AppHandle, paths: &Paths, input: CaptureInput, source: &CaptureSource) -> AppResult<Option<NewItem>> {
+fn prepare(lang: Lang, paths: &Paths, input: CaptureInput, source: &CaptureSource) -> AppResult<Option<NewItem>> {
     let new = match input {
         CaptureInput::Files { .. } => unreachable!("files are prepared one by one"),
         CaptureInput::Url { url, title } => {
@@ -200,13 +215,13 @@ fn prepare(app: &AppHandle, paths: &Paths, input: CaptureInput, source: &Capture
         }
         CaptureInput::Image { png_bytes, url } => {
             let stored = library::store_bytes(paths, &png_bytes, "png")?;
-            let mut new = blob_item("image", timed_title(app, "image.title"), &stored, source);
+            let mut new = blob_item("image", timed_title(lang, "image.title"), &stored, source);
             new.url = url;
             new
         }
         CaptureInput::Screenshot { path } => {
             let stored = library::store_file(paths, &path, true)?;
-            blob_item("screenshot", timed_title(app, "screenshot.title"), &stored, source)
+            blob_item("screenshot", timed_title(lang, "screenshot.title"), &stored, source)
         }
     };
     Ok(Some(new))
@@ -229,6 +244,7 @@ fn text_source(source: &CaptureSource) -> NewItem {
         source_app: source.app_name.clone(),
         source_bundle_id: source.bundle_id.clone(),
         source_kind: source.kind.into(),
+        added_by: source.added_by.clone(),
         ..NewItem::default()
     }
 }
@@ -257,8 +273,9 @@ fn commit(conn: &mut Connection, paths: &Paths, new: &NewItem) -> AppResult<Outc
     }
 }
 
-/// One result for the whole capture: any saved item wins, then duplicates, then failures.
-fn finish(app: &AppHandle, outcomes: Vec<Outcome>, screenshot: bool) -> CaptureResult {
+/// One result for the whole capture: any saved item wins, then duplicates, then the first
+/// failure, else `skipped`. No events: [`finish`] adds them.
+pub(crate) fn summarize(outcomes: Vec<Outcome>) -> CaptureResult {
     let (mut saved, mut duplicates, mut failures) = (Vec::new(), Vec::new(), Vec::new());
     for o in outcomes {
         match o {
@@ -272,23 +289,35 @@ fn finish(app: &AppHandle, outcomes: Vec<Outcome>, screenshot: bool) -> CaptureR
         eprintln!("[capture] item failed: {reason}");
     }
     if !saved.is_empty() {
-        items::notify_changed(app, saved.clone());
-        events::pet_reaction(app, PetReaction::new(if screenshot { "camera" } else { "catch" }));
-        match app.try_state::<crate::triage::TriageQueue>() {
-            Some(queue) => saved.iter().for_each(|id| queue.enqueue(id.clone())),
-            // Still `pending`: the worker picks them up at its next start.
-            None => eprintln!("[capture] triage queue not running; {} item(s) wait", saved.len()),
-        }
         return CaptureResult { status: "saved", item_ids: saved, ..CaptureResult::default() };
     }
     if !duplicates.is_empty() {
-        events::pet_reaction(app, PetReaction { variant: Some(3), ..PetReaction::new("fidget") });
         return CaptureResult { status: "duplicate", item_ids: duplicates, ..CaptureResult::default() };
     }
     match failures.into_iter().next() {
-        Some(reason) => failed(app, reason),
+        Some(reason) => CaptureResult { status: "failed", message: Some(reason), ..CaptureResult::default() },
         None => skipped(None, &[]),
     }
+}
+
+/// [`summarize`] plus its pet reaction; saved items are announced and handed to triage.
+fn finish(app: &AppHandle, outcomes: Vec<Outcome>, screenshot: bool) -> CaptureResult {
+    let result = summarize(outcomes);
+    match result.status {
+        "saved" => {
+            items::notify_changed(app, result.item_ids.clone());
+            events::pet_reaction(app, PetReaction::new(if screenshot { "camera" } else { "catch" }));
+            match app.try_state::<crate::triage::TriageQueue>() {
+                Some(queue) => result.item_ids.iter().for_each(|id| queue.enqueue(id.clone())),
+                // Still `pending`: the worker picks them up at its next start.
+                None => eprintln!("[capture] triage queue not running; {} item(s) wait", result.item_ids.len()),
+            }
+        }
+        "duplicate" => events::pet_reaction(app, PetReaction { variant: Some(3), ..PetReaction::new("fidget") }),
+        "failed" => return failed(app, result.message.unwrap_or_default()),
+        _ => {}
+    }
+    result
 }
 
 // ---------- pure helpers ----------
@@ -334,8 +363,8 @@ fn url_title(url: &str) -> String {
 }
 
 /// `Screenshot 14:05` / `Ảnh chụp 14:05` in the app language.
-fn timed_title(app: &AppHandle, key: &str) -> String {
-    format!("{} {}", i18n::tr(i18n::lang(app), key), chrono::Local::now().format("%H:%M"))
+fn timed_title(lang: Lang, key: &str) -> String {
+    format!("{} {}", i18n::tr(lang, key), chrono::Local::now().format("%H:%M"))
 }
 
 fn hash_str(s: &str) -> String {

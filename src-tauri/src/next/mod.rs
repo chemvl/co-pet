@@ -121,11 +121,11 @@ fn is_private(conn: &Connection, task_id: &str) -> AppResult<bool> {
 }
 
 /// Live, open, unsnoozed tasks by score (desc), then due (asc, undated last), then
-/// `created_at` (asc); at most 8.
-pub fn rank(conn: &Connection, now: DateTime<Local>) -> AppResult<Vec<Candidate>> {
+/// `created_at` (asc); at most 8. `visible_only` (agents) keeps tasks agents may see.
+pub fn rank(conn: &Connection, now: DateTime<Local>, visible_only: bool) -> AppResult<Vec<Candidate>> {
     let now_ms = now.timestamp_millis();
     let skips = skips_since(conn, now_ms - DAY_MS)?;
-    let mut ranked: Vec<(Candidate, Option<NaiveDateTime>)> = tasks::open_unsnoozed(conn, now_ms)?
+    let mut ranked: Vec<(Candidate, Option<NaiveDateTime>)> = tasks::open_unsnoozed(conn, now_ms, visible_only)?
         .into_iter()
         .map(|task| {
             let (score, reason_key) = score(&task, &now, skips.get(&task.id).copied().unwrap_or(0));
@@ -281,13 +281,13 @@ fn ai_allowed(conn: &Connection, trigger: &str) -> AppResult<bool> {
 
 /// The What's Next card for `trigger`, or `None` when nothing is eligible. `home` always uses
 /// the ranking; other triggers ask the local model when AI is on, local-only mode is off and a
-/// model is downloaded.
+/// model is downloaded. `agent` ranks only tasks agents may see.
 pub async fn pick(app: &AppHandle, trigger: &str) -> AppResult<Option<NextCard>> {
     let now = Local::now();
     let db = app.state::<Db>().inner();
     let (cands, ai_allowed) = {
         let conn = db.conn();
-        (rank(&conn, now)?, ai_allowed(&conn, trigger)?)
+        (rank(&conn, now, trigger == "agent")?, ai_allowed(&conn, trigger)?)
     };
     let use_ai = ai_allowed && llm::active_model_path(app).is_some();
     Ok(pick_with(cands, use_ai, |tasks| async move {
@@ -480,7 +480,7 @@ mod tests {
         let tomorrow = task(&conn, "Tomorrow", Some(("2026-10-17", None)), 0);
         let week = task(&conn, "Sunday", Some(("2026-10-18", None)), 0);
         let next_week = task(&conn, "Next week", Some(("2026-10-19", None)), 0);
-        let cands = rank(&conn, now()).unwrap();
+        let cands = rank(&conn, now(), false).unwrap();
         assert_eq!(ids(&cands), [&overdue, &soon, &today, &tomorrow, &week, &next_week]);
         let summary: Vec<(i64, Option<&str>)> = cands.iter().map(|c| (c.score, c.reason_key)).collect();
         assert_eq!(
@@ -508,7 +508,7 @@ mod tests {
         for i in 0..6 {
             task(&conn, &format!("Filler {i}"), None, 0);
         }
-        let cands = rank(&conn, now()).unwrap();
+        let cands = rank(&conn, now(), false).unwrap();
         assert_eq!(cands.len(), MAX_CANDIDATES);
         assert_eq!(ids(&cands)[..3], [&high, &old, &fresh]);
         assert_eq!((cands[0].score, cands[0].reason_key), (20, Some("highPriority")));
@@ -524,10 +524,10 @@ mod tests {
         let b = task(&conn, "B", Some(("2026-10-17", None)), 0);
         let at = now().timestamp_millis();
         feedback(&conn, &a, "skip", at - DAY_MS - 1); // older than 24 h: ignored
-        assert_eq!(ids(&rank(&conn, now()).unwrap()), [&a, &b]);
+        assert_eq!(ids(&rank(&conn, now(), false).unwrap()), [&a, &b]);
         feedback(&conn, &a, "skip", at - 60_000);
         feedback(&conn, &b, "shown", at - 60_000);
-        let cands = rank(&conn, now()).unwrap();
+        let cands = rank(&conn, now(), false).unwrap();
         assert_eq!(ids(&cands), [&b, &a]);
         assert_eq!(cands[1].score, 15);
     }
@@ -545,7 +545,7 @@ mod tests {
         conn.execute("UPDATE tasks SET snoozed_until = ?2 WHERE id = ?1", params![woke, at]).unwrap();
         conn.execute("UPDATE tasks SET status = 'done', done_at = 1 WHERE id = ?1", [&done]).unwrap();
         conn.execute("UPDATE tasks SET deleted_at = 1 WHERE id = ?1", [&trashed]).unwrap();
-        assert_eq!(ids(&rank(&conn, now()).unwrap()), [&woke]);
+        assert_eq!(ids(&rank(&conn, now(), false).unwrap()), [&woke]);
     }
 
     fn private_task(conn: &mut Connection) -> String {
@@ -567,6 +567,16 @@ mod tests {
         id
     }
 
+    #[test]
+    fn agent_rank_skips_hidden_sources() {
+        let db = db();
+        let mut conn = db.conn();
+        private_task(&mut conn);
+        let report = task(&conn, "Write report", None, 0);
+        assert_eq!(rank(&conn, now(), false).unwrap().len(), 2);
+        assert_eq!(ids(&rank(&conn, now(), true).unwrap()), [&report]);
+    }
+
     #[tokio::test]
     async fn private_top_candidate_skips_ai() {
         let db = db();
@@ -574,7 +584,7 @@ mod tests {
             let mut conn = db.conn();
             private_task(&mut conn);
             task(&conn, "Write report", None, 0);
-            rank(&conn, now()).unwrap()
+            rank(&conn, now(), false).unwrap()
         };
         assert!(cands[0].private && !cands[1].private);
         let top = cands[0].task.id.clone();
@@ -601,7 +611,7 @@ mod tests {
             task(&conn, "Write report", None, 0);
             let private = private_task(&mut conn);
             conn.execute("UPDATE tasks SET due_date = NULL WHERE id = ?1", [&private]).unwrap();
-            (rank(&conn, now()).unwrap(), private)
+            (rank(&conn, now(), false).unwrap(), private)
         };
         let top = cands[0].task.id.clone();
         for answer in ["nope", private.as_str()] {
@@ -625,7 +635,7 @@ mod tests {
             task(&conn, "Pay invoice", Some(("2026-10-14", None)), 0);
             let report = task(&conn, "Write report", None, 0);
             conn.execute("UPDATE tasks SET estimate_min = 45 WHERE id = ?1", [&report]).unwrap();
-            let cands = rank(&conn, now()).unwrap();
+            let cands = rank(&conn, now(), false).unwrap();
             let msg: Value = serde_json::from_str(
                 &user_message(&conn, &cands.iter().map(|c| c.task.clone()).collect::<Vec<_>>(), now()).unwrap(),
             )
@@ -657,7 +667,7 @@ mod tests {
             assert!(ai_allowed(&conn, "bubble").unwrap());
             assert!(!ai_allowed(&conn, "home").unwrap());
             settings::put(&conn, "privacy.localOnly", &json!(true)).unwrap();
-            (rank(&conn, now()).unwrap(), ai_allowed(&conn, "bubble").unwrap())
+            (rank(&conn, now(), false).unwrap(), ai_allowed(&conn, "bubble").unwrap())
         };
         assert!(!allowed);
         let called = Cell::new(false);

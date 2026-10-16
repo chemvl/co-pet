@@ -498,8 +498,14 @@ fn job_state(conn: &Connection, id: &str) -> AppResult<Option<(TaskExportState, 
 
 /// Queues live task `task_id` for `p` on this device (`<task_id>:<provider>`). A live exported
 /// job is `alreadyExported`; a queued/exporting one is returned as is; a failed or deleted one
-/// is reset to `queued`.
-pub fn enqueue(conn: &Connection, task_id: &str, p: Provider, now: i64) -> AppResult<TaskExportState> {
+/// is reset to `queued`. `activity_id`: the `agent_activity` row of the agent that asked.
+pub fn enqueue(
+    conn: &Connection,
+    task_id: &str,
+    p: Provider,
+    activity_id: Option<&str>,
+    now: i64,
+) -> AppResult<TaskExportState> {
     let live: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM tasks WHERE id = ?1 AND deleted_at IS NULL)",
         [task_id],
@@ -517,12 +523,12 @@ pub fn enqueue(conn: &Connection, task_id: &str, p: Provider, now: i64) -> AppRe
         }
     }
     conn.execute(
-        "INSERT INTO task_exports (id, task_id, provider, device_id, state, attempts, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'queued', 0, ?5, ?5)
+        "INSERT INTO task_exports (id, task_id, provider, device_id, state, attempts, activity_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'queued', 0, ?5, ?6, ?6)
          ON CONFLICT(id) DO UPDATE SET device_id = excluded.device_id, state = 'queued', attempts = 0,
            next_attempt_at = NULL, error = NULL, external_id = NULL, external_url = NULL,
-           updated_at = excluded.updated_at, deleted_at = NULL",
-        params![id, task_id, p.as_str(), device_id(conn)?, now],
+           activity_id = excluded.activity_id, updated_at = excluded.updated_at, deleted_at = NULL",
+        params![id, task_id, p.as_str(), device_id(conn)?, activity_id, now],
     )?;
     Ok(job_state(conn, &id)?.ok_or(AppError::Code("notFound"))?.0)
 }
@@ -631,14 +637,14 @@ pub(crate) mod tests {
         let db = Db::open_in_memory().unwrap();
         let conn = db.conn();
         let id = task(&conn, "A");
-        assert!(matches!(enqueue(&conn, "missing", Provider::Notion, 1), Err(AppError::Code("notFound"))));
-        let s = enqueue(&conn, &id, Provider::Notion, 1).unwrap();
+        assert!(matches!(enqueue(&conn, "missing", Provider::Notion, None, 1), Err(AppError::Code("notFound"))));
+        let s = enqueue(&conn, &id, Provider::Notion, None, 1).unwrap();
         assert_eq!((s.provider.as_str(), s.state.as_str()), ("notion", "queued"));
         conn.execute("UPDATE task_exports SET state = 'failed', error = 'network', attempts = 6", []).unwrap();
-        let s = enqueue(&conn, &id, Provider::Notion, 2).unwrap();
+        let s = enqueue(&conn, &id, Provider::Notion, None, 2).unwrap();
         assert_eq!((s.state.as_str(), s.error), ("queued", None));
         conn.execute("UPDATE task_exports SET state = 'exported', external_url = 'https://n/1'", []).unwrap();
-        assert!(matches!(enqueue(&conn, &id, Provider::Notion, 3), Err(AppError::Code("alreadyExported"))));
+        assert!(matches!(enqueue(&conn, &id, Provider::Notion, None, 3), Err(AppError::Code("alreadyExported"))));
         let summary = tasks::get(&conn, &id).unwrap().task.export.unwrap();
         assert_eq!((summary.state.as_str(), summary.external_url.as_deref()), ("exported", Some("https://n/1")));
     }
@@ -650,7 +656,7 @@ pub(crate) mod tests {
         let cfg = json!({ "workspaceGid": "w", "projectGid": "p", "sectionGid": null });
         set_target(&conn, Provider::Asana, cfg, "Co-pet › Sprint", "me@x.y", 1).unwrap();
         let a = task(&conn, "A");
-        enqueue(&conn, &a, Provider::Asana, 1).unwrap();
+        enqueue(&conn, &a, Provider::Asana, None, 1).unwrap();
         assert_eq!(fail_queued_on_disconnect(&conn, Provider::Asana, 2).unwrap(), vec![a.clone()]);
         let s = status(&conn, Provider::Asana, None).unwrap();
         assert_eq!((s.queued, s.failed, s.last_error.as_deref()), (0, 1, Some("disconnected")));

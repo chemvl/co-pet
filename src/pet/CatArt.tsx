@@ -4,9 +4,12 @@ import { useSyncExternalStore, type CSSProperties, type ReactElement } from 'rea
 import { Icon } from '../ds';
 import type { CategoryId, Edge } from '../shared/types';
 import type { CatMotion, CatParts } from './pose';
+import { isPixelSpecies, PixelPet, PIXEL_SPECIES, type PixelSpecies } from './PixelPets';
 import './cat.css';
 
-export type CatLook = 'soft' | 'sticker' | 'pixel';
+/** The cat's three looks, then the pixel pets (fixed palettes: skins don't apply). */
+export type CatLook = 'soft' | 'sticker' | 'pixel' | PixelSpecies;
+export const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel', ...PIXEL_SPECIES];
 export type CatSkin = 'peach' | 'tabby' | 'midnight';
 export type CatFx = null | { kind: 'category'; category: CategoryId } | { kind: 'question' };
 
@@ -78,6 +81,8 @@ export function CatArt(props: CatArtProps): ReactElement {
           <g transform={mirrored ? 'translate(160 0) scale(-1 1)' : undefined}>
             {look === 'pixel' ? (
               <PixelCat colors={SKINS[skin]} parts={parts} lowered={lowered} blink={blink} />
+            ) : isPixelSpecies(look) ? (
+              <PixelPet species={look} parts={parts} lowered={lowered} blink={blink} />
             ) : (
               <VectorCat
                 sticker={look === 'sticker'}

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { Icon, type IconName } from '../ds';
-import { CatArt, type CatLook, type CatSkin } from '../pet/CatArt';
+import { CatArt, LOOKS, type CatSkin } from '../pet/CatArt';
 import { poseFor } from '../pet/pose';
 import { useT, type TFunction } from '../shared/i18n';
 import { useAiStatus, useSettings } from '../shared/queries';
@@ -14,7 +14,6 @@ import { countsQuery } from './queries';
 /** `inbox`, `settings` or a category id; empty for none. */
 export type NavKey = string;
 
-const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel'];
 const SKINS: readonly CatSkin[] = ['peach', 'tabby', 'midnight'];
 const IDLE_PARTS = poseFor('idle').parts;
 

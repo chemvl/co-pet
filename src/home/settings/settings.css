@@ -61,14 +61,11 @@
 .st-hk__muted { font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
 .st-hk__err { flex-basis: 100%; }
 
-/* tiles (style, species, model choice) */
-.st-tiles { display: flex; gap: 10px; flex-wrap: wrap; }
-.st-tile { flex: 1 1 0; min-width: 96px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--surface-raised); font: 500 13px/20px var(--font-sans); color: var(--ink); cursor: pointer; text-align: center; }
+/* style tiles: equal columns, so a short last row doesn't stretch */
+.st-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.st-tile { min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--surface-raised); font: 500 13px/20px var(--font-sans); color: var(--ink); cursor: pointer; text-align: center; }
 .st-tile[aria-pressed="true"], .st-tile[aria-checked="true"] { border: 2px solid var(--clover); padding: 9px 5px; background: var(--surface-selected); }
-.st-tile:disabled { opacity: .45; cursor: not-allowed; }
 .st-tile__art { width: 56px; height: 56px; flex: none; }
-.st-tile__art--sm { width: 48px; height: 48px; }
-.st-tile__note { font: 400 11px/16px var(--font-sans); }
 
 .st-swatches { display: flex; gap: 12px; flex-wrap: wrap; }
 .st-swatch { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; border: 0; background: transparent; padding: 6px; border-radius: var(--radius-sm); font: 500 13px/20px var(--font-sans); color: var(--ink); cursor: pointer; }

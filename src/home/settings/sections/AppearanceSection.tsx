@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SegmentedControl } from '../../../ds';
+import { isPixelSpecies } from '../../../pet/PixelPets';
 import { useT } from '../../../shared/i18n';
 import { useSetSetting, useSetting } from '../../../shared/queries';
 import { asLook, asSkin, Group, SettingRow, SkinSwatches, StyleTiles } from '../parts';
@@ -45,9 +46,12 @@ export function AppearanceSection() {
       <Group title={t('settings.appearance.style')} desc={t('settings.appearance.styleDesc')}>
         <StyleTiles value={look} skin={skin} onChange={(v) => void set('pet.style', v)} />
       </Group>
-      <Group title={t('settings.appearance.skin')} desc={t('settings.appearance.skinDesc')}>
-        <SkinSwatches value={skin} onChange={(v) => void set('pet.skin', v)} />
-      </Group>
+      {/* The pixel pets have fixed colours. */}
+      {!isPixelSpecies(look) && (
+        <Group title={t('settings.appearance.skin')} desc={t('settings.appearance.skinDesc')}>
+          <SkinSwatches value={skin} onChange={(v) => void set('pet.skin', v)} />
+        </Group>
+      )}
       <Group>
         <SettingRow label={t('settings.appearance.size')} desc={t('settings.appearance.sizeDesc')}>
           <SegmentedControl

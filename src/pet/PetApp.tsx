@@ -17,7 +17,7 @@ import {
 } from '../shared/ipc';
 import { useSetSetting, useSettings } from '../shared/queries';
 import type { CaptureResult, CategoryId, EventPayloads, HitRegion, HotkeyAction, Placement } from '../shared/types';
-import { CatArt, type CatLook, type CatSkin } from './CatArt';
+import { CatArt, LOOKS, type CatLook, type CatSkin } from './CatArt';
 import { noticeFor, type Notice } from './notices';
 import {
   bubbleRects, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
@@ -60,7 +60,6 @@ const KEYED: Surface[] = ['tray', 'menu', 'quicknote'];
 
 interface Look { look: CatLook; skin: CatSkin; size: number }
 
-const LOOKS: CatLook[] = ['soft', 'sticker', 'pixel'];
 const SKINS: CatSkin[] = ['peach', 'tabby', 'midnight'];
 const SIZES = [64, 80, 96];
 

@@ -1,6 +1,6 @@
 // Building blocks shared by the Settings sections and onboarding.
 import { useId, type ReactNode } from 'react';
-import { CatArt, SKINS, type CatLook, type CatSkin } from '../../pet/CatArt';
+import { CatArt, LOOKS, SKINS, type CatLook, type CatSkin } from '../../pet/CatArt';
 import { poseFor } from '../../pet/pose';
 import { useT, type I18nKey } from '../../shared/i18n';
 import './settings.css';
@@ -61,11 +61,14 @@ export function StillCat({ look, skin, label }: { look: CatLook; skin: CatSkin; 
   return <CatArt look={look} skin={skin} parts={IDLE.parts} motion={null} mirrored={false} reducedMotion label={label} />;
 }
 
-export const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel'];
 export const LOOK_LABEL: Record<CatLook, I18nKey> = {
   soft: 'settings.appearance.styleSoft',
   sticker: 'settings.appearance.styleSticker',
   pixel: 'settings.appearance.stylePixel',
+  chicken: 'settings.appearance.styleChicken',
+  dog: 'settings.appearance.styleDog',
+  pig: 'settings.appearance.stylePig',
+  owl: 'settings.appearance.styleOwl',
 };
 
 export function StyleTiles(props: { value: CatLook; skin: CatSkin; onChange: (look: CatLook) => void; labelledBy?: string }) {
@@ -123,7 +126,7 @@ export function errorText(e: unknown): string {
 }
 
 export function asLook(v: unknown): CatLook {
-  return v === 'sticker' || v === 'pixel' ? v : 'soft';
+  return LOOKS.find((l) => l === v) ?? 'soft';
 }
 
 export function asSkin(v: unknown): CatSkin {

@@ -6,11 +6,11 @@ import { HotkeyRows } from '../home/settings/HotkeyRows';
 import {
   aiErrorReason, downloadPercent, modelMeta, modelName, transferOf, useAiAction,
 } from '../home/settings/ModelCards';
-import { ProgressBar, StillCat, StyleTiles } from '../home/settings/parts';
+import { ProgressBar, StyleTiles } from '../home/settings/parts';
 import { CatArt, type CatLook, type CatSkin } from '../pet/CatArt';
 import { poseFor, type CatPose } from '../pet/pose';
 import { formatSize } from '../shared/format';
-import { useLang, useT, type I18nKey } from '../shared/i18n';
+import { useLang, useT } from '../shared/i18n';
 import { aiDownload, aiPause, aiSelectModel, permissionsStatus, requestPermission } from '../shared/ipc';
 import type { AiStatus } from '../shared/types';
 
@@ -33,8 +33,6 @@ function Cat({ look, skin, pose }: { look: CatLook; skin: CatSkin; pose: CatPose
 
 /* ---------- 1 · Your pet ---------- */
 
-const SPECIES_LATER: readonly I18nKey[] = ['onboarding.pet.dog', 'onboarding.pet.chicken', 'onboarding.pet.pig'];
-
 export function PetStep(props: {
   name: string;
   onName: (name: string) => void;
@@ -43,7 +41,6 @@ export function PetStep(props: {
   skin: CatSkin;
 }) {
   const t = useT();
-  const speciesId = useId();
   const styleId = useId();
   return (
     <div className="ob-body">
@@ -54,21 +51,6 @@ export function PetStep(props: {
         <div>
           <h1 className="display ob-h1">{t('onboarding.pet.title')}</h1>
           <p className="ob-lead">{t('onboarding.pet.body')}</p>
-        </div>
-        <div>
-          <span className="ob-k" id={speciesId}>{t('onboarding.pet.species')}</span>
-          <div className="st-tiles" role="group" aria-labelledby={speciesId}>
-            <button type="button" className="st-tile" aria-pressed="true">
-              <span className="st-tile__art st-tile__art--sm"><StillCat look={props.look} skin={props.skin} /></span>
-              {t('onboarding.pet.cat')}
-            </button>
-            {SPECIES_LATER.map((key) => (
-              <button key={key} type="button" className="st-tile" disabled>
-                {t(key)}
-                <span className="st-tile__note">{t('common.comingLater')}</span>
-              </button>
-            ))}
-          </div>
         </div>
         <div>
           <span className="ob-k" id={styleId}>{t('settings.appearance.style')}</span>

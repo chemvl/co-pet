@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use chrono::{DateTime, Local, NaiveDate, NaiveTime, SecondsFormat, TimeZone};
+use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, SecondsFormat, TimeZone};
 use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -421,7 +421,8 @@ struct ListTasksArgs {
 }
 
 /// `overdue`: due before `now` (a date-only task once its day is over); `today`: due today;
-/// `week`: due today or in the next six days.
+/// `week`: due today through this week's Sunday (weeks run Monday to Sunday, as in Home's task
+/// groups and What's Next's `dueThisWeek`).
 fn due_matches(t: &TaskSummary, filter: DueFilter, now: DateTime<Local>) -> bool {
     let Some(date) = t.due_date.as_deref().and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()) else {
         return false;
@@ -433,7 +434,7 @@ fn due_matches(t: &TaskSummary, filter: DueFilter, now: DateTime<Local>) -> bool
             None => date < today,
         },
         DueFilter::Today => date == today,
-        DueFilter::Week => date >= today && (date - today).num_days() <= 6,
+        DueFilter::Week => date >= today && date.iso_week() == today.iso_week(),
     }
 }
 
@@ -971,5 +972,43 @@ pub(crate) mod tests {
     fn approve_after_first_call(h: &TestHost) {
         call(h, "cursor", "whats_next", json!({})).unwrap();
         approve(h, "cursor");
+    }
+
+    #[test]
+    fn due_filters_follow_the_monday_week() {
+        let task = |date: &str, time: Option<&str>| TaskSummary {
+            id: "t".into(),
+            title: "T".into(),
+            status: "open".into(),
+            due_date: Some(date.into()),
+            due_time: time.map(Into::into),
+            priority: 0,
+            estimate_min: None,
+            first_step: None,
+            source_item_id: None,
+            source_title: None,
+            category_id: "todo".into(),
+            added_by: None,
+            snoozed_until: None,
+            done_at: None,
+            created_at: 0,
+            updated_at: 0,
+            export: None,
+        };
+        let week = |now: DateTime<Local>| -> Vec<&str> {
+            ["2026-10-11", "2026-10-12", "2026-10-14", "2026-10-15", "2026-10-18", "2026-10-19"]
+                .into_iter()
+                .filter(|d| due_matches(&task(d, None), DueFilter::Week, now))
+                .collect()
+        };
+        // Wednesday 14 Oct 2026: today through Sunday 18.
+        let wed = Local.with_ymd_and_hms(2026, 10, 14, 10, 0, 0).unwrap();
+        assert_eq!(week(wed), ["2026-10-14", "2026-10-15", "2026-10-18"]);
+        // Sunday 18 Oct: only today; Monday 19 is next week.
+        let sun = Local.with_ymd_and_hms(2026, 10, 18, 10, 0, 0).unwrap();
+        assert_eq!(week(sun), ["2026-10-18"]);
+        assert!(due_matches(&task("2026-10-14", Some("09:00")), DueFilter::Overdue, wed));
+        assert!(!due_matches(&task("2026-10-14", None), DueFilter::Overdue, wed));
+        assert!(due_matches(&task("2026-10-14", None), DueFilter::Today, wed));
     }
 }

@@ -5,7 +5,7 @@ use reqwest::multipart::{Form, Part};
 use reqwest::RequestBuilder;
 use serde_json::{json, Map, Value};
 
-use super::{send, ExportError, ExportPayload, Exported};
+use super::{path_segment, send, ExportError, ExportPayload, Exported};
 use crate::backend;
 use crate::model::{AsanaConfig, TargetOption};
 
@@ -17,10 +17,6 @@ fn get(path: &str, token: &str) -> RequestBuilder {
 
 fn post(path: &str, token: &str) -> RequestBuilder {
     backend::http().post(format!("{BASE}{path}")).bearer_auth(token)
-}
-
-fn seg(s: &str) -> String {
-    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
 // ---------- pure ----------
@@ -95,12 +91,12 @@ pub async fn workspaces(token: &str) -> Result<Vec<TargetOption>, ExportError> {
 }
 
 pub async fn projects(token: &str, workspace_gid: &str) -> Result<Vec<TargetOption>, ExportError> {
-    let path = format!("/workspaces/{}/projects?archived=false&limit=100", seg(workspace_gid));
+    let path = format!("/workspaces/{}/projects?archived=false&limit=100", path_segment(workspace_gid));
     Ok(parse_options(&send(get(&path, token)).await?))
 }
 
 pub async fn sections(token: &str, project_gid: &str) -> Result<Vec<TargetOption>, ExportError> {
-    let path = format!("/projects/{}/sections?limit=100", seg(project_gid));
+    let path = format!("/projects/{}/sections?limit=100", path_segment(project_gid));
     Ok(parse_options(&send(get(&path, token)).await?))
 }
 

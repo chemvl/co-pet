@@ -615,7 +615,9 @@ mod tests {
         assert_eq!(d.task.estimate_min, Some(10));
         assert_eq!(d.task.first_step.as_deref(), Some("Open map"));
         let before: Value = serde_json::from_str(d.events[0].before_json.as_ref().unwrap()).unwrap();
-        let keys: Vec<&String> = before.as_object().unwrap().keys().collect();
+        // Patch field order (serde_json `preserve_order`); compared as a set.
+        let mut keys: Vec<&String> = before.as_object().unwrap().keys().collect();
+        keys.sort();
         assert_eq!(keys, ["due_date", "first_step", "priority", "title"]);
 
         undo_event(&mut conn, &ev[0]).unwrap();

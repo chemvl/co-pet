@@ -131,16 +131,31 @@ pub(crate) async fn send(req: RequestBuilder) -> Result<Value, ExportError> {
     Err(classify(status, retry_after.as_deref(), body))
 }
 
-/// `429` (and Notion's `529`) → `RateLimited(Retry-After, default 30 s)`; `401`/`403` →
-/// `Unauthorized`; `404` → `TargetMissing`; other `4xx` → `Invalid(body)`; the rest → `Retryable`.
+/// Retry-After when the header is missing or not a number of seconds.
+const DEFAULT_RETRY_AFTER_S: u64 = 30;
+
+/// `429` (and Notion's `529`) → `RateLimited(Retry-After, at least 1 s, default 30 s)`;
+/// `401`/`403` → `Unauthorized`; `404` → `TargetMissing`; other `4xx` → `Invalid(body)`; the
+/// rest → `Retryable`.
 pub fn classify(status: u16, retry_after: Option<&str>, body: String) -> ExportError {
     match status {
-        429 | 529 => ExportError::RateLimited(retry_after.and_then(|s| s.trim().parse().ok()).unwrap_or(30)),
+        429 | 529 => ExportError::RateLimited(
+            retry_after.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(DEFAULT_RETRY_AFTER_S).max(1),
+        ),
         401 | 403 => ExportError::Unauthorized,
         404 => ExportError::TargetMissing,
         400..=499 => ExportError::Invalid(body),
         _ => ExportError::Retryable,
     }
+}
+
+/// Characters a URL path segment keeps as is: RFC 3986 unreserved.
+const SEGMENT: &percent_encoding::AsciiSet =
+    &percent_encoding::NON_ALPHANUMERIC.remove(b'-').remove(b'.').remove(b'_').remove(b'~');
+
+/// `s` percent-encoded as one URL path segment (ids come from the UI).
+pub(crate) fn path_segment(s: &str) -> String {
+    percent_encoding::utf8_percent_encode(s, SEGMENT).to_string()
 }
 
 // ---------- tokens ----------
@@ -572,6 +587,21 @@ pub(crate) mod tests {
         assert_eq!(classify(404, None, String::new()), ExportError::TargetMissing);
         assert_eq!(classify(400, None, "bad".into()), ExportError::Invalid("bad".into()));
         assert_eq!(classify(502, None, String::new()), ExportError::Retryable);
+    }
+
+    #[test]
+    fn retry_after_never_zero() {
+        assert_eq!(classify(429, Some("0"), String::new()), ExportError::RateLimited(1));
+        assert_eq!(classify(429, Some(" "), String::new()), ExportError::RateLimited(30));
+        assert_eq!(classify(429, Some("-5"), String::new()), ExportError::RateLimited(30));
+        assert_eq!(classify(429, Some("Wed, 21 Oct 2026 07:28:00 GMT"), String::new()), ExportError::RateLimited(30));
+    }
+
+    #[test]
+    fn path_segment_percent_encodes() {
+        assert_eq!(path_segment("1a2b-3c_d.e~f"), "1a2b-3c_d.e~f");
+        assert_eq!(path_segment("a b+c/d?e#f"), "a%20b%2Bc%2Fd%3Fe%23f");
+        assert_eq!(path_segment("ú"), "%C3%BA");
     }
 
     #[test]

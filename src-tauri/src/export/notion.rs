@@ -4,7 +4,7 @@ use chrono::{Local, NaiveDate, NaiveTime, TimeZone};
 use reqwest::RequestBuilder;
 use serde_json::{json, Map, Value};
 
-use super::{send, ExportError, ExportPayload, Exported};
+use super::{path_segment, send, ExportError, ExportPayload, Exported};
 use crate::backend;
 use crate::db::search::fold;
 use crate::i18n::Lang;
@@ -249,18 +249,13 @@ pub async fn data_sources(token: &str, lang: Lang) -> Result<Vec<TargetOption>, 
 }
 
 pub async fn schema(token: &str, id: &str) -> Result<NotionSchema, ExportError> {
-    let path = format!("/data_sources/{}", urlencode(id));
+    let path = format!("/data_sources/{}", path_segment(id));
     Ok(parse_schema(&send(req(reqwest::Method::GET, &path, token)).await?))
 }
 
 pub async fn export(token: &str, cfg: &NotionConfig, p: &ExportPayload) -> Result<Exported, ExportError> {
     let v = send(req(reqwest::Method::POST, "/pages", token).json(&page_body(cfg, p))).await?;
     parse_page(&v)
-}
-
-/// A path segment; ids are UUIDs, but they come from the UI.
-fn urlencode(s: &str) -> String {
-    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
 #[cfg(test)]
@@ -316,6 +311,23 @@ mod tests {
         );
         let status = schema.props.iter().find(|p| p.name == "Status").unwrap();
         assert_eq!(status.options, vec!["Not started", "In progress", "Done"]);
+    }
+
+    #[test]
+    fn mapping_follows_column_order() {
+        let v: Value = serde_json::from_str(
+            r#"{ "properties": {
+                "Zeta": { "name": "Zeta", "type": "title", "title": {} },
+                "Start": { "name": "Start", "type": "date", "date": {} },
+                "Deadline": { "name": "Deadline", "type": "date", "date": {} },
+                "Area": { "name": "Area", "type": "multi_select", "multi_select": { "options": [] } }
+            } }"#,
+        )
+        .unwrap();
+        let schema = parse_schema(&v);
+        let names: Vec<&str> = schema.props.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["Zeta", "Start", "Deadline", "Area"]);
+        assert_eq!(schema.suggested.due.as_deref(), Some("Start"));
     }
 
     #[test]

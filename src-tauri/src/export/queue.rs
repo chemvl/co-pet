@@ -1,5 +1,6 @@
 //! The export worker: one job at a time, only this device's jobs, sleeping until the next due
 //! job or a `poke`. Paused (jobs stay queued) while `privacy.localOnly` is on.
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use tokio::sync::Notify;
 
 use super::{ExportError, ExportPayload, Exported, Provider};
 use crate::db::{now_ms, settings, Db};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::events::{self, PetFlags, PetReaction};
 use crate::i18n;
 use crate::model::ExportTarget;
@@ -189,26 +190,48 @@ async fn run(app: AppHandle) {
     }
 }
 
-/// Marks the job `exporting` and loads what it sends.
-fn prepare(app: &AppHandle, job: &Job, lang: i18n::Lang) -> Result<(Provider, ExportTarget, ExportPayload), ExportError> {
-    let db = app.state::<Db>();
-    let conn = db.conn();
-    let invalid = |e: crate::error::AppError| ExportError::Invalid(e.to_string());
-    conn.execute(
-        "UPDATE task_exports SET state = 'exporting', updated_at = ?2 WHERE id = ?1",
-        params![job.id, now_ms()],
-    )
-    .map_err(|e| invalid(e.into()))?;
-    let p = Provider::from_str(&job.provider).map_err(invalid)?;
-    let target = super::target(&conn, p).map_err(invalid)?.ok_or(ExportError::TargetMissing)?;
-    let payload = super::payload(&conn, lang, &app.state::<Paths>().library, &job.task_id).map_err(invalid)?;
-    Ok((p, target, payload))
+/// What `prepare` hands the export call.
+type Prepared = (Provider, ExportTarget, ExportPayload);
+
+/// A load failure: SQLite errors are transient (`Retryable`), anything else is `Invalid`.
+fn load_error(e: AppError) -> ExportError {
+    match e {
+        AppError::Db(e) => {
+            eprintln!("[export] load: {e}");
+            ExportError::Retryable
+        }
+        e => ExportError::Invalid(e.to_string()),
+    }
+}
+
+/// Marks the job `exporting` and loads what it sends. `None` when the job is no longer
+/// `queued` (retried, deleted or taken meanwhile): it is skipped.
+fn prepare(conn: &Connection, library: &Path, job: &Job, lang: i18n::Lang, now: i64) -> Result<Option<Prepared>, ExportError> {
+    let changed = conn
+        .execute(
+            "UPDATE task_exports SET state = 'exporting', updated_at = ?2
+             WHERE id = ?1 AND state = 'queued' AND deleted_at IS NULL",
+            params![job.id, now],
+        )
+        .map_err(|e| load_error(e.into()))?;
+    if changed == 0 {
+        return Ok(None);
+    }
+    let p = Provider::from_str(&job.provider).map_err(load_error)?;
+    let target = super::target(conn, p).map_err(load_error)?.ok_or(ExportError::TargetMissing)?;
+    let payload = super::payload(conn, lang, library, &job.task_id).map_err(load_error)?;
+    Ok(Some((p, target, payload)))
 }
 
 async fn run_job(app: &AppHandle, job: Job) {
     // Before taking the connection: `lang` reads a setting through the same mutex.
     let lang = i18n::lang(app);
-    let prepared = prepare(app, &job, lang);
+    let prepared = {
+        let db = app.state::<Db>();
+        let conn = db.conn();
+        prepare(&conn, &app.state::<Paths>().library, &job, lang, now_ms())
+    };
+    let Some(prepared) = prepared.transpose() else { return };
     events::exports_changed(app, vec![job.task_id.clone()]);
     let provider = prepared.as_ref().ok().map(|(p, _, _)| *p);
     let result = match prepared {
@@ -336,5 +359,59 @@ mod tests {
         settings::put(&conn, "privacy.localOnly", &serde_json::Value::Bool(false)).unwrap();
         conn.execute("UPDATE task_exports SET device_id = 'other'", []).unwrap();
         assert!(matches!(next_step(&conn, 10_000).unwrap(), Step::Wait(MAX_SLEEP_MS)));
+    }
+
+    fn job(conn: &Connection, task_id: &str) -> Job {
+        let (id, attempts) = conn
+            .query_row("SELECT id, attempts FROM task_exports WHERE task_id = ?1", [task_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        Job { id, task_id: task_id.into(), provider: "asana".into(), attempts }
+    }
+
+    fn state(conn: &Connection, task_id: &str) -> String {
+        conn.query_row("SELECT state FROM task_exports WHERE task_id = ?1", [task_id], |r| r.get(0)).unwrap()
+    }
+
+    fn queued_asana(conn: &Connection) -> Job {
+        let cfg = serde_json::json!({ "workspaceGid": "w", "projectGid": "p", "sectionGid": null });
+        crate::export::set_target(conn, Provider::Asana, cfg, "Co-pet", "me@x.y", 1).unwrap();
+        let a = task(conn, "A");
+        enqueue(conn, &a, Provider::Asana, 1).unwrap();
+        job(conn, &a)
+    }
+
+    #[test]
+    fn prepare_takes_only_queued_jobs() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let j = queued_asana(&conn);
+        let (p, target, payload) = prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 2).unwrap().unwrap();
+        assert_eq!((p, target.target_label.as_str(), payload.title.as_str()), (Provider::Asana, "Co-pet", "A"));
+        assert_eq!(state(&conn, &j.task_id), "exporting");
+        // Already taken, or finished meanwhile: skipped and left as is.
+        assert!(prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 3).unwrap().is_none());
+        conn.execute("UPDATE task_exports SET state = 'exported'", []).unwrap();
+        assert!(prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 4).unwrap().is_none());
+        assert_eq!(state(&conn, &j.task_id), "exported");
+    }
+
+    #[test]
+    fn prepare_sqlite_error_is_retryable() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let j = queued_asana(&conn);
+        conn.execute_batch("DROP TABLE export_targets").unwrap();
+        assert_eq!(prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 2).err(), Some(ExportError::Retryable));
+        let u = outcome(j.attempts, Err(ExportError::Retryable), 2);
+        assert_eq!((u.state, u.error), ("queued", Some("network")));
+    }
+
+    #[test]
+    fn prepare_gone_task_is_invalid() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let j = queued_asana(&conn);
+        conn.execute("UPDATE tasks SET deleted_at = 2", []).unwrap();
+        assert!(matches!(prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 2), Err(ExportError::Invalid(_))));
     }
 }

@@ -142,5 +142,36 @@ INSERT INTO settings (key, value, updated_at) VALUES
   ('onboarding.completed', 'false', 0);
 "#;
 
+/// Schema v2: editable categories, agent attribution, task suggestions. `item_events` and
+/// `rules` are rebuilt to widen their CHECKs (no table references them).
+const V2: &str = r#"
+ALTER TABLE categories ADD COLUMN name TEXT;      -- NULL: built-in i18n name `category.<id>`
+ALTER TABLE categories ADD COLUMN icon TEXT;      -- NULL: icon named like the id; else a ds IconName
+ALTER TABLE categories ADD COLUMN color TEXT;     -- NULL: colour of the id; else one of the nine built-in ids
+ALTER TABLE categories ADD COLUMN deleted_at INTEGER;
+ALTER TABLE items ADD COLUMN added_by TEXT;       -- mcp_clients.id of the agent that added it; NULL = the user
+ALTER TABLE items ADD COLUMN task_suggestion TEXT; -- AI-suggested task title for actionable items; NULL = none
+CREATE TABLE item_events_v2 (
+  id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES items(id), at INTEGER NOT NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user','triage','agent')),
+  client_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('captured','recategorize','pin','unpin','archive','unarchive','trash','restore','tag')),
+  before_json TEXT, after_json TEXT, undone_at INTEGER, updated_at INTEGER NOT NULL);
+INSERT INTO item_events_v2 (id, item_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at)
+  SELECT id, item_id, at, actor, NULL, action, before_json, after_json, undone_at, updated_at FROM item_events;
+DROP TABLE item_events;
+ALTER TABLE item_events_v2 RENAME TO item_events;
+CREATE INDEX item_events_item ON item_events(item_id, at DESC);
+CREATE TABLE rules_v2 (
+  id TEXT PRIMARY KEY, category_id TEXT NOT NULL REFERENCES categories(id),
+  kind TEXT NOT NULL CHECK (kind IN ('domain','extension','item_kind','source_kind','source_app','regex')),
+  pattern TEXT NOT NULL, builtin INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL, deleted_at INTEGER);
+INSERT INTO rules_v2 (id, category_id, kind, pattern, builtin, position, updated_at, deleted_at)
+  SELECT id, category_id, kind, pattern, builtin, position, updated_at, deleted_at FROM rules;
+DROP TABLE rules;
+ALTER TABLE rules_v2 RENAME TO rules;
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> =
-    LazyLock::new(|| Migrations::new(vec![M::up(V1)]));
+    LazyLock::new(|| Migrations::new(vec![M::up(V1), M::up(V2)]));

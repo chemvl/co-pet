@@ -27,6 +27,7 @@ pub struct ItemRow {
     pub size_bytes: Option<i64>,
     pub thumb_path: Option<String>,
     pub source_app: Option<String>,
+    pub source_bundle_id: Option<String>,
     /// `drop | clipboard | screenshot | note | selection`
     pub source_kind: String,
     pub extracted_text: Option<String>,

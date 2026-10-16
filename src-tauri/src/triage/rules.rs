@@ -2,6 +2,7 @@
 //! match wins. Reasons are language-neutral codes the frontend renders.
 use regex::Regex;
 
+use crate::db::search::fold;
 use crate::model::{ItemRow, Rule};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,7 +10,7 @@ pub struct RuleMatch {
     pub rule_id: String,
     pub category_id: String,
     /// `rule:domain:<host>`, `rule:extension:<ext>`, `rule:kind:<kind>`, `rule:source:<kind>`,
-    /// `rule:regex:<category>`.
+    /// `rule:app:<pattern>`, `rule:regex:<category>`.
     pub reason: String,
 }
 
@@ -42,6 +43,11 @@ fn matches(rule: &Rule, item: &ItemRow) -> bool {
         }
         "item_kind" => item.kind == rule.pattern,
         "source_kind" => item.source_kind == rule.pattern,
+        "source_app" => {
+            let p = fold(rule.pattern.trim());
+            item.source_app.as_deref().is_some_and(|a| fold(a.trim()) == p)
+                || item.source_bundle_id.as_deref().is_some_and(|b| b.trim().eq_ignore_ascii_case(rule.pattern.trim()))
+        }
         "regex" => match (&item.payload_text, Regex::new(&rule.pattern)) {
             (Some(text), Ok(re)) => re.is_match(text),
             _ => false,
@@ -56,6 +62,7 @@ fn reason(rule: &Rule, item: &ItemRow) -> String {
         "extension" => format!("rule:extension:{}", rule.pattern.to_ascii_lowercase()),
         "item_kind" => format!("rule:kind:{}", item.kind),
         "source_kind" => format!("rule:source:{}", item.source_kind),
+        "source_app" => format!("rule:app:{}", rule.pattern),
         _ => format!("rule:regex:{}", rule.category_id),
     }
 }
@@ -88,6 +95,30 @@ mod tests {
 
     fn file_item(name: &str) -> ItemRow {
         ItemRow { kind: "file".into(), source_kind: "drop".into(), file_name: Some(name.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn source_app_rule_matches_name_or_bundle_id() {
+        let rule = |pattern: &str| Rule {
+            id: "app".into(),
+            category_id: "design".into(),
+            kind: "source_app".into(),
+            pattern: pattern.into(),
+            builtin: false,
+            position: 0,
+        };
+        let item = ItemRow {
+            kind: "text".into(),
+            source_kind: "clipboard".into(),
+            source_app: Some("Figma".into()),
+            source_bundle_id: Some("com.figma.Desktop".into()),
+            ..Default::default()
+        };
+        let m = match_rules(&item, &[rule("figma")]).unwrap();
+        assert_eq!((m.category_id.as_str(), m.reason.as_str()), ("design", "rule:app:figma"));
+        assert!(match_rules(&item, &[rule("COM.FIGMA.DESKTOP")]).is_some());
+        assert!(match_rules(&item, &[rule("Sketch")]).is_none());
+        assert!(match_rules(&ItemRow::default(), &[rule("figma")]).is_none());
     }
 
     #[test]

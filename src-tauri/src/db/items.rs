@@ -59,6 +59,7 @@ fn map_row(r: &Row<'_>) -> rusqlite::Result<ItemRow> {
         size_bytes: r.get(11)?,
         thumb_path: r.get(12)?,
         source_app: r.get(13)?,
+        source_bundle_id: r.get(14)?,
         source_kind: r.get(15)?,
         extracted_text: r.get(16)?,
         extract_status: r.get(17)?,
@@ -688,6 +689,41 @@ mod tests {
     #[test]
     fn migrations_validate() {
         MIGRATIONS.validate().unwrap();
+    }
+
+    #[test]
+    fn v2_preserves_item_events() {
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 1).unwrap();
+        c.execute_batch(
+            "INSERT INTO items (id, kind, title, source_kind, content_hash, captured_at, updated_at)
+               VALUES ('i1', 'text', 'Note', 'drop', 'h', 1, 1);
+             INSERT INTO item_events (id, item_id, at, actor, action, before_json, after_json, undone_at, updated_at)
+               VALUES ('e1', 'i1', 5, 'user', 'pin', '{\"pinned\":0}', '{\"pinned\":1}', NULL, 6);",
+        )
+        .unwrap();
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        let row: (String, i64, String, Option<String>, String, String, String, Option<i64>, i64) = c
+            .query_row(
+                "SELECT item_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at
+                   FROM item_events WHERE id = 'e1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            ("i1".into(), 5, "user".into(), None, "pin".into(), "{\"pinned\":0}".into(), "{\"pinned\":1}".into(), None, 6)
+        );
+        let insert = |id: &str, actor: &str| {
+            c.execute(
+                "INSERT INTO item_events (id, item_id, at, actor, client_id, action, updated_at)
+                   VALUES (?1, 'i1', 7, ?2, 'client-1', 'tag', 7)",
+                rusqlite::params![id, actor],
+            )
+        };
+        assert!(insert("e2", "agent").is_ok());
+        assert!(insert("e3", "robot").is_err());
     }
 
     #[test]

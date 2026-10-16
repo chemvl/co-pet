@@ -109,6 +109,7 @@ pub fn run() {
             commands::trash,
             commands::undo_event,
             commands::set_hotkey,
+            commands::suspend_hotkeys,
             commands::quit_app,
             commands::pet_status,
             commands::open_home,

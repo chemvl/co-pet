@@ -1,8 +1,10 @@
 //! Global hotkeys (Step 10.2), registered from the `hotkeys` setting. A press of `focusPet` or
 //! `quickNote` makes the pet panel key first; every press then emits `hotkey {action}` and the pet
-//! frontend runs the action.
+//! frontend runs the action. While Settings records a new shortcut they are all suspended, so the
+//! pressed keys reach the recorder instead of firing an action.
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager};
@@ -16,13 +18,25 @@ use crate::windows;
 
 const KEY: &str = "hotkeys";
 const ACTIONS: [&str; 4] = ["focusPet", "sendSelection", "captureScreen", "quickNote"];
+/// A recorder that went away without ending its suspension can't leave the hotkeys off longer.
+const SUSPEND_MAX: Duration = Duration::from_secs(60);
 
-/// Managed: the shortcut each action currently holds.
+/// Managed hotkey state. Only touched on the main thread (sync commands, `run_on_main_thread`):
+/// the plugin registers on the main thread, so holding this lock elsewhere could deadlock.
 #[derive(Default)]
-pub struct Hotkeys(Mutex<BTreeMap<&'static str, Shortcut>>);
+pub struct Hotkeys(Mutex<State>);
+
+#[derive(Default)]
+struct State {
+    /// The shortcut each action holds (registered unless suspended).
+    map: BTreeMap<&'static str, Shortcut>,
+    /// The current suspension's number, while suspended; a stale timer leaves a newer one alone.
+    suspended: Option<u64>,
+    suspensions: u64,
+}
 
 impl Hotkeys {
-    fn lock(&self) -> MutexGuard<'_, BTreeMap<&'static str, Shortcut>> {
+    fn lock(&self) -> MutexGuard<'_, State> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -61,7 +75,8 @@ fn fire(app: &AppHandle, action: &'static str) {
 pub fn init(app: &AppHandle) {
     let saved: Map<String, Value> = settings::read(app, KEY).unwrap_or_default();
     let state = app.state::<Hotkeys>();
-    let mut map = state.lock();
+    let mut s = state.lock();
+    let map = &mut s.map;
     for action in ACTIONS {
         let Some(acc) = saved.get(action).and_then(Value::as_str) else { continue };
         let shortcut = match acc.parse::<Shortcut>() {
@@ -80,6 +95,53 @@ pub fn init(app: &AppHandle) {
     }
 }
 
+/// Suspends (`true`) or restores (`false`) every hotkey while Settings records a new one. A
+/// suspension also ends at the next `set_hotkey` or after `SUSPEND_MAX`.
+pub fn suspend(app: &AppHandle, on: bool) {
+    let state = app.state::<Hotkeys>();
+    let mut s = state.lock();
+    if !on {
+        resume(app, &mut s);
+        return;
+    }
+    if s.suspended.is_some() {
+        return;
+    }
+    for shortcut in s.map.values() {
+        let _ = app.global_shortcut().unregister(*shortcut);
+    }
+    s.suspensions += 1;
+    let id = s.suspensions;
+    s.suspended = Some(id);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(SUSPEND_MAX).await;
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let state = handle.state::<Hotkeys>();
+            let mut s = state.lock();
+            if s.suspended == Some(id) {
+                resume(&handle, &mut s);
+            }
+        });
+    });
+}
+
+/// Re-registers every held shortcut after a suspension; one that no longer registers is dropped
+/// (logged), as at startup.
+fn resume(app: &AppHandle, s: &mut State) {
+    if s.suspended.take().is_none() {
+        return;
+    }
+    s.map.retain(|&action, shortcut| match register(app, action, *shortcut) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("[hotkeys] {action}: not restored: {e}");
+            false
+        }
+    });
+}
+
 /// Moves `action` to `accelerator`. Errors: `invalid` (unknown action or unparsable accelerator),
 /// `inUse` (another action or another app holds it; the old shortcut is restored).
 pub fn set_hotkey(app: &AppHandle, action: &str, accelerator: &str) -> AppResult<()> {
@@ -87,7 +149,9 @@ pub fn set_hotkey(app: &AppHandle, action: &str, accelerator: &str) -> AppResult
     let next: Shortcut = accelerator.parse().map_err(|_| AppError::Code("invalid"))?;
     {
         let state = app.state::<Hotkeys>();
-        let mut map = state.lock();
+        let mut s = state.lock();
+        resume(app, &mut s);
+        let map = &mut s.map;
         let old = map.get(action).copied();
         if old != Some(next) {
             if map.iter().any(|(a, s)| *a != action && *s == next) {

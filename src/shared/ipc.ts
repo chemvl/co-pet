@@ -51,6 +51,8 @@ export const makeRuleFromItem = (itemId: string) => invoke<Rule>('make_rule_from
 /** Rejects with `"inUse"` or `"invalid"`. */
 export const setHotkey = (action: HotkeyAction, accelerator: string) =>
   invoke<void>('set_hotkey', { action, accelerator });
+/** Hotkeys off while the shortcut recorder listens; `set_hotkey` also restores them. */
+export const suspendHotkeys = (suspended: boolean) => invoke<void>('suspend_hotkeys', { suspended });
 export const quitApp = () => invoke<void>('quit_app');
 /** The pet's hidden/sleep state now; call once on mount, then follow `pet-visibility`/`pet-flags`. */
 export const petStatus = () => invoke<PetStatus>('pet_status');

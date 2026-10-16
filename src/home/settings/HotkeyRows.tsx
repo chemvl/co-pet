@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Button, Kbd } from '../../ds';
 import { useT, type I18nKey } from '../../shared/i18n';
-import { setHotkey } from '../../shared/ipc';
+import { setHotkey, suspendHotkeys } from '../../shared/ipc';
 import { SETTINGS_KEY, useSetting } from '../../shared/queries';
 import type { HotkeyAction, Json } from '../../shared/types';
 import { acceleratorFromEvent, acceleratorKeys } from './accelerator';
@@ -59,11 +59,15 @@ export function HotkeyRows() {
         .finally(() => void qc.invalidateQueries({ queryKey: SETTINGS_KEY }));
     };
     const cancel = () => setRecording(null);
+    // Registered hotkeys would swallow their keys (and fire their action) before this page sees
+    // them; suspended, pressing another action's shortcut reaches `set_hotkey` and reports inUse.
+    void suspendHotkeys(true);
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('blur', cancel);
     return () => {
       window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('blur', cancel);
+      void suspendHotkeys(false);
     };
   }, [recording, qc, t]);
 

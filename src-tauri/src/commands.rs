@@ -222,6 +222,12 @@ pub fn set_hotkey(app: AppHandle, action: String, accelerator: String) -> AppRes
     crate::hotkeys::set_hotkey(&app, &action, &accelerator)
 }
 
+/// Settings' shortcut recorder: hotkeys off while it listens, so its keys don't fire actions.
+#[tauri::command]
+pub fn suspend_hotkeys(app: AppHandle, suspended: bool) {
+    crate::hotkeys::suspend(&app, suspended);
+}
+
 #[tauri::command]
 pub async fn quit_app(app: AppHandle) {
     crate::system::quit(&app).await;

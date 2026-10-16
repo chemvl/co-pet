@@ -1,14 +1,18 @@
 // Hash router for the Home window: `#/inbox`, `#/inbox/pinned`, `#/inbox/unsorted`,
-// `#/category/<id>`, `#/item/<id>`, `#/settings/<section>`.
+// `#/category/<id>`, `#/item/<id>`, `#/tasks`, `#/tasks/done`, `#/tasks/<open|done>/<id>`,
+// `#/tasks/new`, `#/settings/<section>`.
 import { useEffect, useState } from 'react';
 import type { CategoryId } from '../shared/types';
 
 export type InboxView = 'all' | 'pinned' | 'unsorted';
+export type TasksView = 'open' | 'done';
 
 export type Route =
   | { page: 'inbox'; view: InboxView }
   | { page: 'category'; categoryId: CategoryId }
   | { page: 'item'; id: string }
+  /** `id` selects a task; `new` opens the editor in create mode. */
+  | { page: 'tasks'; view: TasksView; id?: string; new?: true }
   | { page: 'settings'; section: string };
 
 const DEFAULT_SETTINGS_SECTION = 'general';
@@ -18,7 +22,7 @@ const DEFAULT_SETTINGS_SECTION = 'general';
  * non-empty `#/category/<id>` is a category page (InboxPage shows the Inbox when it isn't live).
  */
 export function parseRoute(hash: string): Route {
-  const [head, arg] = hash
+  const [head, arg, arg2] = hash
     .replace(/^#?\/?/, '')
     .split('/')
     .filter(Boolean)
@@ -33,6 +37,10 @@ export function parseRoute(hash: string): Route {
     case 'item':
       if (arg) return { page: 'item', id: arg };
       break;
+    case 'tasks':
+      if (arg === 'new') return { page: 'tasks', view: 'open', new: true };
+      if (arg === 'open' || arg === 'done') return arg2 ? { page: 'tasks', view: arg, id: arg2 } : { page: 'tasks', view: arg };
+      return { page: 'tasks', view: 'open' };
     case 'settings':
       return { page: 'settings', section: arg || DEFAULT_SETTINGS_SECTION };
   }
@@ -48,6 +56,10 @@ export function routePath(r: Route): string {
       return `category/${r.categoryId}`;
     case 'item':
       return `item/${encodeURIComponent(r.id)}`;
+    case 'tasks':
+      if (r.new) return 'tasks/new';
+      if (r.id) return `tasks/${r.view}/${encodeURIComponent(r.id)}`;
+      return r.view === 'open' ? 'tasks' : 'tasks/done';
     case 'settings':
       return `settings/${r.section}`;
   }

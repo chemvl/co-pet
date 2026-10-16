@@ -21,6 +21,13 @@ describe('format', () => {
   it('formats estimates', () => {
     expect(formatEstimate(10, 'en')).toBe('~10 min');
     expect(formatEstimate(10, 'vi')).toBe('~10 phút');
+    expect(formatEstimate(59, 'en')).toBe('~59 min');
+  });
+  it('formats estimates from an hour in hours and minutes', () => {
+    expect(formatEstimate(60, 'en')).toBe('~1 h');
+    expect(formatEstimate(120, 'vi')).toBe('~2 giờ');
+    expect(formatEstimate(90, 'en')).toBe('~1 h 30 min');
+    expect(formatEstimate(90, 'vi')).toBe('~1 giờ 30 phút');
   });
   it('joins non-empty meta parts', () => {
     expect(joinMeta(['Slack', '', null, '#frontend', undefined, '14:02'])).toBe('Slack · #frontend · 14:02');

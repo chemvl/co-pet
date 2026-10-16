@@ -33,9 +33,13 @@ export function formatSize(bytes: number, lang: Lang): string {
   return `${bytes} B`;
 }
 
-/** `~10 min` / `~10 phút`. */
+/** `~10 min` / `~10 phút`; from an hour `~1 h`, `~1 h 30 min` / `~1 giờ`, `~1 giờ 30 phút`. */
 export function formatEstimate(min: number, lang: Lang): string {
-  return `~${min} ${lang === 'vi' ? 'phút' : 'min'}`;
+  const [minUnit, hourUnit] = lang === 'vi' ? ['phút', 'giờ'] : ['min', 'h'];
+  if (min < 60) return `~${min} ${minUnit}`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `~${h} ${hourUnit} ${m} ${minUnit}` : `~${h} ${hourUnit}`;
 }
 
 /** Joins non-empty parts with ` · ` (source · context · time). */

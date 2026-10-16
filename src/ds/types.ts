@@ -159,6 +159,14 @@ export interface TaskRowProps {
   exportStatus?: Status;
   exportLabel?: string;
   className?: string;
+  /** Co-pet addition: click on the body or Enter on the focused row; also makes the row focusable. */
+  onOpen?: () => void;
+  /** Co-pet addition: called by the quiet "more" button with that button as the menu anchor. */
+  onActions?: (anchor: HTMLButtonElement) => void;
+  /** Co-pet addition: adds `is-selected` (surface-selected background). */
+  selected?: boolean;
+  /** Co-pet addition: replaces the English aria-labels of the check and the "more" button. */
+  labels?: { markDone: string; actions: string };
 }
 
 export interface TranscriptSegmentProps {

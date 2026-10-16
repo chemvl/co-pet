@@ -1,5 +1,5 @@
-// Home sidebar: pet avatar + model status, Inbox, the live categories with counts (Unsorted's
-// is a red badge and stays last), Settings at the bottom.
+// Home sidebar: pet avatar + model status, Inbox, Tasks, the live categories with counts
+// (Unsorted's is a red badge and stays last), Settings at the bottom.
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { Icon, type IconName } from '../ds';
@@ -11,7 +11,7 @@ import { useAiStatus, useCategories, useSettings } from '../shared/queries';
 import type { AiStatus } from '../shared/types';
 import { countsQuery } from './queries';
 
-/** `inbox`, `settings` or a category id; empty for none. */
+/** `inbox`, `tasks`, `settings` or a category id; empty for none. */
 export type NavKey = string;
 
 const SKINS: readonly CatSkin[] = ['peach', 'tabby', 'midnight'];
@@ -63,6 +63,13 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
         icon="inbox"
         label={t('home.inbox')}
         count={<span className="hm-nav__count">{c?.inbox ?? ''}</span>}
+      />
+      <NavLink
+        href="#/tasks"
+        active={active === 'tasks'}
+        icon="tasks"
+        label={t('tasks.title')}
+        count={<span className="hm-nav__count">{c?.tasksOpen ?? ''}</span>}
       />
       <div className="hm-nav__heading">{t('home.categories')}</div>
       {categories?.map((cat) => (

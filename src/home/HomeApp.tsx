@@ -13,6 +13,7 @@ import { ItemDetail } from './ItemDetail';
 import { itemQuery } from './queries';
 import { navigate, routePath, useRoute, type Route } from './router';
 import { SettingsPage } from './settings/SettingsPage';
+import { TasksPage } from './tasks/TasksPage';
 import { TitleBar } from './TitleBar';
 import { useDebounced } from './hooks';
 
@@ -50,6 +51,8 @@ function navKey(route: Route, itemCategory: string | undefined): NavKey {
       return route.categoryId;
     case 'item':
       return itemCategory ?? '';
+    case 'tasks':
+      return 'tasks';
     case 'settings':
       return 'settings';
   }
@@ -62,7 +65,10 @@ export function HomeApp(): ReactElement {
   const query = useDebounced(search.trim(), SEARCH_DEBOUNCE_MS);
   const searchRef = useRef<HTMLInputElement>(null);
   const lastList = useRef('inbox');
-  if (route.page === 'inbox' || route.page === 'category') lastList.current = routePath(route);
+  // Back from an item (e.g. a task's source) returns to the last list, Tasks included.
+  if (route.page === 'inbox' || route.page === 'category' || (route.page === 'tasks' && !route.new)) {
+    lastList.current = routePath(route);
+  }
   const item = useQuery({ ...itemQuery(route.page === 'item' ? route.id : ''), enabled: route.page === 'item' }).data;
   const { data: categories } = useCategories();
   // A category route whose id isn't live shows the Inbox (see InboxPage).
@@ -104,6 +110,10 @@ export function HomeApp(): ReactElement {
     case 'item':
       pageName = item ? `${categoryLabelOf(categories, item.categoryId, t)} · ${item.title}` : t('common.item');
       page = <ItemDetail key={route.id} id={route.id} mode="page" onBack={() => navigate(lastList.current)} />;
+      break;
+    case 'tasks':
+      pageName = t('tasks.title');
+      page = <TasksPage route={route} search={query} onClearSearch={() => setSearch('')} />;
       break;
     case 'settings':
       pageName = t('settings.title');

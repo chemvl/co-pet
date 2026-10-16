@@ -328,12 +328,15 @@ export function RecordingHUD(p: RecordingHUDProps): ReactElement {
 
 /* ---------- TaskRow ---------- */
 export function TaskRow(p: TaskRowProps): ReactElement {
+  const L = Object.assign({ markDone: 'Mark done', actions: 'Task actions' }, p.labels || {});
   return (
-    <div className={cx('cp-task', p.done && 'is-done', p.className)} role="listitem">
-      <button type="button" role="checkbox" aria-checked={!!p.done} aria-label="Mark done" className="cp-task__check" onClick={p.onToggle}>
+    <div className={cx('cp-task', p.done && 'is-done', p.selected && 'is-selected', p.className)} role="listitem"
+      tabIndex={p.onOpen ? 0 : undefined}
+      onKeyDown={p.onOpen ? (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); p.onOpen!(); } } : undefined}>
+      <button type="button" role="checkbox" aria-checked={!!p.done} aria-label={L.markDone} className="cp-task__check" onClick={p.onToggle}>
         {p.done ? <Icon name="check" size={14} strokeWidth={2.5} /> : null}
       </button>
-      <div className="cp-task__body">
+      <div className="cp-task__body" onClick={p.onOpen}>
         <div className="cp-task__title">{p.title}</div>
         <div className="cp-task__meta">
           {p.source ? <span><Icon name={p.source === 'meeting' ? 'meeting' : 'inbox'} size={14} />{p.sourceLabel}</span> : null}
@@ -343,7 +346,8 @@ export function TaskRow(p: TaskRowProps): ReactElement {
       </div>
       <div className="cp-task__side">
         {p.exportStatus ? <StatusPill status={p.exportStatus} label={p.exportLabel} /> : null}
-        <Button variant="quiet" size="sm" icon="more" aria-label="Task actions" />
+        <Button variant="quiet" size="sm" icon="more" aria-label={L.actions} aria-haspopup={p.onActions ? 'menu' : undefined}
+          onClick={p.onActions ? (e) => p.onActions!(e.currentTarget) : undefined} />
       </div>
     </div>
   );

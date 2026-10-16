@@ -394,7 +394,7 @@ function QuickNoteRow({ onDone }: { onDone: () => void }): ReactElement {
   );
 }
 
-function EmptyState(p: { title: string; line: string; action: { label: string; run: () => void } }): ReactElement {
+export function EmptyState(p: { title: string; line: string; action: { label: string; run: () => void } }): ReactElement {
   return (
     <div className="hm-empty">
       <h2 className="display hm-empty__title">{p.title}</h2>
@@ -406,7 +406,7 @@ function EmptyState(p: { title: string; line: string; action: { label: string; r
   );
 }
 
-function Skeleton({ label }: { label: string }): ReactElement {
+export function Skeleton({ label }: { label: string }): ReactElement {
   return (
     <div className="hm-skeleton" role="status" aria-label={label}>
       {Array.from({ length: SKELETON_ROWS }, (_, i) => (

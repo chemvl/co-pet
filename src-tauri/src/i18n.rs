@@ -40,6 +40,13 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tray.resumePet" => ("Resume pet", "Tiếp tục thú cưng"),
         "tray.settings" => ("Settings", "Cài đặt"),
         "tray.quit" => ("Quit Co-pet", "Thoát Co-pet"),
+        "quit.recording.title" => ("Stop recording and quit?", "Dừng ghi âm và thoát?"),
+        "quit.recording.body" => (
+            "The recording so far is kept and transcribed the next time Co-pet opens.",
+            "Phần đã ghi được giữ lại và chuyển thành văn bản khi Co-pet mở lại.",
+        ),
+        "quit.recording.ok" => ("Stop and quit", "Dừng và thoát"),
+        "quit.recording.cancel" => ("Keep recording", "Tiếp tục ghi"),
         "category.todo" => ("To-do", "Việc cần làm"),
         "category.read" => ("Read later", "Đọc sau"),
         "category.reference" => ("Reference", "Tài liệu"),

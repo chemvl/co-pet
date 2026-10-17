@@ -5,7 +5,7 @@ import type {
   AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
-  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus,
+  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
 } from './types';
 
 // Step 3 — storage
@@ -47,6 +47,15 @@ export const aiPause = () => invoke<void>('ai_pause');
 export const speechStatus = () => invoke<SpeechStatus>('speech_status');
 export const speechDownload = (pack: SpeechPackId) => invoke<void>('speech_download', { pack });
 export const speechPause = (pack: SpeechPackId) => invoke<void>('speech_pause', { pack });
+export const recordingStatus = () => invoke<RecordingStatus>('recording_status');
+/** Rejects with `alreadyRecording`, `invalid`, `noAudioSource` or `micUnavailable`. */
+export const startRecording = (language?: string) => invoke<RecordingStatus>('start_recording', { language });
+export const pauseRecording = () => invoke<RecordingStatus>('pause_recording');
+export const resumeRecording = () => invoke<RecordingStatus>('resume_recording');
+/** Resolves with the meeting id; rejects with `notRecording` or `tooShort`. */
+export const stopRecording = () => invoke<string>('stop_recording');
+export const setRecordingLanguage = (language: string) =>
+  invoke<RecordingStatus>('set_recording_language', { language });
 export const aiSelectModel = (modelId: string) => invoke<void>('ai_select_model', { modelId });
 export const recategorize = (ids: string[], categoryId: CategoryId) =>
   invoke<{ eventIds: string[] }>('recategorize', { ids, categoryId });

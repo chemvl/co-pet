@@ -106,6 +106,11 @@ export const vi: Record<keyof typeof en, string> = {
   'error.signedOut': 'Bạn đã bị đăng xuất. Đăng nhập lại để tiếp tục đồng bộ.',
   'error.decrypt': 'Co-pet không giải mã được dữ liệu này.',
   'error.fileElsewhere': 'File này đang ở máy Mac khác. File sẽ tải về khi đồng bộ xong, hoặc ở lại máy đó nếu vượt giới hạn dung lượng.',
+  'error.alreadyRecording': 'Đang có một bản ghi.',
+  'error.notRecording': 'Không có bản ghi nào đang chạy.',
+  'error.noAudioSource': 'Ghi âm cần quyền Micro hoặc Ghi màn hình.',
+  'error.micUnavailable': 'Không tìm thấy micro.',
+  'error.tooShort': 'Bản ghi quá ngắn nên không được lưu.',
 
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',

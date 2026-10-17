@@ -105,6 +105,11 @@ export const en = {
   'error.signedOut': 'You were signed out. Sign in again to keep syncing.',
   'error.decrypt': "Co-pet couldn't decrypt that data.",
   'error.fileElsewhere': "This file is on another Mac. It downloads when sync finishes, or stays there if it's over the size limit.",
+  'error.alreadyRecording': 'A recording is already running.',
+  'error.notRecording': 'Nothing is being recorded.',
+  'error.noAudioSource': 'Recording needs Microphone or Screen Recording permission.',
+  'error.micUnavailable': 'No microphone was found.',
+  'error.tooShort': 'That recording was too short to keep.',
 
   'kind.file': 'File',
   'kind.image': 'Image',

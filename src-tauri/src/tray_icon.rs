@@ -79,8 +79,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         "settings" => windows::open_home(app, Some("settings/general".into())),
         "quit" => {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move { system::quit(&app).await });
+            system::request_quit(app);
             Ok(())
         }
         _ => Ok(()),

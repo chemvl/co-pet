@@ -5,6 +5,8 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::db::{settings, Db};
 use crate::error::AppResult;
+use crate::model::RecordingStatus;
+use crate::transcribe::recorder::Recorder;
 
 // ---------- Step 3: storage ----------
 
@@ -183,6 +185,45 @@ pub fn speech_pause(
 }
 
 #[tauri::command]
+pub fn recording_status(rec: State<'_, Recorder>) -> RecordingStatus {
+    rec.status()
+}
+
+#[tauri::command]
+pub async fn start_recording(
+    app: AppHandle,
+    rec: State<'_, Recorder>,
+    language: Option<String>,
+) -> AppResult<RecordingStatus> {
+    rec.start(&app, language).await
+}
+
+#[tauri::command]
+pub fn pause_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<RecordingStatus> {
+    rec.pause(&app)
+}
+
+#[tauri::command]
+pub fn resume_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<RecordingStatus> {
+    rec.resume(&app)
+}
+
+/// Returns the meeting id.
+#[tauri::command]
+pub async fn stop_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<String> {
+    rec.stop(&app).await
+}
+
+#[tauri::command]
+pub fn set_recording_language(
+    app: AppHandle,
+    rec: State<'_, Recorder>,
+    language: String,
+) -> AppResult<RecordingStatus> {
+    rec.set_language(&app, language)
+}
+
+#[tauri::command]
 pub async fn ai_select_model(app: AppHandle, model_id: String) -> AppResult<()> {
     crate::llm::select_model(&app, &model_id).await
 }
@@ -263,8 +304,8 @@ pub fn suspend_hotkeys(app: AppHandle, suspended: bool) {
 }
 
 #[tauri::command]
-pub async fn quit_app(app: AppHandle) {
-    crate::system::quit(&app).await;
+pub fn quit_app(app: AppHandle) {
+    crate::system::request_quit(&app);
 }
 
 #[tauri::command]

@@ -5,19 +5,30 @@ use std::time::Duration;
 use serde_json::Value;
 use tauri::{AppHandle, Listener, Manager, RunEvent};
 use tauri_plugin_autostart::ManagerExt as _;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 use crate::agent::http::McpHttp;
 use crate::db::settings;
 use crate::events;
+use crate::i18n::{self, tr};
 use crate::llm::LlmServer;
+use crate::transcribe::recorder::Recorder;
 use crate::windows;
 
 const OPEN_AT_LOGIN: &str = "general.openAtLogin";
 /// Quit must not hang on a `llama-server` that is still starting.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// `quit_app` and the menu bar's Quit: stop the model server and the MCP HTTP server, then exit.
+/// The exit path: stops a running recording (it is queued and transcribed next launch), the
+/// model server and the MCP HTTP server, then exits. Signals call it directly, without asking.
 pub async fn quit(app: &AppHandle) {
+    if let Some(rec) = app.try_state::<Recorder>() {
+        if rec.is_active() {
+            if let Err(e) = rec.stop(app).await {
+                eprintln!("[system] stopping the recording on quit: {e}");
+            }
+        }
+    }
     if let Some(llm) = app.try_state::<LlmServer>() {
         let _ = tokio::time::timeout(STOP_TIMEOUT, llm.stop()).await;
     }
@@ -25,6 +36,33 @@ pub async fn quit(app: &AppHandle) {
         http.stop().await;
     }
     app.exit(0);
+}
+
+/// `quit_app` and the menu bar's Quit: quits at once, or asks first while recording.
+pub fn request_quit(app: &AppHandle) {
+    let recording = app.try_state::<Recorder>().is_some_and(|r| r.is_active());
+    if !recording {
+        spawn_quit(app.clone());
+        return;
+    }
+    let lang = i18n::lang(app);
+    let handle = app.clone();
+    app.dialog()
+        .message(tr(lang, "quit.recording.body"))
+        .title(tr(lang, "quit.recording.title"))
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            tr(lang, "quit.recording.ok").into(),
+            tr(lang, "quit.recording.cancel").into(),
+        ))
+        .show(move |ok| {
+            if ok {
+                spawn_quit(handle);
+            }
+        });
+}
+
+fn spawn_quit(app: AppHandle) {
+    tauri::async_runtime::spawn(async move { quit(&app).await });
 }
 
 /// SIGTERM (`kill`, launchd), SIGINT and SIGHUP exit through `quit` instead of ending the

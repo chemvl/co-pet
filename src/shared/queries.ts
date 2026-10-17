@@ -1,20 +1,22 @@
 // Shared react-query hooks for settings, categories, the local-model status, the export
 // integrations, the MCP clients and the account. Each hook keeps its cache live from Rust
 // events: `settings-changed`, `categories-changed`, `integration-changed`, `exports-changed`,
-// `agents-changed` and `account-changed` invalidate their query; `ai-status` and `sync-status`
-// replace theirs in place.
+// `agents-changed` and `account-changed` invalidate their query; `ai-status`, `sync-status` and
+// `recording-status` replace theirs in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { useT } from './i18n';
 import {
   accountStatus, aiStatus, speechStatus, syncStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
+  recordingStatus,
   setSetting,
 } from './ipc';
-import type { AiStatus, Json, SpeechStatus, SyncStatus } from './types';
+import type { AiStatus, Json, RecordingStatus, SpeechStatus, SyncStatus } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
 export const AI_STATUS_KEY = ['aiStatus'] as const;
 export const SPEECH_STATUS_KEY = ['speechStatus'] as const;
+export const RECORDING_KEY = ['recording'] as const;
 export const CATEGORIES_KEY = ['categories'] as const;
 export const INTEGRATIONS_KEY = ['integrations'] as const;
 export const BACKEND_KEY = ['backendStatus'] as const;
@@ -108,6 +110,21 @@ export function useSpeechStatus() {
     });
   }, [qc]);
   return useQuery({ queryKey: SPEECH_STATUS_KEY, queryFn: speechStatus, staleTime: Infinity });
+}
+
+const recordingSubscribed = new WeakSet<QueryClient>();
+
+/** The meeting recorder's state, kept fresh by `recording-status`. */
+export function useRecording() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (recordingSubscribed.has(qc)) return;
+    recordingSubscribed.add(qc);
+    void on('recording-status', (s) => {
+      qc.setQueryData<RecordingStatus>(RECORDING_KEY, s);
+    });
+  }, [qc]);
+  return useQuery({ queryKey: RECORDING_KEY, queryFn: recordingStatus, staleTime: Infinity });
 }
 
 /** Notion and Asana: connection, target and this device's queue. */

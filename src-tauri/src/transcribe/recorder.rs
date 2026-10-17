@@ -596,7 +596,6 @@ impl Recorder {
     /// Starts a recording in `language` (default `transcribe.language`): asks for the
     /// microphone while undecided, creates the meeting row and its folder, starts every track
     /// available. Errors: `alreadyRecording`, `invalid`, `noAudioSource`, `micUnavailable`.
-    #[allow(dead_code)] // `start_recording` command (Task 3.4)
     pub async fn start(&self, app: &AppHandle, language: Option<String>) -> AppResult<RecordingStatus> {
         let _op = self.op.lock().await;
         if self.is_active() {
@@ -666,19 +665,16 @@ impl Recorder {
     }
 
     /// While paused the clock stands still and incoming audio is dropped.
-    #[allow(dead_code)] // `pause_recording` command (Task 3.4)
     pub fn pause(&self, app: &AppHandle) -> AppResult<RecordingStatus> {
         self.update(app, |s| lock(&s.clock).pause())
     }
 
-    #[allow(dead_code)] // `resume_recording` command (Task 3.4)
     pub fn resume(&self, app: &AppHandle) -> AppResult<RecordingStatus> {
         self.update(app, |s| lock(&s.clock).resume())
     }
 
     /// Stops the recording and queues the meeting for transcription; returns its id. Under 2 s
     /// the recording is discarded (`tooShort`).
-    #[allow(dead_code)] // `stop_recording` command and the quit guard (Task 3.4)
     pub async fn stop(&self, app: &AppHandle) -> AppResult<String> {
         self.end(app, None, None).await
     }
@@ -718,7 +714,6 @@ impl Recorder {
     }
 
     /// Also updates the meeting row. Errors: `notRecording`, `invalid`.
-    #[allow(dead_code)] // `set_recording_language` command (Task 3.4)
     pub fn set_language(&self, app: &AppHandle, language: String) -> AppResult<RecordingStatus> {
         let id = lock(&self.session).as_ref().map(|s| s.meeting_id.clone()).ok_or(AppError::Code("notRecording"))?;
         meetings::set_language(&app.state::<Db>().conn(), &id, &language)?;

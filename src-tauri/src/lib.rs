@@ -89,6 +89,8 @@ pub fn run() {
             // After the export queue: `export_task` pokes it.
             agent::start(&handle);
             sync::start(&handle);
+            // Before `transcribe::start`, whose crash recovery and worker use it.
+            app.manage(transcribe::recorder::Recorder::default());
             system::watch_autostart(&handle);
             if settings_bool(&handle, "onboarding.completed") {
                 windows::create_pet_window(&handle)?;
@@ -137,6 +139,12 @@ pub fn run() {
             commands::speech_status,
             commands::speech_download,
             commands::speech_pause,
+            commands::recording_status,
+            commands::start_recording,
+            commands::pause_recording,
+            commands::resume_recording,
+            commands::stop_recording,
+            commands::set_recording_language,
             commands::recategorize,
             commands::make_rule_from_item,
             commands::set_pinned,

@@ -14,6 +14,16 @@ export function useDelayed(active: boolean, ms: number): boolean {
   return active && late;
 }
 
+/** The current time, re-read every minute so relative times ("2 min ago") keep up. */
+export function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
 export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
     (notify) => {

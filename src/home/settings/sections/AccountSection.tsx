@@ -11,6 +11,7 @@ import { pendingText, syncPill } from '../../../shared/sync';
 import { useToast } from '../../../shared/Toast';
 import type { AccountStatus } from '../../../shared/types';
 import { relativeTime } from '../../agents/activityText';
+import { useNow } from '../../hooks';
 import { QueryState } from '../../InboxPage';
 import { Group, SettingRow, TypedConfirmDialog, useCopied } from '../parts';
 import { accountError, accountView } from './account';
@@ -356,6 +357,7 @@ function SyncRow({ r }: { r: Run }): ReactElement | null {
   const t = useT();
   const lang = useLang();
   const sync = useSyncStatus().data;
+  const now = useNow();
   if (!sync) return null;
   const pill = syncPill(sync.state);
   return (
@@ -364,7 +366,7 @@ function SyncRow({ r }: { r: Run }): ReactElement | null {
         <p className="st-body">
           <StatusPill status={pill.status} icon={pill.icon} label={t(pill.label)} />
           {sync.lastSyncedAt != null
-            ? ` · ${t('settings.account.lastSynced', { time: relativeTime(sync.lastSyncedAt, Date.now(), t, lang) })}`
+            ? ` · ${t('settings.account.lastSynced', { time: relativeTime(sync.lastSyncedAt, now, t, lang) })}`
             : null}
         </p>
         {sync.pending > 0 ? <p className="st-desc">{pendingText(t, sync.pending)}</p> : null}

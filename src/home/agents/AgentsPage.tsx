@@ -3,7 +3,7 @@
 // with Undo. Every query lives under `AGENTS_KEY`, refreshed by `agents-changed`.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { useEffect, useId, useState, type ReactElement, type ReactNode } from 'react';
+import { useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Button, Icon, SegmentedControl, StatusPill } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { formatDate, formatTime } from '../../shared/format';
@@ -18,6 +18,7 @@ import type { ActivityRow, KnownMcpClient, McpClientView } from '../../shared/ty
 import { PROVIDER_NAME } from '../integrations/model';
 import { MenuButton } from '../Menu';
 import { QueryState } from '../InboxPage';
+import { useNow } from '../hooks';
 import { activityAction, activityText, relativeTime } from './activityText';
 import { Dialog, useCopied } from '../settings/parts';
 import '../settings/settings.css';
@@ -30,8 +31,6 @@ function isKnown(key: string): key is KnownMcpClient {
 }
 
 const ACTIVITY_LIMIT = 100;
-/** "last call 2 min ago" follows the clock between data changes. */
-const CLOCK_TICK_MS = 60_000;
 
 type Show = 'all' | 'writes';
 
@@ -55,16 +54,6 @@ function useAgentsRun(): { busy: string | null; run: <T>(key: string, op: () => 
     }
   };
   return { busy, run };
-}
-
-/** A failed query's message with Try again, or a delayed skeleton while it loads; null once loaded. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => window.clearInterval(id);
-  }, []);
-  return now;
 }
 
 export function AgentsPage(): ReactElement {

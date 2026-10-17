@@ -1,6 +1,7 @@
 // OAuth hand-off for Notion and Asana. The app opens /start in the browser with a random
 // `state` and a PKCE-style `challenge`; the provider redirects to /callback, which exchanges the
-// code with the client secret and parks the normalized token; the app then claims it with the
+// code with the client secret, parks the normalized token and sends the browser to the done page
+// (COPET_OAUTH_DONE_URL), which opens `copet://oauth/done`; the app then claims the token with the
 // verifier via /claim. /refresh runs the refresh grant with the secret held here.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
@@ -15,6 +16,7 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/oauth/callback`;
+const DONE_URL = Deno.env.get("COPET_OAUTH_DONE_URL") ?? "";
 const HANDOFF_TTL_MS = 10 * 60 * 1000;
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const ASANA_TOKEN_URL = "https://app.asana.com/-/oauth_token";
@@ -92,12 +94,12 @@ async function callback(url: URL): Promise<Response> {
     ? await db.from("oauth_handoffs").select("provider").eq("state", state)
       .gte("created_at", cutoff).maybeSingle()
     : { data: null };
-  if (!row || !isProvider(row.provider)) return redirect(doneUrl({ state, error: "expired" }));
-  if (url.searchParams.get("error")) return redirect(doneUrl({ state, error: "denied" }));
+  if (!row || !isProvider(row.provider)) return redirect(doneUrl(DONE_URL, { state, error: "expired" }));
+  if (url.searchParams.get("error")) return redirect(doneUrl(DONE_URL, { state, error: "denied" }));
 
   const provider = row.provider;
   const code = url.searchParams.get("code");
-  const failed = redirect(doneUrl({ state, error: "exchange" }));
+  const failed = redirect(doneUrl(DONE_URL, { state, error: "exchange" }));
   if (!code) return failed;
   try {
     const res = await tokenRequest(provider, {
@@ -113,7 +115,7 @@ async function callback(url: URL): Promise<Response> {
   } catch {
     return failed;
   }
-  return redirect(doneUrl({ provider, state }));
+  return redirect(doneUrl(DONE_URL, { provider, state }));
 }
 
 async function claim(req: Request): Promise<Response> {

@@ -1,6 +1,6 @@
 //! Notion/Asana OAuth through the backend `oauth` function (PKCE). `start` opens the browser;
-//! the function redirects to `copet://oauth/done?state=…`, and `finish` claims the token with
-//! the verifier only this process knows.
+//! the function sends it to the done page, which opens `copet://oauth/done?state=…`, and
+//! `finish` claims the token with the verifier only this process knows.
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};

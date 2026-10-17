@@ -2,7 +2,7 @@
 
 1. `supabase link --project-ref <ref>`
 2. `supabase db push`
-3. `supabase secrets set NOTION_CLIENT_ID=… NOTION_CLIENT_SECRET=… ASANA_CLIENT_ID=… ASANA_CLIENT_SECRET=… COPET_SERVICE_KEY=<secret key from Project Settings › API keys>`
+3. `supabase secrets set NOTION_CLIENT_ID=… NOTION_CLIENT_SECRET=… ASANA_CLIENT_ID=… ASANA_CLIENT_SECRET=… COPET_SERVICE_KEY=<secret key from Project Settings › API keys> COPET_OAUTH_DONE_URL=https://mrdeeds88.github.io/oauth/done/`. The done page is a static HTML page (here GitHub Pages, repo `mrdeeds88.github.io`, file `oauth/done/index.html`) that sets `location.href = "copet://oauth/done?" + location.hash.slice(1)` and shows an "Open Co-pet" link. It can't be served by an Edge Function: hosted functions rewrite GET `text/html` to `text/plain`.
 4. `supabase functions deploy oauth --no-verify-jwt`
 5. Set the Notion public integration redirect URI and the Asana app redirect URL to `https://<ref>.supabase.co/functions/v1/oauth/callback`.
 6. Register these scopes on the Asana app: `tasks:read tasks:write workspaces:read projects:read attachments:write users:read`. On the Notion public integration (Configuration › Capabilities), enable Read content, Update content and Insert content.

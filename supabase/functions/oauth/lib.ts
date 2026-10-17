@@ -61,8 +61,14 @@ export function authorizeUrl(
   ]);
 }
 
-export function doneUrl(params: Record<string, string>): string {
-  return "copet://oauth/done?" + q(Object.entries(params));
+/**
+ * The page the browser lands on after the callback: `base` is an HTTPS page (COPET_OAUTH_DONE_URL)
+ * that opens `copet://oauth/done?<fragment>`. Ending on a real page lets the provider's consent
+ * tab navigate away; a bare `copet://` redirect leaves Notion's tab in place until it reports a
+ * timeout. The params ride in the fragment, so they never reach the page host's logs.
+ */
+export function doneUrl(base: string, params: Record<string, string>): string {
+  return base + "#" + q(Object.entries(params));
 }
 
 /**

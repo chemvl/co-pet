@@ -30,8 +30,11 @@ Deno.test("authorizeUrl builds provider URLs with encoded redirect and scope", (
   assert(a.endsWith("&scope=tasks%3Aread%20tasks%3Awrite%20workspaces%3Aread%20projects%3Aread%20attachments%3Awrite%20users%3Aread"));
 });
 
-Deno.test("doneUrl encodes params", () => {
-  assertEquals(doneUrl({ state: "a b", error: "expired" }), "copet://oauth/done?state=a%20b&error=expired");
+Deno.test("doneUrl puts encoded params in the fragment of the done page", () => {
+  assertEquals(
+    doneUrl("https://e.x/oauth/done/", { state: "a b", error: "expired" }),
+    "https://e.x/oauth/done/#state=a%20b&error=expired",
+  );
 });
 
 Deno.test("normalizeToken maps Notion, Asana and refresh responses", () => {

@@ -581,3 +581,19 @@ export interface EventPayloads {
   /** Pet window only, every 100 ms while recording: track levels 0–1 (0 for a track that is off). */
   'recording-level': { mic: number; system: number };
 }
+
+// Phase 4 M3 — pet diary
+export interface DiaryDay { date: string; captured: number; tasksDone: number; meetings: number }
+export interface DiaryCategory { categoryId: CategoryId; count: number }
+export interface DiaryWeek {
+  offset: number;
+  start: string;
+  end: string;
+  captured: number;
+  tasksDone: number;
+  meetings: number;
+  meetingMs: number;
+  topCategories: DiaryCategory[];
+  days: DiaryDay[];
+  hasPrevious: boolean;
+}

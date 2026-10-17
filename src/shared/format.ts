@@ -69,3 +69,15 @@ export function formatDuration(ms: number, lang: Lang): string {
 export function joinMeta(parts: (string | null | undefined | false)[]): string {
   return parts.filter(Boolean).join(' · ');
 }
+
+/** en `12 Oct – 18 Oct`, vi `12/10 – 18/10`; a date outside `nowYear` adds its year (`29 Dec 2025`, `29/12/2025`). */
+export function formatWeekRange(start: string, end: string, lang: Lang, nowYear: number): string {
+  const one = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const other = date.getFullYear() !== nowYear;
+    if (lang === 'vi') return `${date.getDate()}/${date.getMonth() + 1}${other ? `/${date.getFullYear()}` : ''}`;
+    return `${date.getDate()} ${EN_MONTHS[date.getMonth()]}${other ? ` ${date.getFullYear()}` : ''}`;
+  };
+  return `${one(start)} – ${one(end)}`;
+}

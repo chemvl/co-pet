@@ -31,6 +31,7 @@ function useLiveQueries(): void {
       void qc.invalidateQueries({ queryKey: ['items'] });
       void qc.invalidateQueries({ queryKey: ['item'] });
       void qc.invalidateQueries({ queryKey: ['counts'] });
+      void qc.invalidateQueries({ queryKey: ['diary'] });
     };
     const refreshTasks = () => {
       void qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -39,10 +40,12 @@ function useLiveQueries(): void {
       void qc.invalidateQueries({ queryKey: ['next'] });
       // Action items link their tasks.
       void qc.invalidateQueries({ queryKey: ['meeting'] });
+      void qc.invalidateQueries({ queryKey: ['diary'] });
     };
     const refreshMeetings = () => {
       void qc.invalidateQueries({ queryKey: ['meetings'] });
       void qc.invalidateQueries({ queryKey: ['meeting'] });
+      void qc.invalidateQueries({ queryKey: ['diary'] });
     };
     const subs = [
       on('items-changed', refresh),

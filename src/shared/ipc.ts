@@ -6,7 +6,7 @@ import type {
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
-  MeetingDetail, MeetingSummary,
+  MeetingDetail, MeetingSummary, DiaryWeek,
 } from './types';
 
 // Step 3 — storage
@@ -259,3 +259,7 @@ export function on<K extends keyof EventPayloads>(
 ): Promise<UnlistenFn> {
   return listen<EventPayloads[K]>(event, (e) => handler(e.payload));
 }
+
+// Phase 4 M3 — pet diary
+/** null = last week, or this week when last week is empty. Rejects with "invalid". */
+export const diaryWeek = (offset: number | null) => invoke<DiaryWeek>('diary_week', { offset });

@@ -10,6 +10,7 @@ import { useSetSetting, useSettings } from '../../shared/queries';
 import { useMediaQuery } from '../hooks';
 import { navigate } from '../router';
 import { SkinSwatches, SpeciesTiles } from '../settings/parts';
+import { DiaryPanel } from './DiaryPanel';
 import './petroom.css';
 
 const NAME_MAX = 24;
@@ -135,6 +136,7 @@ export function PetRoomPage(): ReactElement {
             {t('petroom.openSettings')}
           </button>
         </p>
+        <DiaryPanel />
       </aside>
     </div>
   );

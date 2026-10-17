@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatClock, formatDate, formatDuration, formatEstimate, formatSize, formatTime, formatWeekday, joinMeta,
+  formatClock, formatDate, formatDuration, formatEstimate, formatSize, formatTime, formatWeekday, formatWeekRange, joinMeta,
 } from './format';
 
 describe('format', () => {
@@ -54,5 +54,12 @@ describe('format', () => {
   });
   it('joins non-empty meta parts', () => {
     expect(joinMeta(['Slack', '', null, '#frontend', undefined, '14:02'])).toBe('Slack · #frontend · 14:02');
+  });
+
+  it('formats week ranges, adding the year outside nowYear', () => {
+    expect(formatWeekRange('2026-10-12', '2026-10-18', 'en', 2026)).toBe('12 Oct – 18 Oct');
+    expect(formatWeekRange('2026-10-12', '2026-10-18', 'vi', 2026)).toBe('12/10 – 18/10');
+    expect(formatWeekRange('2025-12-29', '2026-01-04', 'en', 2026)).toBe('29 Dec 2025 – 4 Jan');
+    expect(formatWeekRange('2025-12-29', '2026-01-04', 'vi', 2026)).toBe('29/12/2025 – 4/1');
   });
 });

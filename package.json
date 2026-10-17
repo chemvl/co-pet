@@ -14,6 +14,7 @@
     "fetch:llama": "bun scripts/fetch-llama.ts",
     "sign:llama": "bun scripts/sign-llama.ts",
     "release": "bun scripts/release.ts",
+    "publish:site": "bun scripts/publish-site.ts",
     "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png"
   },
   "dependencies": {

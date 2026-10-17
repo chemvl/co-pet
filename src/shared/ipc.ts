@@ -6,6 +6,7 @@ import type {
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
+  MeetingDetail, MeetingSummary,
 } from './types';
 
 // Step 3 — storage
@@ -56,6 +57,22 @@ export const resumeRecording = () => invoke<RecordingStatus>('resume_recording')
 export const stopRecording = () => invoke<string>('stop_recording');
 export const setRecordingLanguage = (language: string) =>
   invoke<RecordingStatus>('set_recording_language', { language });
+/** Resolves with the new meeting id; rejects with `unsupportedAudio`. */
+export const importMeeting = (path: string) => invoke<string>('import_meeting', { path });
+/** Resolves with the new meeting id; rejects with `invalid` or `unsupportedAudio`. */
+export const transcribeItem = (itemId: string) => invoke<string>('transcribe_item', { itemId });
+export const listMeetings = () => invoke<MeetingSummary[]>('list_meetings');
+export const getMeeting = (id: string) => invoke<MeetingDetail>('get_meeting', { id });
+export const renameMeeting = (id: string, title: string) => invoke<void>('rename_meeting', { id, title });
+/** `name` null restores the default label. */
+export const renameSpeaker = (meetingId: string, key: string, name: string | null) =>
+  invoke<void>('rename_speaker', { meetingId, key, name });
+/** Rejects with `invalid` unless the meeting failed. */
+export const retryMeeting = (id: string) => invoke<void>('retry_meeting', { id });
+/** Rejects with `notOnThisMac`, `audioGone`, `busy`, `invalid` or `audioConvert`. */
+export const retranscribeMeeting = (id: string, language: string) =>
+  invoke<void>('retranscribe_meeting', { id, language });
+export const deleteMeeting = (id: string) => invoke<void>('delete_meeting', { id });
 export const aiSelectModel = (modelId: string) => invoke<void>('ai_select_model', { modelId });
 export const recategorize = (ids: string[], categoryId: CategoryId) =>
   invoke<{ eventIds: string[] }>('recategorize', { ids, categoryId });

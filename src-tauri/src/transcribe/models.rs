@@ -231,6 +231,7 @@ impl PackDownloader {
         if is_ready {
             persist(app, p, "ready");
             emit(app);
+            super::worker::poke(app);
             return Ok(());
         }
         persist(app, p, "downloading");
@@ -281,7 +282,10 @@ impl PackDownloader {
                 }
             }
             match result {
-                Ok(_) => persist(&app, p, "ready"),
+                Ok(_) => {
+                    persist(&app, p, "ready");
+                    super::worker::poke(&app);
+                }
                 Err(e) => {
                     eprintln!("[transcribe] {} pack failed: {e}", p.as_str());
                     persist(&app, p, "failed");

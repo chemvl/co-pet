@@ -19,6 +19,7 @@ use crate::model::ExcludedApp;
 use crate::paths::Paths;
 use crate::secrets;
 use crate::transcribe::recorder::Recorder;
+use crate::transcribe::worker::TranscribeQueue;
 use crate::windows;
 
 const EXCLUDED_APPS: &str = "capture.excludedApps";
@@ -247,6 +248,9 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     // Before the database and the recordings go: no capture thread may still write into them.
     if let Some(recorder) = app.try_state::<Recorder>() {
         recorder.abort().await;
+    }
+    if let Some(queue) = app.try_state::<TranscribeQueue>() {
+        queue.cancel_current();
     }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {

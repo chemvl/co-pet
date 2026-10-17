@@ -366,6 +366,8 @@ export interface CaptureResult {
   /** i18n key such as `notice.clipboardExcluded`, or the raw reason for `failed`. */
   message: string | null;
   messageParams: Record<string, string>;
+  /** A dropped audio or video file the pet offers to transcribe (`notice.offerTranscribe`). */
+  transcribeItemId: string | null;
 }
 
 export type DragPlan = string[] | { data: Record<string, string>; types: string[] };

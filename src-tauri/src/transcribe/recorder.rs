@@ -20,6 +20,7 @@ use tokio::sync::oneshot;
 use tokio::time::MissedTickBehavior;
 
 use super::audio::{linear_resample, TrackWriter};
+use super::worker::TranscribeQueue;
 use crate::db::{meetings, now_ms, settings, Db};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, RecordingLevel};
@@ -515,6 +516,12 @@ fn discard(app: &AppHandle, meeting_id: &str, dir: &Path) {
     meetings::notify_changed(app, vec![meeting_id.to_string()]);
 }
 
+/// Lets transcriptions run again once no recording session exists.
+fn release(queue: &TranscribeQueue) {
+    queue.resume_after_recording();
+    queue.poke();
+}
+
 /// Starts the mic and/or system track in `dir`; at least one must run.
 async fn start_tracks(
     app: &AppHandle,
@@ -622,12 +629,22 @@ impl Recorder {
             return Err(AppError::Code("micUnavailable"));
         }
 
+        // No transcription competes with the recording for CPU; a running one is requeued.
+        let queue = app.state::<TranscribeQueue>();
+        queue.pause_for_recording();
         let started_at = now_ms();
         let title = default_title(i18n::lang(app), started_at);
-        let meeting_id = {
+        let created = {
             let conn = app.state::<Db>().inner().conn();
-            let device_id = export::device_id(&conn)?;
-            meetings::create(&conn, "recording", &language, &device_id, started_at, &title, None)?
+            export::device_id(&conn)
+                .and_then(|device_id| meetings::create(&conn, "recording", &language, &device_id, started_at, &title, None))
+        };
+        let meeting_id = match created {
+            Ok(id) => id,
+            Err(e) => {
+                release(&queue);
+                return Err(e);
+            }
         };
         let dir = app.state::<Paths>().recording_dir(&meeting_id);
         let clock: SharedClock = Arc::new(Mutex::new(Clock::new()));
@@ -635,6 +652,7 @@ impl Recorder {
             Ok(tracks) => tracks,
             Err(e) => {
                 discard(app, &meeting_id, &dir);
+                release(&queue);
                 return Err(e);
             }
         };
@@ -694,9 +712,12 @@ impl Recorder {
             }
         };
         let (id, dir) = (session.meeting_id.clone(), session.dir.clone());
-        let (duration_ms, has_mic, has_system) = tauri::async_runtime::spawn_blocking(move || session.finish())
+        let finished = tauri::async_runtime::spawn_blocking(move || session.finish())
             .await
-            .map_err(|e| AppError::msg(e.to_string()))?;
+            .map_err(|e| AppError::msg(e.to_string()));
+        // The session is gone whatever happens next: transcriptions may run again.
+        release(&app.state::<TranscribeQueue>());
+        let (duration_ms, has_mic, has_system) = finished?;
         if duration_ms < MIN_DURATION_MS {
             discard(app, &id, &dir);
             events::recording_status(app, idle(Some("tooShort")));
@@ -710,6 +731,7 @@ impl Recorder {
         events::recording_status(app, idle(ended_reason));
         saved?;
         meetings::notify_changed(app, vec![id.clone()]);
+        app.state::<TranscribeQueue>().poke();
         Ok(id)
     }
 

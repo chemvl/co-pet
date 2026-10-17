@@ -223,6 +223,53 @@ pub fn set_recording_language(
     rec.set_language(&app, language)
 }
 
+/// Returns the new meeting's id. Errors: `unsupportedAudio`.
+#[tauri::command]
+pub async fn import_meeting(app: AppHandle, path: String) -> AppResult<String> {
+    crate::transcribe::worker::import_file(&app, std::path::Path::new(&path)).await
+}
+
+/// Returns the new meeting's id. Errors: `invalid`, `unsupportedAudio`.
+#[tauri::command]
+pub async fn transcribe_item(app: AppHandle, item_id: String) -> AppResult<String> {
+    crate::transcribe::worker::transcribe_item(&app, &item_id).await
+}
+
+#[tauri::command]
+pub fn list_meetings(app: AppHandle) -> AppResult<Vec<crate::model::MeetingSummary>> {
+    crate::transcribe::worker::list(&app)
+}
+
+#[tauri::command]
+pub fn get_meeting(app: AppHandle, id: String) -> AppResult<crate::model::MeetingDetail> {
+    crate::transcribe::worker::detail(&app, &id)
+}
+
+#[tauri::command]
+pub fn rename_meeting(app: AppHandle, id: String, title: String) -> AppResult<()> {
+    crate::transcribe::worker::rename(&app, &id, &title)
+}
+
+#[tauri::command]
+pub fn rename_speaker(app: AppHandle, meeting_id: String, key: String, name: Option<String>) -> AppResult<()> {
+    crate::transcribe::worker::rename_speaker(&app, &meeting_id, &key, name.as_deref())
+}
+
+#[tauri::command]
+pub fn retry_meeting(app: AppHandle, id: String) -> AppResult<()> {
+    crate::transcribe::worker::retry(&app, &id)
+}
+
+#[tauri::command]
+pub async fn retranscribe_meeting(app: AppHandle, id: String, language: String) -> AppResult<()> {
+    crate::transcribe::worker::retranscribe(&app, &id, &language).await
+}
+
+#[tauri::command]
+pub fn delete_meeting(app: AppHandle, id: String) -> AppResult<()> {
+    crate::transcribe::worker::delete(&app, &id)
+}
+
 #[tauri::command]
 pub async fn ai_select_model(app: AppHandle, model_id: String) -> AppResult<()> {
     crate::llm::select_model(&app, &model_id).await

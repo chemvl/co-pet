@@ -370,6 +370,8 @@ pub struct CaptureResult {
     pub item_ids: Vec<String>,
     pub message: Option<String>,
     pub message_params: BTreeMap<String, String>,
+    /// A dropped audio or video file the pet offers to transcribe (`notice.offerTranscribe`).
+    pub transcribe_item_id: Option<String>,
 }
 
 /// Matches `@crabnebula/tauri-plugin-drag`'s `DragItem`: a list of file paths or typed data.

@@ -200,7 +200,6 @@ pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
 }
 
 /// The Inbox item of one meeting (`payload` = the summary Markdown).
-#[allow(dead_code)] // written by the transcribe worker (later Phase 3 task)
 pub struct MeetingItem {
     pub meeting_id: String,
     pub title: String,
@@ -212,7 +211,6 @@ pub struct MeetingItem {
 
 /// Updates the meeting's live item, or inserts it (category `meeting`, else `unsorted`; already
 /// triaged, so never queued for triage). Returns the item id.
-#[allow(dead_code)] // called by the transcribe worker (later Phase 3 task)
 pub fn upsert_meeting_item(conn: &mut Connection, m: &MeetingItem) -> AppResult<String> {
     let tx = conn.transaction()?;
     let now = now_ms();

@@ -51,6 +51,9 @@ impl SherpaDiarizer {
 
 impl Diarizer for SherpaDiarizer {
     fn diarize(&self, samples_16k: &[f32]) -> AppResult<Vec<Turn>> {
+        if samples_16k.is_empty() {
+            return Ok(Vec::new());
+        }
         let result = self.0.process(samples_16k).ok_or_else(|| AppError::msg("diarization failed"))?;
         Ok(result
             .sort_by_start_time()

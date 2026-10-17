@@ -2,12 +2,15 @@
 //! drag synchronously, reads the drag pasteboard with [`read`] inside `performDragOperation`, and
 //! hands the result to [`spawn`], which captures off the main thread and emits `capture-result`
 //! to the pet window. WebKit never sees the drop.
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use super::{capture_blocking, input_from, CaptureSource};
+use crate::db::{items, Db};
 use crate::events;
+use crate::model::CaptureResult;
 use crate::platform::macos::frontmost::FrontApp;
 use crate::platform::macos::pasteboard::{self, Board, PbContent};
+use crate::transcribe::worker::is_media;
 
 /// What was dropped, read while the drag session is still alive.
 pub struct Dropped {
@@ -35,7 +38,29 @@ pub fn spawn(app: &AppHandle, dropped: Dropped) {
     tauri::async_runtime::spawn(async move {
         let Dropped { content, image, source } = dropped;
         let input = input_from(content, image);
-        let result = capture_blocking(&app, input, CaptureSource::new("drop", source)).await;
+        let mut result = capture_blocking(&app, input, CaptureSource::new("drop", source)).await;
+        offer_transcribe(&app, &mut result);
         events::capture_result(&app, result);
     });
+}
+
+/// One saved audio or video file: the pet offers to transcribe it.
+fn offer_transcribe(app: &AppHandle, result: &mut CaptureResult) {
+    let [id] = result.item_ids.as_slice() else { return };
+    if result.status != "saved" {
+        return;
+    }
+    let row = match items::get_row(&app.state::<Db>().conn(), id) {
+        Ok(row) => row,
+        Err(e) => {
+            eprintln!("[drop] reading {id}: {e}");
+            return;
+        }
+    };
+    if !row.mime.as_deref().is_some_and(is_media) {
+        return;
+    }
+    result.message = Some("notice.offerTranscribe".into());
+    result.message_params.insert("title".into(), row.file_name.unwrap_or(row.title));
+    result.transcribe_item_id = Some(id.clone());
 }

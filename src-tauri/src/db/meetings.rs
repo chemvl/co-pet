@@ -300,6 +300,43 @@ pub fn pending_summaries(conn: &Connection, device_id: &str) -> AppResult<Vec<St
     )
 }
 
+/// This device's live meetings in `state`, oldest first.
+pub fn in_state_for(conn: &Connection, device_id: &str, state: &str) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM meetings WHERE device_id = ?1 AND state = ?2 AND deleted_at IS NULL ORDER BY created_at, id",
+    )?;
+    let rows = stmt.query_map([device_id, state], |r| r.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// This device's meetings by summary state and/or summary error (`None` matches any).
+pub fn summary_in_state_for(
+    conn: &Connection,
+    device_id: &str,
+    state: Option<&str>,
+    error: Option<&str>,
+) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM meetings WHERE device_id = ?1 AND (?2 IS NULL OR summary_state = ?2)
+           AND (?3 IS NULL OR summary_error = ?3) AND deleted_at IS NULL
+         ORDER BY created_at, id",
+    )?;
+    let rows = stmt.query_map(params![device_id, state, error], |r| r.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// This device's finished (`done` | `failed`) meetings that still have audio and started
+/// before `before`.
+pub fn audio_expired(conn: &Connection, device_id: &str, before: i64) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM meetings WHERE device_id = ?1 AND state IN ('done', 'failed')
+           AND audio_deleted_at IS NULL AND started_at < ?2 AND deleted_at IS NULL
+         ORDER BY started_at, id",
+    )?;
+    let rows = stmt.query_map(params![device_id, before], |r| r.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
 /// The live item summarizing the meeting.
 pub fn item_id(conn: &Connection, meeting_id: &str) -> AppResult<Option<String>> {
     Ok(conn

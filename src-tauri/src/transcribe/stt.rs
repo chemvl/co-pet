@@ -111,6 +111,11 @@ fn to_track_ms(ms: i64, stretches: &[Stretch], edge: Edge) -> i64 {
     let track = match (edge, stretches.get(i)) {
         // A start exactly at a stretch's end begins the next one.
         (Edge::Start, Some(next)) if offset >= len => next.orig as i64,
+        // An end exactly at a later stretch's start ends the previous one.
+        (Edge::End, _) if offset == 0 && i >= 2 => {
+            let prev = stretches[i - 2];
+            (prev.orig + prev.len) as i64
+        }
         _ => s.orig as i64 + offset.min(len),
     };
     track / SAMPLES_PER_MS
@@ -241,6 +246,7 @@ mod tests {
         assert_eq!(start(2_050), 20_000, "a start in the gap moves to the next speech");
         assert_eq!(end(2_050), 12_000, "an end in the gap moves back to the previous speech");
         assert_eq!(start(2_100), 20_000, "the second stretch starts at 20 s");
+        assert_eq!(end(2_100), 12_000, "an end at the next stretch's start stays in the previous speech");
         assert_eq!(end(2_600), 20_500);
         assert_eq!((start(9_999), end(9_999)), (21_000, 21_000), "past the end clamps to the speech");
     }

@@ -137,7 +137,6 @@ pub fn linear_resample(samples: &[f32], from: u32, to: u32) -> Vec<f32> {
 /// Rewrites the RIFF and `data` sizes of a 16-bit mono WAV written by [`TrackWriter`] from the
 /// file length (a half-written last sample is cut). Returns the samples in the file; a file
 /// shorter than its header holds none and is left as is.
-#[allow(dead_code)] // crash recovery in `transcribe::start` (Task 4.4)
 pub fn fix_wav_header(path: &Path) -> AppResult<u64> {
     let mut f = OpenOptions::new().read(true).write(true).open(path)?;
     let len = f.metadata()?.len();
@@ -162,7 +161,6 @@ pub fn fix_wav_header(path: &Path) -> AppResult<u64> {
 
 /// What [`afconvert`] produces.
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // the transcription worker (Task 4.4)
 pub enum Target {
     /// 16-bit mono WAV at 16 kHz, the speech engines' input.
     Wav16k,
@@ -172,7 +170,6 @@ pub enum Target {
 
 /// Runs `/usr/bin/afconvert` (blocking; call it inside `spawn_blocking`). A non-zero exit or a
 /// missing output is `audioConvert`.
-#[allow(dead_code)] // the transcription worker (Task 4.4)
 pub fn afconvert(input: &Path, output: &Path, to: Target) -> AppResult<()> {
     let args: &[&str] = match to {
         Target::Wav16k => &["-f", "WAVE", "-d", "LEI16@16000", "-c", "1"],
@@ -193,14 +190,12 @@ pub fn afconvert(input: &Path, output: &Path, to: Target) -> AppResult<()> {
 }
 
 /// Audio conversion behind a trait so the worker can run with a fake in tests.
-#[allow(dead_code)] // the transcription worker (Task 4.4)
 pub trait Convert {
     fn wav16k(&self, i: &Path, o: &Path) -> AppResult<()>;
     fn aac(&self, i: &Path, o: &Path) -> AppResult<()>;
 }
 
 /// [`Convert`] through [`afconvert`].
-#[allow(dead_code)] // the transcription worker (Task 4.4)
 pub struct Afconvert;
 
 impl Convert for Afconvert {
@@ -214,7 +209,6 @@ impl Convert for Afconvert {
 }
 
 /// A 16-bit mono WAV as samples in −1…1.
-#[allow(dead_code)] // the transcription worker (Task 4.4)
 pub fn read_wav_f32(path: &Path) -> AppResult<Vec<f32>> {
     let reader = WavReader::open(path).map_err(wav_err)?;
     let spec = reader.spec();
@@ -229,9 +223,21 @@ pub fn read_wav_f32(path: &Path) -> AppResult<Vec<f32>> {
 
 /// Decodes the first audio track of any file symphonia reads into a 16-bit mono WAV (channels
 /// averaged) at the source rate. Returns its duration in ms. No audio track, an unsupported
-/// codec or no decodable audio is `unsupportedAudio`.
-#[allow(dead_code)] // imports (Task 4.4) and the benchmark (Task 4.5)
+/// codec or no decodable audio is `unsupportedAudio`; on any error no output file is left.
 pub fn decode_to_wav(input: &Path, output: &Path) -> AppResult<u64> {
+    let result = decode(input, output);
+    if result.is_err() {
+        match std::fs::remove_file(output) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                eprintln!("[transcribe] removing {}: {e}", output.display())
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
+fn decode(input: &Path, output: &Path) -> AppResult<u64> {
     let unsupported = |e: DecodeError| {
         eprintln!("[transcribe] decode {}: {e}", input.display());
         AppError::Code("unsupportedAudio")
@@ -295,7 +301,6 @@ pub fn decode_to_wav(input: &Path, output: &Path) -> AppResult<u64> {
 }
 
 /// Sums two tracks sample by sample, clamped to −1…1; the shorter one is padded with silence.
-#[allow(dead_code)] // the transcription worker (Task 4.4)
 pub fn mix(a: &[f32], b: &[f32]) -> Vec<f32> {
     let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
     long.iter()

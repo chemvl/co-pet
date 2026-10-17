@@ -128,9 +128,9 @@ pub(crate) fn input_from(content: PbContent, image: Option<Vec<u8>>) -> CaptureI
 pub(crate) fn skipped(message: Option<&str>, params: &[(&str, String)]) -> CaptureResult {
     CaptureResult {
         status: "skipped",
-        item_ids: Vec::new(),
         message: message.map(str::to_string),
         message_params: params.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+        ..CaptureResult::default()
     }
 }
 

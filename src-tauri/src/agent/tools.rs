@@ -1121,6 +1121,7 @@ pub(crate) mod tests {
             first_step: None,
             source_item_id: None,
             source_title: None,
+            source_meeting_id: None,
             category_id: "todo".into(),
             added_by: None,
             snoozed_until: None,

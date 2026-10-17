@@ -37,7 +37,8 @@ const SUMMARY_SELECT: &str = "SELECT t.id, t.title, t.status, t.due_date, t.due_
     (SELECT json_object('provider', e.provider, 'state', e.state, 'error', e.error,
         'externalUrl', e.external_url, 'nextAttemptAt', e.next_attempt_at)
       FROM task_exports e WHERE e.task_id = t.id AND e.deleted_at IS NULL
-      ORDER BY e.updated_at DESC LIMIT 1)
+      ORDER BY e.updated_at DESC LIMIT 1),
+    i.meeting_id
   FROM tasks t
   LEFT JOIN items i ON i.id = t.source_item_id
   LEFT JOIN categories c ON c.id = i.category_id AND c.deleted_at IS NULL";
@@ -60,6 +61,7 @@ fn map_summary(r: &Row<'_>) -> rusqlite::Result<TaskSummary> {
         first_step: r.get(7)?,
         source_item_id: r.get(8)?,
         source_title: r.get(9)?,
+        source_meeting_id: r.get(17)?,
         category_id: r.get(10)?,
         added_by: r.get(11)?,
         snoozed_until: r.get(12)?,

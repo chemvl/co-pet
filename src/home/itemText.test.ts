@@ -32,6 +32,7 @@ const item: ItemDetail = {
   updatedAt: 0,
   addedBy: null,
   taskSuggestion: null,
+  meetingId: null,
   fileAvailable: true,
   fileTooLarge: false,
   payloadText: null,

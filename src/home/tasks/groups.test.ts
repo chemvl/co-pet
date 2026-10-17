@@ -18,6 +18,7 @@ function task(id: string, over: Partial<TaskSummary> = {}): TaskSummary {
     firstStep: null,
     sourceItemId: null,
     sourceTitle: null,
+    sourceMeetingId: null,
     categoryId: 'todo',
     addedBy: null,
     snoozedUntil: null,

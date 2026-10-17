@@ -37,6 +37,8 @@ pub const AGENTS_CHANGED: &str = "agents-changed";
 pub const ACCOUNT_CHANGED: &str = "account-changed";
 /// The sync engine's state changed or a sync finished; payload `SyncStatus`.
 pub const SYNC_STATUS: &str = "sync-status";
+/// Meetings were created, changed or deleted.
+pub const MEETINGS_CHANGED: &str = "meetings-changed";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
@@ -119,6 +121,12 @@ pub struct TasksChanged {
     pub ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingsChanged {
+    pub ids: Vec<String>,
+}
+
 /// Payload `{}`: listeners re-read `list_categories`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,6 +181,10 @@ pub fn items_changed(app: &AppHandle, ids: Vec<String>) {
 
 pub fn tasks_changed(app: &AppHandle, ids: Vec<String>) {
     emit(app, TASKS_CHANGED, TasksChanged { ids });
+}
+
+pub fn meetings_changed(app: &AppHandle, ids: Vec<String>) {
+    emit(app, MEETINGS_CHANGED, MeetingsChanged { ids });
 }
 
 pub fn exports_changed(app: &AppHandle, task_ids: Vec<String>) {

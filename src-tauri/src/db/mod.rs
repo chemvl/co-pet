@@ -1,6 +1,7 @@
 //! SQLite access. One connection behind a mutex, managed as Tauri state (`app.state::<Db>()`).
 pub mod categories;
 pub mod items;
+pub mod meetings;
 pub mod migrations;
 pub mod search;
 pub mod rules;

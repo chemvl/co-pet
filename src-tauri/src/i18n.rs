@@ -1,5 +1,6 @@
 //! Rust-side strings (screenshot titles, menu bar labels, built-in category names). The UI's
 //! strings live in `src/shared/i18n/`.
+use chrono::{Datelike, NaiveDate};
 use tauri::AppHandle;
 
 use crate::db::settings;
@@ -48,6 +49,21 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "category.contact" => ("Contact", "Liên hệ"),
         "category.meeting" => ("Meeting", "Cuộc họp"),
         "category.unsorted" => ("Unsorted", "Chưa phân loại"),
+        "meeting.defaultTitle" => ("Meeting", "Cuộc họp"),
+        "meeting.me" => ("Me", "Tôi"),
+        "meeting.others" => ("Others", "Người khác"),
+        "meeting.speaker" => ("Speaker {n}", "Người nói {n}"),
+        "meeting.summary" => ("Summary", "Tóm tắt"),
+        "meeting.decisions" => ("Decisions", "Quyết định"),
+        "meeting.actions" => ("Action items", "Việc cần làm"),
+        "meeting.questions" => ("Open questions", "Câu hỏi còn mở"),
+        "meeting.transcript" => ("Transcript", "Bản ghi"),
+        "meeting.due" => ("due", "hạn"),
+        "meeting.taskFrom" => ("From “{title}” · {date}", "Từ “{title}” · {date}"),
+        "meeting.owner" => ("Owner: {name}", "Người phụ trách: {name}"),
+        "lang.en" => ("English", "Tiếng Anh"),
+        "lang.vi" => ("Vietnamese", "Tiếng Việt"),
+        "lang.zh" => ("Chinese", "Tiếng Trung"),
         _ => {
             debug_assert!(false, "unknown i18n key {key}");
             ("", "")
@@ -56,5 +72,18 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
     match lang {
         Lang::En => en,
         Lang::Vi => vi,
+    }
+}
+
+/// Matches `src/shared/format.ts formatDate`: en `Thu 15 Oct`, vi `T5, 15/10` (Sunday `CN`).
+pub fn short_date(lang: Lang, d: NaiveDate) -> String {
+    const EN_DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const VI_DAYS: [&str; 7] = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+    const EN_MONTHS: [&str; 12] =
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let wd = d.weekday().num_days_from_sunday() as usize;
+    match lang {
+        Lang::Vi => format!("{}, {}/{}", VI_DAYS[wd], d.day(), d.month()),
+        Lang::En => format!("{} {} {}", EN_DAYS[wd], d.day(), EN_MONTHS[d.month0() as usize]),
     }
 }

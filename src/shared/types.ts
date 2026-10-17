@@ -71,6 +71,8 @@ export interface ItemSummary {
   addedBy: string | null;
   /** AI-suggested task title; null for rule-decided or non-actionable items. */
   taskSuggestion: string | null;
+  /** The meeting this item summarizes. */
+  meetingId: string | null;
   /** False when the item's library file isn't on this Mac (synced from another Mac, not
    *  downloaded yet or over the size limit): drag-out, Copy, Paste and Open file can't use it. */
   fileAvailable: boolean;
@@ -166,6 +168,8 @@ export interface TaskSummary {
   firstStep: string | null;
   sourceItemId: string | null;
   sourceTitle: string | null;
+  /** The source item's meeting. */
+  sourceMeetingId: string | null;
   categoryId: CategoryId;
   addedBy: string | null;
   snoozedUntil: number | null;
@@ -176,12 +180,90 @@ export interface TaskSummary {
   export: TaskExportState | null;
 }
 
+/** One transcript segment; `speaker` is a `Speaker.key`. */
+export interface TranscriptSeg {
+  startMs: number;
+  endMs: number;
+  speaker: string;
+  text: string;
+  lang: 'en' | 'vi' | 'zh';
+}
+
+/** `key`: `me` | `others` | `s1`, `s2`…; `name` null = the default label. */
+export interface Speaker {
+  key: string;
+  name: string | null;
+}
+
+/** `due` is `YYYY-MM-DD`; `taskId` is set once the item became a Task. */
+export interface ActionItem {
+  id: string;
+  text: string;
+  owner: string | null;
+  ownerKey: string | null;
+  due: string | null;
+  atMs: number | null;
+  taskId: string | null;
+}
+
+/** A change a meeting proposes to an existing task. */
+export interface TaskChange {
+  id: string;
+  taskId: string;
+  field: 'due' | 'title' | 'done';
+  from: string | null;
+  to: string | null;
+  atMs: number | null;
+  state: 'pending' | 'applied' | 'ignored';
+  eventIds: string[];
+}
+
+export type MeetingLanguage = 'auto' | 'en' | 'vi' | 'zh' | 'vi+en';
+export type MeetingState = 'recording' | 'queued' | 'transcribing' | 'done' | 'failed';
+export type SummaryState = 'none' | 'pending' | 'running' | 'done' | 'skipped' | 'failed';
+export type MeetingAudio = 'available' | 'processing' | 'deleted' | 'elsewhere';
+
+export interface MeetingSummary {
+  id: string;
+  title: string;
+  source: 'recording' | 'import';
+  startedAt: number;
+  durationMs: number;
+  language: MeetingLanguage;
+  langs: string[];
+  state: MeetingState;
+  /** 0–1 while this meeting is being transcribed. */
+  progress: number | null;
+  error: string | null;
+  summaryState: SummaryState;
+  speakerCount: number;
+  actionCount: number;
+  tasksAdded: number;
+  itemId: string | null;
+  onThisDevice: boolean;
+  audio: MeetingAudio;
+}
+
+export interface MeetingDetail extends MeetingSummary {
+  speakers: Speaker[];
+  transcript: TranscriptSeg[];
+  summary: string[];
+  decisions: string[];
+  questions: string[];
+  actions: ActionItem[];
+  changes: TaskChange[];
+  summaryLang: string | null;
+  summaryError: string | null;
+  /** Absolute `mix.m4a` when `audio` is `available`. */
+  audioPath: string | null;
+}
+
 export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' | 'trashed' | 'restored';
 
 export interface TaskEvent {
   id: string;
   at: number;
-  actor: 'user' | 'agent' | 'next';
+  actor: 'user' | 'agent' | 'next' | 'meeting';
   clientId: string | null;
   action: TaskAction;
   /** JSON text of the changed columns before / after. */
@@ -438,6 +520,7 @@ export interface EventPayloads {
   'settings-changed': { key: string };
   'categories-changed': Record<string, never>;
   'tasks-changed': { ids: string[] };
+  'meetings-changed': { ids: string[] };
   hotkey: { action: HotkeyAction };
   navigate: { route: string };
   /** Pet window only: the outcome of a native drop on the pet. */

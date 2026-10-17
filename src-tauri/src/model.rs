@@ -55,6 +55,8 @@ pub struct ItemRow {
     pub added_by: Option<String>,
     /// AI-suggested task title; `None` for rule-decided or non-actionable items.
     pub task_suggestion: Option<String>,
+    /// The meeting this item summarizes (`meetings.id`).
+    pub meeting_id: Option<String>,
 }
 
 /// Values for a new row; everything else takes the column default.
@@ -187,6 +189,8 @@ pub struct ItemSummary {
     pub updated_at: i64,
     pub added_by: Option<String>,
     pub task_suggestion: Option<String>,
+    /// The meeting this item summarizes.
+    pub meeting_id: Option<String>,
     /// `false` when the item's library file isn't on this Mac (synced from another Mac, not
     /// downloaded yet or over the size limit).
     pub file_available: bool,
@@ -459,6 +463,9 @@ pub enum Actor {
     Next,
     /// An MCP client (`mcp_clients.id`).
     Agent(String),
+    /// Tasks created from a meeting's action items.
+    #[allow(dead_code)] // constructed by the transcribe worker (later Phase 3 task)
+    Meeting,
 }
 
 impl Actor {
@@ -467,7 +474,7 @@ impl Actor {
         match self {
             Actor::User => Ok("user"),
             Actor::Agent(_) => Ok("agent"),
-            Actor::Next => Err(AppError::Code("invalid")),
+            Actor::Next | Actor::Meeting => Err(AppError::Code("invalid")),
         }
     }
 
@@ -477,6 +484,7 @@ impl Actor {
             Actor::User => "user",
             Actor::Next => "next",
             Actor::Agent(_) => "agent",
+            Actor::Meeting => "meeting",
         })
     }
 
@@ -484,9 +492,97 @@ impl Actor {
     pub fn client_id(&self) -> Option<&str> {
         match self {
             Actor::Agent(id) => Some(id),
-            Actor::User | Actor::Next => None,
+            Actor::User | Actor::Next | Actor::Meeting => None,
         }
     }
+}
+
+/// One transcript segment; `speaker` is a `Speaker.key`, `lang` is `en|vi|zh`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptSeg {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub speaker: String,
+    pub text: String,
+    pub lang: String,
+}
+
+/// `key`: `me` | `others` | `s1`, `s2`…; `name` `None` = the default label.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Speaker {
+    pub key: String,
+    pub name: Option<String>,
+}
+
+/// `due` is `YYYY-MM-DD`; `task_id` is set once the item became a Task.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionItem {
+    pub id: String,
+    pub text: String,
+    pub owner: Option<String>,
+    pub owner_key: Option<String>,
+    pub due: Option<String>,
+    pub at_ms: Option<i64>,
+    pub task_id: Option<String>,
+}
+
+/// A change a meeting proposes to an existing task. `field`: `due|title|done`;
+/// `state`: `pending|applied|ignored`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskChange {
+    pub id: String,
+    pub task_id: String,
+    pub field: String,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub at_ms: Option<i64>,
+    pub state: String,
+    pub event_ids: Vec<String>,
+}
+
+/// `audio`: `available|processing|deleted|elsewhere`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSummary {
+    pub id: String,
+    pub title: String,
+    pub source: String,
+    pub started_at: i64,
+    pub duration_ms: i64,
+    pub language: String,
+    pub langs: Vec<String>,
+    pub state: String,
+    pub progress: Option<f64>,
+    pub error: Option<String>,
+    pub summary_state: String,
+    pub speaker_count: i64,
+    pub action_count: i64,
+    pub tasks_added: i64,
+    pub item_id: Option<String>,
+    pub on_this_device: bool,
+    pub audio: String,
+}
+
+/// `audio_path`: absolute `mix.m4a` when `audio == available`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingDetail {
+    #[serde(flatten)]
+    pub meeting: MeetingSummary,
+    pub speakers: Vec<Speaker>,
+    pub transcript: Vec<TranscriptSeg>,
+    pub summary: Vec<String>,
+    pub decisions: Vec<String>,
+    pub questions: Vec<String>,
+    pub actions: Vec<ActionItem>,
+    pub changes: Vec<TaskChange>,
+    pub summary_lang: Option<String>,
+    pub summary_error: Option<String>,
+    pub audio_path: Option<String>,
 }
 
 /// `Some(None)` for an explicit `null`, `None` (via `#[serde(default)]`) when the key is absent.
@@ -541,6 +637,8 @@ pub struct TaskSummary {
     pub first_step: Option<String>,
     pub source_item_id: Option<String>,
     pub source_title: Option<String>,
+    /// The source item's meeting (`items.meeting_id`).
+    pub source_meeting_id: Option<String>,
     pub category_id: String,
     pub added_by: Option<String>,
     pub snoozed_until: Option<i64>,

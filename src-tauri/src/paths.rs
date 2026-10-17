@@ -13,6 +13,8 @@ pub struct Paths {
     pub thumbs: PathBuf,
     pub models: PathBuf,
     pub tmp: PathBuf,
+    /// Meeting audio, one folder per meeting (`recordings/<meetingId>/`). Never synced.
+    pub recordings: PathBuf,
     /// Unix socket the `copet-mcp` sidecar talks to.
     pub sock: PathBuf,
 }
@@ -25,6 +27,7 @@ impl Paths {
             thumbs: root.join("library").join("thumbs"),
             models: root.join("models"),
             tmp: root.join("tmp"),
+            recordings: root.join("recordings"),
             sock: root.join("mcp.sock"),
             root,
         }
@@ -36,10 +39,15 @@ impl Paths {
 
     /// Creates every folder that must exist.
     pub fn ensure(&self) -> AppResult<()> {
-        for d in [&self.root, &self.library, &self.thumbs, &self.models, &self.tmp] {
+        for d in [&self.root, &self.library, &self.thumbs, &self.models, &self.tmp, &self.recordings] {
             std::fs::create_dir_all(d)?;
         }
         Ok(())
+    }
+
+    /// The audio folder of one meeting.
+    pub fn recording_dir(&self, meeting_id: &str) -> PathBuf {
+        self.recordings.join(meeting_id)
     }
 
     /// Empties `tmp/` (called once at startup).

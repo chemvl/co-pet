@@ -18,14 +18,14 @@ const COLS: &str = "id, kind, title, summary, tags, payload_text, payload_html, 
     file_name, mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, \
     extracted_text, extract_status, category_id, triage_status, triage_source, triage_confidence, \
     triage_reason, suggestions, sensitive, status, pinned, content_hash, captured_at, updated_at, \
-    deleted_at, added_by, task_suggestion";
+    deleted_at, added_by, task_suggestion, meeting_id";
 
 /// Same shape as `COLS` without the large text columns (lists never show them).
 const LIST_COLS: &str = "id, kind, title, summary, tags, NULL, NULL, url, file_path, \
     file_name, mime, size_bytes, thumb_path, source_app, source_bundle_id, source_kind, \
     NULL, extract_status, category_id, triage_status, triage_source, triage_confidence, \
     triage_reason, suggestions, sensitive, status, pinned, content_hash, captured_at, updated_at, \
-    deleted_at, added_by, task_suggestion";
+    deleted_at, added_by, task_suggestion, meeting_id";
 
 /// Columns `undo_event` may restore from `before_json`.
 const UNDOABLE: [&str; 7] = [
@@ -85,6 +85,7 @@ fn map_row(r: &Row<'_>) -> rusqlite::Result<ItemRow> {
         deleted_at: r.get(30)?,
         added_by: r.get(31)?,
         task_suggestion: r.get(32)?,
+        meeting_id: r.get(33)?,
     })
 }
 
@@ -194,6 +195,70 @@ pub fn insert_item(conn: &mut Connection, new: &NewItem) -> AppResult<String> {
         None => ("user", None),
     };
     add_event(&tx, &id, who, "captured", None, None, now)?;
+    tx.commit()?;
+    Ok(id)
+}
+
+/// The Inbox item of one meeting (`payload` = the summary Markdown).
+#[allow(dead_code)] // written by the transcribe worker (later Phase 3 task)
+pub struct MeetingItem {
+    pub meeting_id: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub payload: String,
+    pub sensitive: bool,
+    pub captured_at: i64,
+}
+
+/// Updates the meeting's live item, or inserts it (category `meeting`, else `unsorted`; already
+/// triaged, so never queued for triage). Returns the item id.
+#[allow(dead_code)] // called by the transcribe worker (later Phase 3 task)
+pub fn upsert_meeting_item(conn: &mut Connection, m: &MeetingItem) -> AppResult<String> {
+    let tx = conn.transaction()?;
+    let now = now_ms();
+    let existing: Option<String> = tx
+        .query_row(
+            "SELECT id FROM items WHERE meeting_id = ?1 AND deleted_at IS NULL ORDER BY captured_at LIMIT 1",
+            [&m.meeting_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let id = match existing {
+        Some(id) => {
+            tx.execute(
+                "UPDATE items SET title = ?2, summary = ?3, payload_text = ?4, sensitive = ?5, updated_at = ?6
+                 WHERE id = ?1",
+                params![id, m.title, m.summary, m.payload, m.sensitive, now],
+            )?;
+            reindex(&tx, &id)?;
+            id
+        }
+        None => {
+            let id = new_id();
+            let category = if categories::exists(&tx, "meeting")? { "meeting" } else { "unsorted" };
+            tx.execute(
+                "INSERT INTO items (id, kind, title, summary, payload_text, source_kind, content_hash,
+                   category_id, triage_status, triage_source, triage_reason, sensitive, meeting_id,
+                   captured_at, updated_at)
+                 VALUES (?1, 'text', ?2, ?3, ?4, 'note', ?5, ?6, 'done', 'rule', 'meeting', ?7, ?8, ?9, ?10)",
+                params![
+                    id,
+                    m.title,
+                    m.summary,
+                    m.payload,
+                    format!("meeting:{}", m.meeting_id),
+                    category,
+                    m.sensitive,
+                    m.meeting_id,
+                    m.captured_at,
+                    now
+                ],
+            )?;
+            reindex(&tx, &id)?;
+            add_event(&tx, &id, ("user", None), "captured", None, None, now)?;
+            id
+        }
+    };
     tx.commit()?;
     Ok(id)
 }
@@ -563,6 +628,7 @@ fn to_summary(row: ItemRow, file_too_large: bool, paths: &Paths) -> ItemSummary 
         updated_at: row.updated_at,
         added_by: row.added_by,
         task_suggestion: row.task_suggestion,
+        meeting_id: row.meeting_id,
     }
 }
 
@@ -615,7 +681,7 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
 
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt
-        .query_map(params_from_iter(args), |r| Ok((map_row(r)?, r.get::<_, bool>(33)?)))?
+        .query_map(params_from_iter(args), |r| Ok((map_row(r)?, r.get::<_, bool>(34)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let next_cursor = if rows.len() as i64 > limit {
         rows.truncate(limit as usize);

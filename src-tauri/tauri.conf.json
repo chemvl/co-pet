@@ -18,7 +18,8 @@
         "enable": true,
         "scope": [
           "$APPDATA/library/**",
-          "$APPDATA/tmp/**"
+          "$APPDATA/tmp/**",
+          "$APPDATA/recordings/**"
         ]
       }
     }

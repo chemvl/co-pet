@@ -36,7 +36,7 @@ export function IntegrationsPage(): ReactElement {
                 <span key={name} className="in-later__chip">{name}</span>
               ))}
             </div>
-            <p className="caption in-muted in-m0">{t('integrations.oneWay')}</p>
+            <p className="caption in-muted in-m0">{t('integrations.twoWay')}</p>
           </section>
           <section className="in-col" aria-labelledby={aiId}>
             <h2 className="in-h" id={aiId}>{t('integrations.aiModels')}</h2>

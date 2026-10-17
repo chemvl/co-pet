@@ -278,7 +278,7 @@ export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' 
 export interface TaskEvent {
   id: string;
   at: number;
-  actor: 'user' | 'agent' | 'next' | 'meeting';
+  actor: 'user' | 'agent' | 'next' | 'meeting' | 'notion' | 'asana';
   clientId: string | null;
   action: TaskAction;
   /** JSON text of the changed columns before / after. */

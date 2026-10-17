@@ -9,6 +9,7 @@ import { useLang, useT } from '../../shared/i18n';
 import { updateTask } from '../../shared/ipc';
 import type { NewTask, TaskDetail, TaskPatch, TaskSummary } from '../../shared/types';
 import { useDelayed } from '../hooks';
+import { historyLabel, undoableEvent } from './history';
 import { whenShort } from '../itemText';
 import { taskQuery } from '../queries';
 import { useTaskActions } from './useTaskActions';
@@ -380,14 +381,13 @@ function Fields(p: { draft: Draft; onChange: (c: Partial<Draft>) => void; autoFo
 function History({ task, onUndo }: { task: TaskDetail; onUndo: (eventId: string) => void }): ReactElement {
   const t = useT();
   const lang = useLang();
-  // Events arrive newest first; only the latest live user change can be undone here.
-  const undoable = task.events.find((e) => e.actor === 'user' && e.undoneAt == null);
+  const undoable = undoableEvent(task.events);
   return (
     <ul className="hm-hist">
       {task.events.map((ev) => (
         <li key={ev.id} className={`hm-hist__row${ev.undoneAt != null ? ' is-undone' : ''}`}>
           <span className="hm-grow">
-            {t(ev.actor === 'meeting' && ev.action === 'created' ? 'tasks.history.fromMeeting' : `tasks.history.${ev.action}`)} ·{' '}
+            {historyLabel(ev, t)} ·{' '}
             {whenShort(ev.at, lang, true)}
           </span>
           {ev.undoneAt != null ? (

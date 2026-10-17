@@ -379,7 +379,7 @@ function ExportTargets(): ReactElement | null {
       {statuses.filter((s) => s.connected).map((s) => (
         <QueueLine key={s.provider} status={s} />
       ))}
-      <span className="caption in-muted">{t('integrations.oneWay')}</span>
+      <span className="caption in-muted">{t('integrations.twoWay')}</span>
     </section>
   );
 }

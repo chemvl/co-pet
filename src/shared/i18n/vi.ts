@@ -505,6 +505,8 @@ export const vi: Record<keyof typeof en, string> = {
   'tasks.history.snoozed': 'Đã để sau',
   'tasks.history.trashed': 'Đã chuyển vào thùng rác',
   'tasks.history.restored': 'Đã khôi phục',
+  'tasks.history.doneIn': 'Đã xong trong {provider}',
+  'tasks.history.reopenedIn': 'Đã mở lại trong {provider}',
 
   'ai.ready': 'Mô hình cục bộ đã sẵn sàng',
   'ai.downloading': 'Đang tải {percent}%',
@@ -831,7 +833,8 @@ export const vi: Record<keyof typeof en, string> = {
   'integrations.reason.failed': 'Xuất không thành công',
   'integrations.retryNow': 'Thử lại ngay',
   'integrations.later': 'Sau này:',
-  'integrations.oneWay': 'Phiên bản này chỉ đẩy một chiều: thay đổi trong Notion hoặc Asana chưa được đồng bộ ngược lại.',
+  'integrations.twoWay':
+    'Trạng thái xong và mở lại được đồng bộ với Notion và Asana, kiểm tra mỗi 5 phút khi Co-pet đang mở. Các chỉnh sửa khác không được đồng bộ. Notion cần ánh xạ Status.',
   'integrations.cloud.title': 'Nhà cung cấp đám mây',
   'integrations.cloud.desc': 'Khoá riêng của bạn cho Anthropic, OpenAI hoặc Gemini, hoặc một máy chủ Ollama / LM Studio có sẵn',
 

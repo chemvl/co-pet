@@ -504,6 +504,8 @@ export const en = {
   'tasks.history.snoozed': 'Snoozed',
   'tasks.history.trashed': 'Moved to trash',
   'tasks.history.restored': 'Restored',
+  'tasks.history.doneIn': 'Completed in {provider}',
+  'tasks.history.reopenedIn': 'Reopened in {provider}',
 
   'ai.ready': 'Local model ready',
   'ai.downloading': 'Downloading {percent}%',
@@ -830,7 +832,8 @@ export const en = {
   'integrations.reason.failed': 'Export failed',
   'integrations.retryNow': 'Retry now',
   'integrations.later': 'Later:',
-  'integrations.oneWay': "One-way push in this version: changes made in Notion or Asana don't come back yet.",
+  'integrations.twoWay':
+    "Done and reopened stay in sync with Notion and Asana, checked every 5 minutes while Co-pet is open. Other edits aren't synced. Notion needs a mapped Status.",
   'integrations.cloud.title': 'Cloud providers',
   'integrations.cloud.desc': 'Your own key for Anthropic, OpenAI or Gemini, or an existing Ollama / LM Studio server',
 

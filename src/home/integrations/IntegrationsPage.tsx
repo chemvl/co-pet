@@ -1,11 +1,12 @@
 // Home › Integrations (screen 11): export targets on the left, AI models on the right.
 import { useId, type ReactElement } from 'react';
-import { Button, Icon } from '../../ds';
+import { Icon } from '../../ds';
 import { useT } from '../../shared/i18n';
 import { useIntegrations } from '../../shared/queries';
 import { ModelCards } from '../settings/ModelCards';
 import { SpeechModelCards } from '../settings/SpeechModelCards';
 import { AsanaCard } from './AsanaCard';
+import { CloudProvidersCard } from './CloudProvidersCard';
 import { NotionCard } from './NotionCard';
 import './integrations.css';
 
@@ -47,19 +48,7 @@ export function IntegrationsPage(): ReactElement {
               <ModelCards />
               <SpeechModelCards />
             </article>
-            <article className="in-card is-disabled" aria-disabled="true" aria-label={t('integrations.cloud.title')}>
-              <div className="in-row">
-                <Icon name="lock" size={20} />
-                <div className="in-row__text">
-                  <b className="in-row__name">{t('integrations.cloud.title')}</b>
-                  {t('integrations.cloud.desc')}
-                </div>
-                <Button variant="secondary" size="sm" disabled>
-                  {t('integrations.cloud.addKey')}
-                </Button>
-              </div>
-              <span className="caption in-muted">{t('integrations.cloud.later')}</span>
-            </article>
+            <CloudProvidersCard />
           </section>
         </div>
       </div>

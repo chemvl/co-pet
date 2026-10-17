@@ -1,7 +1,7 @@
 // Settings › Triage model cards: one card per registry model, live from `ai-status`.
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, StatusPill } from '../../ds';
-import { errorText } from '../../shared/errors';
+import { errorMessage, errorText } from '../../shared/errors';
 import { formatSize } from '../../shared/format';
 import { useLang, useT, type Lang, type TFunction } from '../../shared/i18n';
 import { aiDownload, aiPause, aiSelectModel } from '../../shared/ipc';
@@ -103,7 +103,7 @@ export function useAiAction(): (fn: () => Promise<void>) => Promise<void> {
       await fn();
     } catch (e) {
       const code = errorText(e);
-      toast.show({ message: code === 'localOnly' ? t('settings.triage.localOnlyBlocked') : code });
+      toast.show({ message: code === 'localOnly' ? t('settings.triage.localOnlyBlocked') : errorMessage(t, e) });
     } finally {
       void qc.invalidateQueries({ queryKey: AI_STATUS_KEY });
       void qc.invalidateQueries({ queryKey: SETTINGS_KEY });

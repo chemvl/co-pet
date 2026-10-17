@@ -446,7 +446,7 @@ pub fn display_name(sp: &Speaker, lang: Lang) -> String {
 }
 
 /// The display name of the speaker with `key` (a default label when it isn't listed).
-fn speaker_name(m: &MeetingRow, key: &str, lang: Lang) -> String {
+pub(crate) fn speaker_name(m: &MeetingRow, key: &str, lang: Lang) -> String {
     match m.speakers.iter().find(|s| s.key == key) {
         Some(sp) => display_name(sp, lang),
         None => display_name(&Speaker { key: key.into(), name: None }, lang),

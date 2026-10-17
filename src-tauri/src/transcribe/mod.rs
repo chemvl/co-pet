@@ -2,6 +2,7 @@
 pub mod assemble;
 pub mod audio;
 pub mod diarize;
+pub mod extract;
 pub mod models;
 pub mod recorder;
 pub mod stt;

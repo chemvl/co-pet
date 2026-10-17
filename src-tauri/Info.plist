@@ -3,4 +3,8 @@
 <plist version="1.0"><dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Co-pet records your side of a meeting when you start a recording. Audio stays on this Mac.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Co-pet checks when your next event starts so What's Next can suggest a task that fits. Events stay on this Mac.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Co-pet checks when your next event starts so What's Next can suggest a task that fits. Events stay on this Mac.</string>
 </dict></plist>

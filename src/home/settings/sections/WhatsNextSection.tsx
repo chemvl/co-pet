@@ -1,6 +1,8 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Switch } from '../../../ds';
 import { formatWeekday } from '../../../shared/format';
 import { useLang, useT } from '../../../shared/i18n';
+import { listCalendars, permissionsStatus, requestPermission } from '../../../shared/ipc';
 import { useSetSetting, useSetting } from '../../../shared/queries';
 import { Group, SettingRow, TimeRange } from '../parts';
 
@@ -22,6 +24,18 @@ export function WhatsNextSection() {
   const idleMinutes = useSetting<number>('whatsNext.idleMinutes', 10);
   const hours = useSetting<WorkHours>('whatsNext.workHours', { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] });
   const maxPerHour = useSetting<number>('whatsNext.maxPerHour', 2);
+  const calendarOn = useSetting<boolean>('whatsNext.calendar', false);
+  const excluded = useSetting<string[]>('whatsNext.calendarExcluded', []);
+  const qc = useQueryClient();
+  const perms = useQuery({
+    queryKey: ['permissions'],
+    queryFn: permissionsStatus,
+    enabled: calendarOn,
+    refetchInterval: (q) => (q.state.data?.calendar === 'granted' ? false : 2000),
+  });
+  const access = perms.data?.calendar;
+  const cals = useQuery({ queryKey: ['calendars'], queryFn: listCalendars, enabled: calendarOn && access === 'granted' });
+  const refreshNext = () => void qc.invalidateQueries({ queryKey: ['next'] });
 
   const toggleDay = (day: number) =>
     void set('whatsNext.workHours', {
@@ -93,6 +107,57 @@ export function WhatsNextSection() {
             );
           })}
         </div>
+      </Group>
+      <Group title={t('settings.whatsnext.calendar')}>
+        <Switch
+          id="st-next-cal"
+          label={t('settings.whatsnext.calendarUse')}
+          description={t('settings.whatsnext.calendarUseDesc')}
+          checked={calendarOn}
+          onChange={(v) => {
+            void set('whatsNext.calendar', v).then(refreshNext);
+            if (v)
+              void permissionsStatus().then((p) => {
+                if (p.calendar === 'notDetermined') void requestPermission('calendar');
+              });
+          }}
+        />
+        {calendarOn && access === 'notDetermined' && (
+          <>
+            <p className="st-body">{t('settings.whatsnext.calendarAsk')}</p>
+            <Button size="sm" variant="secondary" onClick={() => void requestPermission('calendar')}>
+              {t('settings.whatsnext.calendarAllow')}
+            </Button>
+          </>
+        )}
+        {calendarOn && access === 'denied' && (
+          <>
+            <p className="st-body">{t('settings.whatsnext.calendarDenied')}</p>
+            <Button size="sm" variant="secondary" onClick={() => void requestPermission('calendar')}>
+              {t('onboarding.perm.open')}
+            </Button>
+          </>
+        )}
+        {calendarOn && access === 'granted' && (
+          <>
+            <p className="st-body">{t('settings.whatsnext.calendars')}</p>
+            {cals.data?.length === 0 && <p className="st-body">{t('settings.whatsnext.calendarsEmpty')}</p>}
+            {cals.data?.map((c, i) => (
+              <Switch
+                key={c.id}
+                id={`st-next-cal-${i}`}
+                label={c.title}
+                description={c.account || undefined}
+                checked={!excluded.includes(c.id)}
+                onChange={(on) =>
+                  void set('whatsNext.calendarExcluded', on ? excluded.filter((id) => id !== c.id) : [...excluded, c.id]).then(
+                    refreshNext,
+                  )
+                }
+              />
+            ))}
+          </>
+        )}
       </Group>
       <p className="st-body">{t('settings.whatsnext.caption')}</p>
     </>

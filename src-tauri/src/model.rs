@@ -626,6 +626,42 @@ pub struct RecordingStatus {
     pub ended_reason: Option<String>,
 }
 
+/// One local day of a diary week; `date` is `YYYY-MM-DD`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiaryDay {
+    pub date: String,
+    pub captured: i64,
+    pub tasks_done: i64,
+    pub meetings: i64,
+}
+
+/// A live category and how many of the week's saved items went to it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiaryCategory {
+    pub category_id: String,
+    pub count: i64,
+}
+
+/// `diary_week`: `offset` 0 = this week, −1 = last week…; `start`/`end` = local Monday/Sunday
+/// (`YYYY-MM-DD`); `days` Monday first (7); `top_categories` ≤ 3, most items first;
+/// `has_previous` = some counted activity before `start`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiaryWeek {
+    pub offset: i64,
+    pub start: String,
+    pub end: String,
+    pub captured: i64,
+    pub tasks_done: i64,
+    pub meetings: i64,
+    pub meeting_ms: i64,
+    pub top_categories: Vec<DiaryCategory>,
+    pub days: Vec<DiaryDay>,
+    pub has_previous: bool,
+}
+
 /// `Some(None)` for an explicit `null`, `None` (via `#[serde(default)]`) when the key is absent.
 pub(crate) fn double_option<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     d: D,

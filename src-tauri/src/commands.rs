@@ -932,3 +932,16 @@ pub fn sync_status(app: AppHandle) -> AppResult<crate::model::SyncStatus> {
 pub async fn sync_now(app: AppHandle) -> AppResult<crate::model::SyncStatus> {
     crate::sync::sync_now(&app).await
 }
+
+// ---------- Phase 4 M3: pet diary ----------
+
+/// `offset` null → `diary::latest`; else that week. Rejects with `invalid` (offset > 0 or < −520).
+#[tauri::command]
+pub fn diary_week(db: State<'_, Db>, offset: Option<i64>) -> AppResult<crate::model::DiaryWeek> {
+    let conn = db.conn();
+    let now = crate::db::now_ms();
+    match offset {
+        Some(o) => crate::db::diary::week(&conn, &chrono::Local, now, o),
+        None => crate::db::diary::latest(&conn, &chrono::Local, now),
+    }
+}

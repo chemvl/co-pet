@@ -237,6 +237,7 @@ pub fn run() {
             commands::copy_concealed_text,
             commands::sync_status,
             commands::sync_now,
+            commands::diary_week,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

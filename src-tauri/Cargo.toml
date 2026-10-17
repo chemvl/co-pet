@@ -79,6 +79,7 @@ opt-level = "s"
 strip = true
 
 [dev-dependencies]
+chrono-tz = "0.10.4"
 tempfile = "3.27.0"
 
 # Every crates.io release of `zip` except 9.0.3 is yanked; calamine 0.36 needs ^8.6.

@@ -47,6 +47,8 @@ pub trait SpeechToText {
 pub struct WhisperStt {
     ctx: WhisperContext,
     vad: WhisperVadContext,
+    /// Greedy decoding instead of beam search (5); the benchmark's `--greedy`.
+    pub greedy: bool,
 }
 
 impl WhisperStt {
@@ -62,7 +64,7 @@ impl WhisperStt {
             eprintln!("[transcribe] VAD load {}: {e}", vad.display());
             AppError::Code("speechModel")
         })?;
-        Ok(WhisperStt { ctx, vad })
+        Ok(WhisperStt { ctx, vad, greedy: false })
     }
 }
 
@@ -163,7 +165,12 @@ impl SpeechToText for WhisperStt {
         let (spliced, stretches) = splice(samples, &speech);
 
         let mut state = self.ctx.create_state().map_err(whisper_err)?;
-        let mut params = FullParams::new(SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
+        let strategy = if self.greedy {
+            SamplingStrategy::Greedy { best_of: 1 }
+        } else {
+            SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 }
+        };
+        let mut params = FullParams::new(strategy);
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
         params.set_n_threads(threads as c_int);
         params.set_translate(false);

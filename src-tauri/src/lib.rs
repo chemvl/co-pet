@@ -25,7 +25,7 @@ mod export;
 mod agent;
 mod account;
 mod sync;
-mod transcribe;
+pub mod transcribe;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;

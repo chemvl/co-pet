@@ -5,6 +5,7 @@ pub mod diarize;
 pub mod models;
 pub mod recorder;
 pub mod stt;
+pub mod wer;
 pub mod worker;
 
 /// Crash recovery, the transcription worker and the audio retention loop (in setup, after

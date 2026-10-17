@@ -522,16 +522,15 @@ fn abs_string(paths: &Paths, rel: &str) -> String {
     paths.abs(rel).to_string_lossy().into_owned()
 }
 
-fn to_summary(conn: &Connection, row: ItemRow, paths: &Paths) -> AppResult<ItemSummary> {
+/// Whether the item's file is over the sync size limit (`sync_blobs.state = 'tooLarge'`).
+/// Lists select it per row in SQL; detail looks up its one file.
+const TOO_LARGE: &str =
+    "EXISTS (SELECT 1 FROM sync_blobs WHERE sync_blobs.rel = items.file_path AND sync_blobs.state = 'tooLarge')";
+
+fn to_summary(row: ItemRow, file_too_large: bool, paths: &Paths) -> ItemSummary {
     let sensitive = row.sensitive;
     let file_available = row.file_path.as_deref().is_none_or(|rel| paths.abs(rel).exists());
-    let file_too_large = match row.file_path.as_deref() {
-        Some(rel) => conn
-            .prepare_cached("SELECT EXISTS (SELECT 1 FROM sync_blobs WHERE rel = ?1 AND state = 'tooLarge')")?
-            .query_row([rel], |r| r.get(0))?,
-        None => false,
-    };
-    Ok(ItemSummary {
+    ItemSummary {
         file_available,
         file_too_large,
         summary: if sensitive { None } else { row.summary },
@@ -564,13 +563,13 @@ fn to_summary(conn: &Connection, row: ItemRow, paths: &Paths) -> AppResult<ItemS
         updated_at: row.updated_at,
         added_by: row.added_by,
         task_suggestion: row.task_suggestion,
-    })
+    }
 }
 
 /// Keyset-paginated list by `(captured_at, id)`.
 pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<ItemPage> {
     let mut sql =
-        format!("SELECT {LIST_COLS} FROM items WHERE deleted_at IS NULL AND status = 'inbox'");
+        format!("SELECT {LIST_COLS}, {TOO_LARGE} FROM items WHERE deleted_at IS NULL AND status = 'inbox'");
     let mut args: Vec<SqlValue> = Vec::new();
     match q.view.as_str() {
         "all" | "recent" => {}
@@ -616,11 +615,11 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
 
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt
-        .query_map(params_from_iter(args), map_row)?
+        .query_map(params_from_iter(args), |r| Ok((map_row(r)?, r.get::<_, bool>(33)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let next_cursor = if rows.len() as i64 > limit {
         rows.truncate(limit as usize);
-        rows.last().map(|r| Cursor {
+        rows.last().map(|(r, _)| Cursor {
             captured_at: r.captured_at,
             id: r.id.clone(),
         })
@@ -628,7 +627,7 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
         None
     };
     Ok(ItemPage {
-        items: rows.into_iter().map(|r| to_summary(conn, r, paths)).collect::<AppResult<_>>()?,
+        items: rows.into_iter().map(|(r, too_large)| to_summary(r, too_large, paths)).collect(),
         next_cursor,
     })
 }
@@ -636,6 +635,8 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
 /// The item plus its events (newest first). Payload fields are withheld for sensitive items.
 pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<ItemDetail> {
     let mut row = get_row(conn, id)?;
+    let file_too_large: bool =
+        conn.query_row(&format!("SELECT {TOO_LARGE} FROM items WHERE id = ?1"), [id], |r| r.get(0))?;
     let mut stmt = conn.prepare(
         "SELECT id, item_id, at, actor, client_id, action, before_json, after_json, undone_at
          FROM item_events WHERE item_id = ?1 ORDER BY at DESC, id DESC",
@@ -654,7 +655,7 @@ pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<
     };
     let file_path = row.file_path.as_deref().map(|p| abs_string(paths, p));
     Ok(ItemDetail {
-        item: to_summary(conn, row, paths)?,
+        item: to_summary(row, file_too_large, paths),
         payload_text,
         payload_html,
         extracted_text,

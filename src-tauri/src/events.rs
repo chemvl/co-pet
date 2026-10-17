@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, SpeechStatus, SyncStatus};
+use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, RecordingStatus, SpeechStatus, SyncStatus};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -40,6 +40,10 @@ pub const ACCOUNT_CHANGED: &str = "account-changed";
 pub const SYNC_STATUS: &str = "sync-status";
 /// Meetings were created, changed or deleted.
 pub const MEETINGS_CHANGED: &str = "meetings-changed";
+/// The recorder's state changed; payload `RecordingStatus`.
+pub const RECORDING_STATUS: &str = "recording-status";
+/// Pet window only, every 100 ms while recording: track levels 0–1.
+pub const RECORDING_LEVEL: &str = "recording-level";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
@@ -126,6 +130,14 @@ pub struct TasksChanged {
 #[serde(rename_all = "camelCase")]
 pub struct MeetingsChanged {
     pub ids: Vec<String>,
+}
+
+/// Levels 0–1 of the last 100 ms of each track (0 for a track that is off).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingLevel {
+    pub mic: f32,
+    pub system: f32,
 }
 
 /// Payload `{}`: listeners re-read `list_categories`.
@@ -295,6 +307,10 @@ pub fn speech_status(app: &AppHandle, s: SpeechStatus) {
     emit(app, SPEECH_STATUS, s);
 }
 
+pub fn recording_status(app: &AppHandle, s: RecordingStatus) {
+    emit(app, RECORDING_STATUS, s);
+}
+
 pub fn categories_changed(app: &AppHandle) {
     emit(app, CATEGORIES_CHANGED, CategoriesChanged {});
 }
@@ -310,6 +326,13 @@ pub fn capture_result(app: &AppHandle, r: CaptureResult) {
 pub fn whats_next(app: &AppHandle, ev: WhatsNextEvent) {
     if let Err(e) = app.emit_to(crate::windows::PET, WHATS_NEXT, ev) {
         eprintln!("[events] emit {WHATS_NEXT} failed: {e}");
+    }
+}
+
+/// Sent to the pet window only (the Recording HUD meters).
+pub fn recording_level(app: &AppHandle, l: RecordingLevel) {
+    if let Err(e) = app.emit_to(crate::windows::PET, RECORDING_LEVEL, l) {
+        eprintln!("[events] emit {RECORDING_LEVEL} failed: {e}");
     }
 }
 

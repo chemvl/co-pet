@@ -18,6 +18,7 @@ use crate::llm::LlmServer;
 use crate::model::ExcludedApp;
 use crate::paths::Paths;
 use crate::secrets;
+use crate::transcribe::recorder::Recorder;
 use crate::windows;
 
 const EXCLUDED_APPS: &str = "capture.excludedApps";
@@ -243,6 +244,10 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
         return Err(AppError::Code("confirmation"));
     }
     app.state::<LlmServer>().stop().await;
+    // Before the database and the recordings go: no capture thread may still write into them.
+    if let Some(recorder) = app.try_state::<Recorder>() {
+        recorder.abort().await;
+    }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
         // Read before the database goes.

@@ -258,6 +258,21 @@ export interface MeetingDetail extends MeetingSummary {
   audioPath: string | null;
 }
 
+/** `recording-status`. */
+export interface RecordingStatus {
+  state: 'idle' | 'recording' | 'paused';
+  meetingId: string | null;
+  startedAt: number | null;
+  /** Active time (pauses excluded) when this status was sent. */
+  elapsedMs: number;
+  language: MeetingLanguage;
+  /** The track is capturing. */
+  mic: boolean;
+  system: boolean;
+  /** Only on the transition to `idle`. */
+  endedReason: 'maxLength' | 'tooShort' | null;
+}
+
 export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' | 'trashed' | 'restored';
 
 export interface TaskEvent {
@@ -558,4 +573,8 @@ export interface EventPayloads {
   'account-changed': { error: 'oauthExpired' | 'otherAccount' | string | null };
   /** The sync engine's state changed or a sync finished. */
   'sync-status': SyncStatus;
+  /** The recorder's state changed. */
+  'recording-status': RecordingStatus;
+  /** Pet window only, every 100 ms while recording: track levels 0–1 (0 for a track that is off). */
+  'recording-level': { mic: number; system: number };
 }

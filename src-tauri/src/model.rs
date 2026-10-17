@@ -606,6 +606,22 @@ pub struct MeetingDetail {
     pub audio_path: Option<String>,
 }
 
+/// The recorder (`recording-status`). `state`: `idle | recording | paused`; `elapsed_ms` is the
+/// active time (pauses excluded) when sent; `mic` / `system`: the track is capturing;
+/// `ended_reason`: `maxLength | tooShort`, only on the transition to `idle`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingStatus {
+    pub state: String,
+    pub meeting_id: Option<String>,
+    pub started_at: Option<i64>,
+    pub elapsed_ms: i64,
+    pub language: String,
+    pub mic: bool,
+    pub system: bool,
+    pub ended_reason: Option<String>,
+}
+
 /// `Some(None)` for an explicit `null`, `None` (via `#[serde(default)]`) when the key is absent.
 pub(crate) fn double_option<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     d: D,

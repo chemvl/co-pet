@@ -4,6 +4,7 @@ import { Button, Icon } from '../../ds';
 import { useT } from '../../shared/i18n';
 import { useIntegrations } from '../../shared/queries';
 import { ModelCards } from '../settings/ModelCards';
+import { SpeechModelCards } from '../settings/SpeechModelCards';
 import { AsanaCard } from './AsanaCard';
 import { NotionCard } from './NotionCard';
 import './integrations.css';
@@ -44,6 +45,7 @@ export function IntegrationsPage(): ReactElement {
                 <b className="in-row__name">{t('settings.triage.model')}</b>
               </div>
               <ModelCards />
+              <SpeechModelCards />
             </article>
             <article className="in-card is-disabled" aria-disabled="true" aria-label={t('integrations.cloud.title')}>
               <div className="in-row">

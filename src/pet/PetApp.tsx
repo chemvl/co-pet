@@ -11,7 +11,7 @@ import {
 import { PetDock, type IconName } from '../ds';
 import { categoryColor, categoryIcon, categoryLabelOf } from '../shared/categories';
 import { errorMessage, errorText } from '../shared/errors';
-import { useT, type I18nKey } from '../shared/i18n';
+import { useT, type I18nKey, type TParams } from '../shared/i18n';
 import {
   captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
   counts as fetchCounts, focusPetPanel, getPlacement, nextAction, on, openHome, pasteItems, pauseRecording, petStatus,
@@ -31,6 +31,9 @@ import {
   DOCK_BOX, type Box, type Point, type Size,
 } from './placement';
 import { fxForArt, poseFor } from './pose';
+import {
+  canSpeak, createSpeechLimiter, SPEECH_DELAY_MS, SPEECH_LINES, SPEECH_MS, speechFor, type SpeechLine,
+} from './speech';
 import { Floating } from './surfaces/Floating';
 import { ConsentPanel } from './surfaces/ConsentPanel';
 import { PetMenu } from './surfaces/PetMenu';
@@ -39,9 +42,13 @@ import { NextPanel } from './surfaces/NextPanel';
 import { PetNotice } from './surfaces/PetNotice';
 import { QuickNotePanel } from './surfaces/QuickNotePanel';
 import { RecordingDock } from './surfaces/RecordingDock';
+import { SpeechBubble } from './surfaces/SpeechBubble';
 import { COUNTS_KEY, TRAY_KEY, TrayPanel } from './surfaces/TrayPanel';
 import { usePetLook } from './usePetMachine';
 import './pet.css';
+
+/** The speech bubble takes no pointer, so its rect never becomes a hit region. */
+const NO_RECT = () => {};
 
 type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice' | 'next' | 'consent' | 'recLang';
 type Region = 'pet' | 'panel' | 'halo' | 'zone' | null;
@@ -100,7 +107,12 @@ export function PetApp() {
   const paused = settings?.['pet.paused'] === true;
   const wanted: Look | null = settings ? { ...petLookOf(settings), size: asPetSize(settings['pet.size']) } : null;
   const wantedKey = wanted ? `${wanted.species}/${wanted.skin}/${wanted.size}` : null;
-  const { machine, output, applied } = usePetLook(wanted, wantedKey);
+  const speaks = settings?.['pet.speaks'] === true;
+  const [speech, setSpeech] = useState<{ text: string; seq: number } | null>(null);
+  const limiter = useRef(createSpeechLimiter());
+  const speechTimers = useRef<{ delay: number | null; hide: number | null }>({ delay: null, hide: null });
+  const sayRef = useRef<(line: SpeechLine, params?: TParams) => void>(() => {});
+  const { machine, output, applied } = usePetLook(wanted, wantedKey, () => sayRef.current('newLook'));
 
   useEffect(() => machine.setPaused(paused), [machine, paused]);
 
@@ -351,9 +363,16 @@ export function PetApp() {
     openSurface('recLang');
   };
 
+  const prevRec = useRef<RecordingStatus['state']>('idle');
   const onRecordingStatus = (s: RecordingStatus) => {
-    if (s.state !== 'idle' || !s.endedReason) return;
-    showNotice({ message: t(s.endedReason === 'maxLength' ? 'notice.recMaxLength' : 'notice.recTooShort') });
+    const was = prevRec.current;
+    prevRec.current = s.state;
+    if (s.state !== 'idle') return;
+    if (s.endedReason) {
+      showNotice({ message: t(s.endedReason === 'maxLength' ? 'notice.recMaxLength' : 'notice.recTooShort') });
+    } else if (was !== 'idle') {
+      queueSpeech('recStopped');
+    }
   };
 
   // The language menu belongs to the HUD: it goes when the recording ends.
@@ -474,6 +493,37 @@ export function PetApp() {
     }
   };
 
+  // ---------- Pet speaks ----------
+  // A line waits SPEECH_DELAY_MS so a notice or card that follows the same event takes the spot instead.
+  const queueSpeech = (line: SpeechLine, params?: TParams) => {
+    if (speechTimers.current.delay !== null) window.clearTimeout(speechTimers.current.delay);
+    speechTimers.current.delay = window.setTimeout(() => {
+      speechTimers.current.delay = null;
+      handlers.current.showSpeech(line, params);
+    }, SPEECH_DELAY_MS);
+  };
+  sayRef.current = queueSpeech;
+
+  const showSpeech = (line: SpeechLine, params?: TParams) => {
+    const ctx = {
+      enabled: speaks,
+      paused,
+      hidden: live.current.hidden,
+      asleep: machine.output().body === 'sleep',
+      surfaceOpen: live.current.surface !== null,
+      recording: recState !== 'idle',
+      moving: moving !== null,
+      dragOver: live.current.halo !== 'none',
+    };
+    if (!canSpeak(ctx) || !limiter.current.take(line, Date.now())) return;
+    const text = t(SPEECH_LINES[line].key, params);
+    setSpeech({ text, seq: Date.now() });
+    setOut(true);
+    if (SPEECH_LINES[line].announce) announce(t('pet.speech.said', { name, line: text }));
+    if (speechTimers.current.hide !== null) window.clearTimeout(speechTimers.current.hide);
+    speechTimers.current.hide = window.setTimeout(() => setSpeech(null), SPEECH_MS);
+  };
+
   const onReaction = (e: EventPayloads['pet-reaction']) => {
     const c = e.category ? categories?.find((x) => x.id === e.category) : undefined;
     machine.fire(e.input, { icon: c && categoryIcon(c), color: c && categoryColor(c), variant: e.variant });
@@ -481,11 +531,19 @@ export function PetApp() {
       announce(t('pet.announce.savedTo', { category: categoryLabelOf(categories, e.category, t) }));
     }
     if (e.input === 'tilt') announce(t('pet.announce.savedTo', { category: categoryLabelOf(categories, 'unsorted', t) }));
+    const line = speechFor(e);
+    if (line) {
+      queueSpeech(line, line === 'idea' && e.category ? { category: categoryLabelOf(categories, e.category, t) } : undefined);
+    }
   };
 
   // The subscriptions live for the window's lifetime and call the latest handlers.
-  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus });
-  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus };
+  const handlers = useRef({
+    applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus, showSpeech,
+  });
+  handlers.current = {
+    applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus, showSpeech,
+  };
 
   useEffect(() => {
     const h = handlers;
@@ -535,13 +593,26 @@ export function PetApp() {
 
   // Back to peek once nothing holds the pet out.
   useEffect(() => {
-    if (!out || region !== null || surface !== null || halo !== 'none' || petFocused || moving) return;
+    if (!out || region !== null || surface !== null || halo !== 'none' || petFocused || moving || speech !== null) return;
     const timer = window.setTimeout(() => {
       peekDelay.current = PEEK_MS;
       setOut(false);
     }, peekDelay.current);
     return () => window.clearTimeout(timer);
-  }, [out, region, surface, halo, petFocused, moving]);
+  }, [out, region, surface, halo, petFocused, moving, speech]);
+
+  // Anything that takes the spot or silences the pet drops the line.
+  useEffect(() => {
+    if (surface !== null || hidden || moving || halo !== 'none' || recState !== 'idle' || !speaks || paused) setSpeech(null);
+  }, [surface, hidden, moving, halo, recState, speaks, paused]);
+
+  useEffect(() => {
+    const timers = speechTimers.current;
+    return () => {
+      if (timers.delay !== null) window.clearTimeout(timers.delay);
+      if (timers.hide !== null) window.clearTimeout(timers.hide);
+    };
+  }, []);
 
   // Badge changes are announced: the due-soon dot when it appears, else the unsorted count.
   const dueSoon = counts?.taskDueSoon ?? false;
@@ -892,6 +963,12 @@ export function PetApp() {
             onStop={onHudStop}
             onLanguage={onHudLanguage}
           />
+        </Floating>
+      ) : null}
+
+      {!hidden && speech && surface === null && !moving ? (
+        <Floating key={speech.seq} place={placeNextToPet} onRect={NO_RECT} className="pt-floating--speech">
+          <SpeechBubble text={speech.text} />
         </Floating>
       ) : null}
 

@@ -107,6 +107,12 @@ html, body { background: transparent; }
 /* What's Next: the card's own buttons show focus; the wrapper only takes the keys. */
 .pt-next:focus { outline: none; }
 
+/* Pet speaks: one short line beside the pet; it never takes the pointer. */
+.pt-floating--speech { pointer-events: none; }
+.pt-speech { max-width: 220px; box-sizing: border-box; padding: var(--space-2) var(--space-3); background: var(--bubble); color: var(--bubble-ink); border: 1px solid var(--bubble-ring); border-radius: var(--radius-lg); box-shadow: var(--shadow-float); font: 500 13px/20px var(--font-sans); animation: pt-speech-in var(--dur-base) var(--ease-out) both; }
+@keyframes pt-speech-in { from { opacity: 0; scale: 0.92; } to { opacity: 1; scale: 1; } }
+@keyframes pt-speech-fade { from { opacity: 0; } to { opacity: 1; } }
+
 /* Visually hidden live region. */
 .pt-sr {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
@@ -116,4 +122,5 @@ html, body { background: transparent; }
 @media (prefers-reduced-motion: reduce) {
   .pt-dock, .pt-dock .cp-dock__halo { transition: none; }
   .pt-dock .cp-dock__bubble { animation: none; }
+  .pt-speech { animation: pt-speech-fade var(--dur-fast) linear both; }
 }

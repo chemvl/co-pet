@@ -1,6 +1,6 @@
 // Pet room: a large preview stage with animation chips, and the pet's name, species, skin and size.
 import { useEffect, useId, useState, type ReactElement } from 'react';
-import { SegmentedControl } from '../../ds';
+import { SegmentedControl, Switch } from '../../ds';
 import { asPetSize, petLookOf } from '../../pet/catalog';
 import { CatArt } from '../../pet/CatArt';
 import { fxForArt, poseFor } from '../../pet/pose';
@@ -24,6 +24,7 @@ export function PetRoomPage(): ReactElement {
   const t = useT();
   const look = petLookOf(settings);
   const size = asPetSize(settings?.['pet.size']);
+  const speaks = settings?.['pet.speaks'] === true;
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const { machine, output, applied } = usePetLook(settings ? look : null, settings ? `${look.species}/${look.skin}` : null);
   const [loop, setLoop] = useState<Loop>('idle');
@@ -121,6 +122,13 @@ export function PetRoomPage(): ReactElement {
             ]}
           />
         </div>
+        <Switch
+          id="pr-speaks"
+          label={t('petroom.speaks')}
+          description={t('petroom.speaksDesc')}
+          checked={speaks}
+          onChange={(v) => void set('pet.speaks', v)}
+        />
         <p className="pr-behaviour">
           {t('petroom.behaviour')}{' '}
           <button type="button" className="st-link" onClick={() => navigate('settings/notifications')}>

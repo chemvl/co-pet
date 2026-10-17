@@ -423,6 +423,124 @@ UPDATE settings SET value = '"pixel"' WHERE key = 'pet.style' AND value IN ('"so
 UPDATE sync_guard SET applying = 0;
 "#;
 
+/// Schema v12 (Phase 4): device-local and synced settings for Pet speaks, the diary, AI providers,
+/// calendar and updates; `task_events` accepts the `notion`/`asana` actors of the status sync;
+/// device-local `export_status` holds the done state both sides last agreed on.
+const V12: &str = r#"
+INSERT INTO settings (key, value, updated_at) VALUES
+  ('pet.speaks', 'false', 0),                    -- synced (M2)
+  ('diary.weeklyNotice', 'true', 0),             -- synced (M3)
+  ('diary.lastNoticeWeek', 'null', 0),           -- device: Monday (YYYY-MM-DD) of the week the notice was shown (M3)
+  ('ai.provider', '"local"', 0),                 -- device: local | anthropic | openai | gemini | ollama | lmstudio (M4)
+  ('ai.cloudModels', '{"anthropic":"claude-haiku-5-5","openai":"gpt-6-luna","gemini":"gemini-3.5-flash-lite","ollama":null,"lmstudio":null}', 0),
+  ('ai.serverUrls', '{"ollama":"http://localhost:11434","lmstudio":"http://localhost:1234"}', 0),
+  ('ai.cloudMeetings', 'false', 0),              -- device (M4)
+  ('whatsNext.calendar', 'false', 0),            -- device: TCC access is per Mac (M5)
+  ('whatsNext.calendarExcluded', '[]', 0),       -- device: EventKit calendarIdentifiers (M5)
+  ('updates.autoCheck', 'true', 0);              -- device (M7)
+CREATE TABLE task_events_v3 (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), at INTEGER NOT NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user','agent','next','meeting','notion','asana')), client_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('created','edited','done','reopened','snoozed','trashed','restored')),
+  before_json TEXT, after_json TEXT, undone_at INTEGER, updated_at INTEGER NOT NULL);
+INSERT INTO task_events_v3 SELECT id, task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at FROM task_events;
+DROP TABLE task_events;
+ALTER TABLE task_events_v3 RENAME TO task_events;
+CREATE INDEX task_events_task ON task_events(task_id, at DESC);
+CREATE TABLE export_status (
+  export_id TEXT PRIMARY KEY,                                   -- task_exports.id ('<task_id>:<provider>'); device-local, not synced
+  external_id TEXT NOT NULL,                                    -- page id / task gid this base belongs to; a re-export replaces it
+  synced_done INTEGER NOT NULL CHECK (synced_done IN (0,1)),    -- done state both sides last agreed on
+  remote_modified_at INTEGER,                                   -- remote last edit seen (epoch ms)
+  checked_at INTEGER NOT NULL);                                 -- last check (round-robin order)
+DROP TRIGGER sync_settings_ins;
+DROP TRIGGER sync_settings_upd;
+CREATE TRIGGER sync_settings_ins AFTER INSERT ON settings WHEN (SELECT applying FROM sync_guard) = 0
+  AND NEW.key IN ('ui.language','pet.name','pet.style','pet.skin','pet.size','pet.sleepHours','capture.removeOriginal','capture.excludedApps','triage.confidenceThreshold','privacy.secretDetection','whatsNext.onReturn','whatsNext.afterDone','whatsNext.idleMinutes','whatsNext.workHours','whatsNext.maxPerHour','whatsNext.afterMeeting','transcribe.language','transcribe.summaryLanguage','transcribe.audioRetentionDays','transcribe.consentShown','pet.speaks','diary.weeklyNotice')
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_settings_upd AFTER UPDATE ON settings WHEN (SELECT applying FROM sync_guard) = 0
+  AND NEW.key IN ('ui.language','pet.name','pet.style','pet.skin','pet.size','pet.sleepHours','capture.removeOriginal','capture.excludedApps','triage.confidenceThreshold','privacy.secretDetection','whatsNext.onReturn','whatsNext.afterDone','whatsNext.idleMinutes','whatsNext.workHours','whatsNext.maxPerHour','whatsNext.afterMeeting','transcribe.language','transcribe.summaryLanguage','transcribe.audioRetentionDays','transcribe.consentShown','pet.speaks','diary.weeklyNotice')
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12)])
 });
+
+#[cfg(test)]
+mod tests {
+    use super::MIGRATIONS;
+    use crate::db::Db;
+    use rusqlite::Connection;
+
+    #[test]
+    fn v12_task_events_accept_service_actors() {
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 11).unwrap();
+        c.execute_batch(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES ('t1', 'Task', 1, 1);
+             INSERT INTO task_events (id, task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at)
+               VALUES ('e1', 't1', 5, 'meeting', 'c1', 'edited', '{\"title\":\"A\"}', '{\"title\":\"B\"}', 8, 6);",
+        )
+        .unwrap();
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        let event: (String, i64, String, Option<String>, String, String, String, Option<i64>, i64) = c
+            .query_row(
+                "SELECT task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at
+                   FROM task_events WHERE id = 'e1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            event,
+            ("t1".into(), 5, "meeting".into(), Some("c1".into()), "edited".into(), "{\"title\":\"A\"}".into(), "{\"title\":\"B\"}".into(), Some(8), 6)
+        );
+        let insert = |id: &str, actor: &str| {
+            c.execute(
+                "INSERT INTO task_events (id, task_id, at, actor, action, updated_at) VALUES (?1, 't1', 7, ?2, 'done', 7)",
+                [id, actor],
+            )
+        };
+        assert!(insert("e2", "notion").is_ok());
+        assert!(insert("e3", "asana").is_ok());
+        assert!(insert("e4", "service").is_err());
+        assert!(c
+            .execute("INSERT INTO export_status (export_id, external_id, synced_done, checked_at) VALUES ('t:asana','9',2,0)", [])
+            .is_err());
+    }
+
+    #[test]
+    fn v12_seeds_settings() {
+        let db = Db::open_in_memory().unwrap();
+        let c = db.conn();
+        for (key, value) in [
+            ("pet.speaks", "false"),
+            ("diary.weeklyNotice", "true"),
+            ("diary.lastNoticeWeek", "null"),
+            ("ai.provider", "\"local\""),
+            (
+                "ai.cloudModels",
+                r#"{"anthropic":"claude-haiku-5-5","openai":"gpt-6-luna","gemini":"gemini-3.5-flash-lite","ollama":null,"lmstudio":null}"#,
+            ),
+            ("ai.serverUrls", r#"{"ollama":"http://localhost:11434","lmstudio":"http://localhost:1234"}"#),
+            ("ai.cloudMeetings", "false"),
+            ("whatsNext.calendar", "false"),
+            ("whatsNext.calendarExcluded", "[]"),
+            ("updates.autoCheck", "true"),
+        ] {
+            let got: String = c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).unwrap();
+            assert_eq!(got, value, "{key}");
+        }
+        let queued = |key: &str| -> i64 {
+            c.query_row("SELECT count(*) FROM sync_outbox WHERE tbl = 'settings' AND id = ?1", [key], |r| r.get(0)).unwrap()
+        };
+        c.execute("DELETE FROM sync_outbox", []).unwrap();
+        c.execute("UPDATE settings SET value='true' WHERE key='pet.speaks'", []).unwrap();
+        assert_eq!(queued("pet.speaks"), 1);
+        c.execute("UPDATE settings SET value='true' WHERE key='ai.provider'", []).unwrap();
+        assert_eq!(queued("ai.provider"), 0);
+    }
+}

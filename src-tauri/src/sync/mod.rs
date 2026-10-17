@@ -34,7 +34,7 @@ pub const SYNC_TABLES: [(&str, &str, u8); 9] = [
 ];
 
 /// Settings keys that sync across devices; every other key is per-device.
-pub const SYNCED_SETTINGS: [&str; 20] = [
+pub const SYNCED_SETTINGS: [&str; 22] = [
     "ui.language",
     "pet.name",
     "pet.style",
@@ -55,6 +55,8 @@ pub const SYNCED_SETTINGS: [&str; 20] = [
     "transcribe.audioRetentionDays",
     "transcribe.consentShown",
     "whatsNext.afterMeeting",
+    "pet.speaks",
+    "diary.weeklyNotice",
 ];
 
 const CURSOR: &str = "cursor";

@@ -396,6 +396,7 @@ export interface PermissionsStatus {
   screenRecording: boolean;
   accessibility: boolean;
   microphone: 'granted' | 'denied' | 'notDetermined';
+  calendar: 'granted' | 'denied' | 'notDetermined';
 }
 
 /** `pet_status`: the current `pet-visibility` and `pet-flags.sleep` values. */

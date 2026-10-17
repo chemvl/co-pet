@@ -423,6 +423,8 @@ pub struct PermissionsStatus {
     pub accessibility: bool,
     /// `granted` | `denied` | `notDetermined`.
     pub microphone: String,
+    /// `granted` | `denied` | `notDetermined`.
+    pub calendar: String,
 }
 
 /// `list_excluded_apps`: an excluded bundle id and the installed app's name (`None` when the app

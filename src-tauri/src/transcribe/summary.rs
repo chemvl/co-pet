@@ -373,7 +373,9 @@ pub fn ignore_meeting_change(app: &AppHandle, meeting_id: &str, change_id: &str)
 }
 
 pub fn add_action_to_tasks(app: &AppHandle, meeting_id: &str, action_id: &str) -> AppResult<TaskSummary> {
-    let task = add_action(&mut app.state::<Db>().conn(), meeting_id, action_id, i18n::lang(app))?;
+    // Before taking the connection: `lang` reads a setting through the same mutex.
+    let lang = i18n::lang(app);
+    let task = add_action(&mut app.state::<Db>().conn(), meeting_id, action_id, lang)?;
     meetings::notify_changed(app, vec![meeting_id.to_string()]);
     tasks::notify_changed(app, vec![task.id.clone()]);
     Ok(task)
@@ -381,7 +383,9 @@ pub fn add_action_to_tasks(app: &AppHandle, meeting_id: &str, action_id: &str) -
 
 /// Copies the meeting's notes (Markdown without the transcript) as plain text.
 pub async fn copy_markdown(app: &AppHandle, id: &str) -> AppResult<()> {
-    let text = meetings::markdown(&meetings::get(&app.state::<Db>().conn(), id)?, i18n::lang(app), false);
+    // Before taking the connection: `lang` reads a setting through the same mutex.
+    let lang = i18n::lang(app);
+    let text = meetings::markdown(&meetings::get(&app.state::<Db>().conn(), id)?, lang, false);
     pasteboard::write_on_main(app, Vec::new(), BTreeMap::from([(TYPE_PLAIN.to_string(), text)]), None).await
 }
 

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "build:prod": "bun --env-file=.env.prod run tauri build --bundles app",
+    "build:prod": "bun --env-file=.env.prod scripts/build-local.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src-mcp",
     "build:mcp": "bun scripts/build-mcp.ts",

@@ -9,7 +9,7 @@ use objc2::runtime::Bool;
 use objc2_app_kit::NSWorkspace;
 use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
 use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEventStore};
-use objc2_foundation::{NSDictionary, NSError, NSNumber, NSString, NSURL};
+use objc2_foundation::{NSBundle, NSDictionary, NSError, NSNumber, NSString, NSURL};
 use tokio::sync::oneshot;
 
 use crate::error::{AppError, AppResult};
@@ -39,7 +39,23 @@ pub fn screen_recording_granted() -> bool {
 }
 
 /// Shows the OS prompt once and lists Co-pet under Screen Recording.
+///
+/// Without access, Co-pet's entry is reset first. TCC pins an entry to the code signature of the
+/// build that asked; after the signature changes (an ad-hoc build's cdhash → a certificate, or one
+/// certificate → another) the entry still shows switched on in System Settings, never matches the
+/// running binary, and flipping the switch doesn't re-pin it. Resetting lets the prompt below
+/// record a fresh entry for this build. A deliberate denial just gets asked again, which is what
+/// the user's click on "Open settings" asks for.
 pub fn request_screen_recording() {
+    if !screen_recording_granted() {
+        if let Some(id) = NSBundle::mainBundle().bundleIdentifier() {
+            // Best effort: on failure the prompt and the pane still open.
+            let _ = std::process::Command::new("/usr/bin/tccutil")
+                .args(["reset", "ScreenCapture"])
+                .arg(id.to_string())
+                .output();
+        }
+    }
     // SAFETY: no arguments; available since macOS 10.15.
     unsafe { CGRequestScreenCaptureAccess() };
 }

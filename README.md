@@ -100,7 +100,7 @@ Pass the file explicitly with `bun --env-file`. Plain `bun run` doesn't load the
 
 ```sh
 bun --env-file=.env.dev run tauri dev                    # dev app against local Supabase
-bun --env-file=.env.prod run tauri build --bundles app   # release bundle against the hosted project (= bun run build:prod)
+bun --env-file=.env.prod run tauri build --bundles app   # ad-hoc signed bundle against the hosted project
 ```
 
 Every `.env` and `.env.*` file is gitignored except the `.env.example` templates.
@@ -149,11 +149,13 @@ Sign in from Settings › Account and sync with any email. The 6-digit code arri
 3. Build and open the bundle:
 
    ```sh
-   bun run build:prod   # bun --env-file=.env.prod run tauri build --bundles app
+   bun run build:prod   # bundle against the hosted project, signed with your Apple Development / Developer ID certificate
    open src-tauri/target/release/bundle/macos/Co-pet.app
    ```
 
 Google sign-in and Notion/Asana OAuth return through `copet://` deep links. macOS delivers those only to the bundled app, so these flows can't finish in `tauri dev`. Use the hosted project to test them. `supabase/config.toml` has no Google provider and doesn't allow `copet://auth/callback`, and the local `oauth` function's redirect URI isn't reachable from Notion or Asana.
+
+The keychain trusts an app by its code signature. `build:prod` signs with the first "Developer ID Application" or "Apple Development" certificate in your login keychain (or `APPLE_SIGNING_IDENTITY`), so after you click **Always Allow** once per Co-pet keychain entry, rebuilt apps read it without asking. Ad-hoc builds (`signingIdentity: "-"`, used when no certificate exists) are a new app to the keychain on every build and ask for the login password again; within one launch the app reads each entry at most once.
 
 ## Connecting an AI agent
 

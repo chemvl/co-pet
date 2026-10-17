@@ -174,18 +174,21 @@ async fn start_track(
     };
     // From here an early return drops `stop`, which ends the capture thread.
     let writer = TrackWriter::create(&path, rate)?;
-    let writer = spawn_writer(name, writer, chunks_rx, clock.clone(), state.clone())?;
+    let writer = spawn_writer(app.clone(), name, writer, chunks_rx, clock.clone(), state.clone(), stop.clone())?;
     Ok(Some(Track { rate, state, stop, owner, chunks, writer }))
 }
 
 /// Writes chunks until `End`, dropping them while paused, and publishes the level (0 after
-/// 100 ms without audio). Returns the samples written.
+/// 100 ms without audio). A write failure turns the track off and stops its capture thread.
+/// Returns the samples written.
 fn spawn_writer(
+    app: AppHandle,
     name: &'static str,
     mut writer: TrackWriter,
     chunks: mpsc::Receiver<Chunk>,
     clock: SharedClock,
     state: Arc<TrackState>,
+    stop: mpsc::Sender<()>,
 ) -> AppResult<JoinHandle<u64>> {
     let handle = thread::Builder::new().name(format!("copet-rec-{name}-writer")).spawn(move || {
         loop {
@@ -200,6 +203,10 @@ fn spawn_writer(
                     };
                     if let Err(e) = writer.push(&samples, active) {
                         eprintln!("[recorder] {name}: write failed: {e}");
+                        state.on.store(false, Relaxed);
+                        state.level.store(0f32.to_bits(), Relaxed);
+                        let _ = stop.send(());
+                        emit_status(&app);
                         break;
                     }
                     state.level.store(writer.level().to_bits(), Relaxed);
@@ -340,8 +347,13 @@ fn audio_samples(sample: &CMSampleBuffer) -> Option<Vec<f32>> {
 }
 
 /// Starts capturing the first display's audio (2×2 video, 16 kHz mono, Co-pet's own sound
-/// excluded). A stream failure turns the track off; the mic continues.
-fn build_system(app: &AppHandle, chunks: &mpsc::Sender<Chunk>, state: &Arc<TrackState>) -> Result<SCStream, String> {
+/// excluded). A stream failure turns the track off and raises the returned flag; the mic
+/// continues.
+fn build_system(
+    app: &AppHandle,
+    chunks: &mpsc::Sender<Chunk>,
+    state: &Arc<TrackState>,
+) -> Result<(SCStream, Arc<AtomicBool>), String> {
     let content = SCShareableContent::get().map_err(|e| e.to_string())?;
     let display = content.displays().into_iter().next().ok_or("no display")?;
     let filter = SCContentFilter::create().with_display(&display).with_excluding_windows(&[]).build();
@@ -352,13 +364,15 @@ fn build_system(app: &AppHandle, chunks: &mpsc::Sender<Chunk>, state: &Arc<Track
         .with_sample_rate(SYSTEM_RATE as i32)
         .with_channel_count(1)
         .with_excludes_current_process_audio(true);
-    let (app, failed) = (app.clone(), state.clone());
+    let failed = Arc::new(AtomicBool::new(false));
+    let (app, track, flag) = (app.clone(), state.clone(), failed.clone());
     let mut stream = SCStream::new_with_delegate(
         &filter,
         &config,
         ErrorHandler::new(move |e| {
             eprintln!("[recorder] system audio stopped: {e}");
-            failed.on.store(false, Relaxed);
+            flag.store(true, Relaxed);
+            track.on.store(false, Relaxed);
             emit_status(&app);
         }),
     );
@@ -378,7 +392,7 @@ fn build_system(app: &AppHandle, chunks: &mpsc::Sender<Chunk>, state: &Arc<Track
     // Before starting: a failure reported right away must win.
     state.on.store(true, Relaxed);
     stream.start_capture().map_err(|e| e.to_string())?;
-    Ok(stream)
+    Ok((stream, failed))
 }
 
 /// Owns the `SCStream` until `stop`.
@@ -389,8 +403,8 @@ fn system_owner(
     state: Arc<TrackState>,
     ready: oneshot::Sender<Result<u32, String>>,
 ) {
-    let stream = match build_system(&app, &chunks, &state) {
-        Ok(stream) => stream,
+    let (stream, failed) = match build_system(&app, &chunks, &state) {
+        Ok(v) => v,
         Err(e) => {
             let _ = ready.send(Err(e));
             return;
@@ -399,7 +413,7 @@ fn system_owner(
     let _ = ready.send(Ok(SYSTEM_RATE));
     let _ = stop.recv();
     // A failed stream has stopped already.
-    if state.on.load(Relaxed) {
+    if !failed.load(Relaxed) {
         if let Err(e) = stream.stop_capture() {
             eprintln!("[recorder] stopping system audio: {e}");
         }

@@ -675,6 +675,7 @@ export const vi: Record<keyof typeof en, string> = {
   'pet.skin.peach': 'Đào',
   'pet.skin.tabby': 'Mướp',
   'pet.skin.midnight': 'Nửa đêm',
+  'pet.skin.cloud': 'Mây',
   'pet.skin.biscuit': 'Bánh quy',
   'pet.skin.cocoa': 'Ca cao',
   'pet.skin.pebble': 'Đá cuội',

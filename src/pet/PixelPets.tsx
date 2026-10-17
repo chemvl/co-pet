@@ -279,24 +279,30 @@ export function PixelPet(p: { species: PixelSpecies; skin: SkinId; parts: CatPar
       {(mouth === 'open' ? pet.open : pet.smile).map(([x, y, w, h, key], i) =>
         cellRect(`m${i}`, x, y, w, h, layers.palette[key]),
       )}
-      {item && (
-        <>
-          <rect
-            x={ix * CELL} y={iy * CELL} width={3.5 * CELL} height={3.75 * CELL}
-            fill="#ffffff" stroke={INK} strokeWidth="2"
-          />
-          {cellRect('l1', ix + 0.75, iy + 1, 2, 0.4, PAPER_LINE)}
-          {cellRect('l2', ix + 0.75, iy + 1.9, 1.5, 0.4, PAPER_LINE)}
-          {cellRect('l3', ix + 0.75, iy + 2.8, 1, 0.4, PAPER_LINE)}
-          {[ix - 0.6, ix + 2.85].map((hx) => (
-            <rect
-              key={hx}
-              x={hx * CELL} y={(iy + 1.25) * CELL} width={1.25 * CELL} height={1.25 * CELL}
-              fill={layers.palette[pet.hand]} stroke={INK} strokeWidth="1.5"
-            />
-          ))}
-        </>
-      )}
+      {item && <HeldNote cell={CELL} x={ix} y={iy} hand={layers.palette[pet.hand]} />}
     </g>
+  );
+}
+
+/** The caught note held against the belly, a paw on each side; `x`, `y` are its top-left in cells. */
+export function HeldNote(p: { cell: number; x: number; y: number; hand: string }) {
+  const { cell, x, y } = p;
+  const r = (k: string, cx: number, cy: number, w: number, h: number) => (
+    <rect key={k} x={cx * cell} y={cy * cell} width={w * cell} height={h * cell} fill={PAPER_LINE} />
+  );
+  return (
+    <>
+      <rect x={x * cell} y={y * cell} width={3.5 * cell} height={3.75 * cell} fill="#ffffff" stroke={INK} strokeWidth="2" />
+      {r('l1', x + 0.75, y + 1, 2, 0.4)}
+      {r('l2', x + 0.75, y + 1.9, 1.5, 0.4)}
+      {r('l3', x + 0.75, y + 2.8, 1, 0.4)}
+      {[x - 0.6, x + 2.85].map((hx) => (
+        <rect
+          key={hx}
+          x={hx * cell} y={(y + 1.25) * cell} width={1.25 * cell} height={1.25 * cell}
+          fill={p.hand} stroke={INK} strokeWidth="1.5"
+        />
+      ))}
+    </>
   );
 }

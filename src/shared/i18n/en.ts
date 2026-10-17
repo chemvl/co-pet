@@ -674,6 +674,7 @@ export const en = {
   'pet.skin.peach': 'Peach',
   'pet.skin.tabby': 'Tabby',
   'pet.skin.midnight': 'Midnight',
+  'pet.skin.cloud': 'Cloud',
   'pet.skin.biscuit': 'Biscuit',
   'pet.skin.cocoa': 'Cocoa',
   'pet.skin.pebble': 'Pebble',

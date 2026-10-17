@@ -3,9 +3,10 @@
 import { useSyncExternalStore, type CSSProperties, type ReactElement } from 'react';
 import { Icon, type IconName } from '../ds';
 import type { BuiltinCategoryId, Edge } from '../shared/types';
-import type { CatMotion, CatParts } from './pose';
-import { resolveSkin, SKINS, type SkinId, type Species } from './catalog';
-import { PixelPet } from './PixelPets';
+import type { CatEyes, CatMotion, CatParts } from './pose';
+import { resolveSkin, SKINS, skinsOf, type SkinId, type Species } from './catalog';
+import { HeldNote, PixelPet } from './PixelPets';
+import { COLS, EAR, EYES, OUTLINE, PIXEL_MAP, ROWS, TAIL, type CellBox } from './pixelCat';
 import './cat.css';
 
 /** Every species is skinnable (catalog.ts). */
@@ -15,9 +16,7 @@ export type CatFx =
   | { kind: 'question' }
   | { kind: 'agent' };
 
-const OUTLINE = '#2a211c';
-const NOSE = '#d9775a';
-const PAPER_LINE = '#8f8170';
+const MOUTH = '#8c3a2b';
 const ZZZ = '#6b5d52';
 
 export interface CatArtProps {
@@ -83,7 +82,7 @@ export function CatArt(props: CatArtProps): ReactElement {
         >
           <g transform={mirrored ? 'translate(160 0) scale(-1 1)' : undefined}>
             {look === 'pixel' ? (
-              <PixelCat palette={SKINS[resolveSkin('pixel', skin)].palette} parts={parts} lowered={lowered} blink={blink} />
+              <PixelCat skin={resolveSkin('pixel', skin)} parts={parts} lowered={lowered} blink={blink} />
             ) : (
               <PixelPet species={look} skin={resolveSkin(look, skin)} parts={parts} lowered={lowered} blink={blink} />
             )}
@@ -126,72 +125,79 @@ function subscribeVisibility(onChange: () => void): () => void {
   return () => document.removeEventListener('visibilitychange', onChange);
 }
 
-const PIXEL_MAP = [
-  '.o........o.',
-  '.oo......oo.',
-  '.olo....olo.',
-  '.obboooobbo.',
-  'obbbbbbbbbbo',
-  'obbbbbbbbbbo',
-  'obbbbppbbbbo',
-  '.obbllllbbo.',
-  '.obbllllbbo.',
-  '.obbbbbbbboo',
-  '.obbo..obbob',
-  '..oo....oo..',
-];
+// Kitty: 7-unit cells, centred across the box with the feet on the bottom edge.
+const CELL = 7;
+const KITTY_X = (160 - COLS * CELL) / 2;
+const KITTY_Y = 160 - ROWS * CELL;
 
-interface Px { x: number; y: number; w: number; h: number }
+type Rect = readonly [x: number, y: number, w: number, h: number, fill: string];
 
-function PixelCat(p: { palette: Readonly<Record<string, string>>; parts: CatParts; lowered: boolean; blink: boolean }) {
-  const ox = 20;
-  const oy = p.lowered ? 44 : 40;
-  const fills: Record<string, string> = { o: OUTLINE, b: p.palette.b, l: p.palette.l, p: NOSE };
-  const base: (Px & { f: string })[] = [];
-  PIXEL_MAP.forEach((row, r) => {
-    [...row].forEach((ch, k) => {
-      const f = fills[ch];
-      if (f) base.push({ x: ox + k * 10, y: oy + r * 10, w: 10, h: 10, f });
-    });
+/** The map's cells inside (`inside`) or outside `boxes`; same-colour cells on a row merge into one rect. */
+function runs(fills: Readonly<Record<string, string>>, boxes: readonly CellBox[], inside: boolean): Rect[] {
+  const out: Rect[] = [];
+  PIXEL_MAP.forEach((row, y) => {
+    let start = 0;
+    let fill: string | undefined;
+    for (let x = 0; x <= row.length; x++) {
+      const keep = x < row.length && boxes.some((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) === inside;
+      const f = keep ? fills[row[x]] : undefined;
+      if (f === fill) continue;
+      if (fill) out.push([start, y, x - start, 1, fill]);
+      start = x;
+      fill = f;
+    }
   });
-  const cell = (cx: number, cy: number): Px => ({ x: ox + cx * 10, y: oy + cy * 10, w: 10, h: 10 });
-  const leftShut: Px = { x: ox + 25, y: oy + 54, w: 20, h: 4 };
-  const rightShut: Px = { x: ox + 75, y: oy + 54, w: 20, h: 4 };
-  // Happy eyes: a small "^" per eye.
-  const caret = (x: number): Px[] => [
-    { x, y: oy + 52, w: 6, h: 4 },
-    { x: x + 6, y: oy + 48, w: 8, h: 4 },
-    { x: x + 14, y: oy + 52, w: 6, h: 4 },
-  ];
-  let eyes: Px[];
-  switch (p.parts.eyes) {
-    case 'open': eyes = [cell(3, 5), cell(8, 5)]; break;
-    case 'wide': eyes = [cell(3, 4), cell(3, 5), cell(8, 4), cell(8, 5)]; break;
-    case 'up': eyes = [cell(3, 4), cell(8, 4)]; break;
-    case 'closed': eyes = [leftShut, rightShut]; break;
-    case 'happy': eyes = [...caret(ox + 25), ...caret(ox + 75)]; break;
-    case 'wink': eyes = [cell(3, 5), rightShut]; break;
-  }
-  const mouth = p.parts.mouth === 'open' ? [cell(5, 7), cell(6, 7)] : [];
-  const ink = p.palette.e;
-  const rects = (list: Px[], fill: string) =>
-    list.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} />);
+  return out;
+}
 
+const KITTY: Partial<Record<SkinId, { body: Rect[]; tail: Rect[]; ear: Rect[] }>> = Object.fromEntries(
+  skinsOf('pixel').map((k) => {
+    const fills = { ...k.palette, o: OUTLINE };
+    return [k.id, { body: runs(fills, [TAIL, EAR], false), tail: runs(fills, [TAIL], true), ear: runs(fills, [EAR], true) }];
+  }),
+);
+
+/** Eye shapes in cells, relative to the eye's top cell: the iris in the skin's `e`, the rest in ink. */
+type Shape = readonly (readonly [number, number, number, number])[];
+const OPEN = { iris: [[0, 0, 1, 1]], ink: [[0, 1, 1, 1]] } as const;
+const SHUT: Shape = [[-0.5, 1.25, 2, 0.5]];
+const KITTY_EYES: Readonly<Record<CatEyes, { iris: Shape; ink: Shape }>> = {
+  open: OPEN,
+  wide: { iris: [[0, -1, 1, 2]], ink: [[0, 1, 1, 1]] },
+  up: { iris: [[0, -1, 1, 1]], ink: [[0, 0, 1, 1]] },
+  closed: { iris: [], ink: SHUT },
+  happy: { iris: [], ink: [[-0.5, 1.25, 0.5, 0.5], [0, 0.75, 1, 0.5], [1, 1.25, 0.5, 0.5]] },
+  // Handled per eye below.
+  wink: OPEN,
+};
+
+function rects(list: readonly Rect[]) {
+  return list.map(([x, y, w, h, fill], i) => (
+    <rect key={i} x={x * CELL} y={y * CELL} width={w * CELL} height={h * CELL} fill={fill} />
+  ));
+}
+
+/** `shape` placed at an eye's top cell. */
+function eyeRects(shape: Shape, [ex, ey]: readonly [number, number], fill: string): Rect[] {
+  return shape.map(([x, y, w, h]) => [ex + x, ey + y, w, h, fill]);
+}
+
+function PixelCat(p: { skin: SkinId; parts: CatParts; lowered: boolean; blink: boolean }) {
+  const layers = KITTY[p.skin]!;
+  const { e: iris, b: body } = SKINS[p.skin].palette;
+  const eyes = EYES.flatMap((at, i) => {
+    const shape = p.parts.eyes === 'wink' && i === 1 ? KITTY_EYES.closed : KITTY_EYES[p.parts.eyes];
+    return [...eyeRects(shape.iris, at, iris), ...eyeRects(shape.ink, at, OUTLINE)];
+  });
   return (
-    <g shapeRendering="crispEdges">
-      {base.map((r, i) => (
-        <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={r.f} />
-      ))}
-      <g className={p.blink ? 'cp-cat__eyes' : undefined}>{rects(eyes, ink)}</g>
-      {p.blink && <g className="cp-cat__lids">{rects([leftShut, rightShut], ink)}</g>}
-      {rects(mouth, ink)}
-      {p.parts.item && (
-        <>
-          <rect x="68" y="4" width="24" height="28" fill="#ffffff" stroke={OUTLINE} strokeWidth="3" />
-          <rect x="73" y="12" width="14" height="3" fill={PAPER_LINE} />
-          <rect x="73" y="19" width="10" height="3" fill={PAPER_LINE} />
-        </>
-      )}
+    <g transform={`translate(${KITTY_X} ${KITTY_Y + (p.lowered ? 4 : 0)})`} shapeRendering="crispEdges">
+      <g className="cp-cat__tail">{rects(layers.tail)}</g>
+      {rects(layers.body)}
+      <g className="cp-cat__ear">{rects(layers.ear)}</g>
+      <g className={p.blink ? 'cp-cat__eyes' : undefined}>{rects(eyes)}</g>
+      {p.blink && <g className="cp-cat__lids">{rects(EYES.flatMap((at) => eyeRects(SHUT, at, OUTLINE)))}</g>}
+      {p.parts.mouth === 'open' && rects([[7.5, 7, 2, 1, MOUTH]])}
+      {p.parts.item && <HeldNote cell={CELL} x={7} y={10.5} hand={body} />}
     </g>
   );
 }

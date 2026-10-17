@@ -6,14 +6,14 @@ export type Species = 'pixel' | 'dog' | 'chicken' | 'pig' | 'owl';
 export type PixelSpecies = Exclude<Species, 'pixel'>;
 export type Pack = 'free' | 'petPack';
 export type SkinId =
-  | 'peach' | 'tabby' | 'midnight' | 'biscuit' | 'cocoa' | 'pebble' | 'cream' | 'russet' | 'lemon'
+  | 'peach' | 'tabby' | 'midnight' | 'cloud' | 'biscuit' | 'cocoa' | 'pebble' | 'cream' | 'russet' | 'lemon'
   | 'pink' | 'mud' | 'ginger' | 'acorn' | 'snowy' | 'dusk';
 export interface SpeciesEntry {
   id: Species;
   label: I18nKey;
   pack: Pack;
   /** default first */
-  skins: readonly [SkinId, SkinId, SkinId];
+  skins: readonly [SkinId, ...SkinId[]];
 }
 export interface SkinEntry { id: SkinId; species: Species; label: I18nKey; pack: Pack; palette: Readonly<Record<string, string>> }
 
@@ -22,12 +22,12 @@ export type PetSize = (typeof PET_SIZES)[number];
 
 /** Palette keys a skin sets per species; the first is the swatch colour. */
 export const SKIN_KEYS: Readonly<Record<Species, readonly string[]>> = {
-  pixel: ['b', 'l', 'e'], dog: ['b', 'e', 'm', 'c'], chicken: ['w', 's', 'S', 'r', 'y'],
+  pixel: ['b', 's', 'l', 'i', 'e'], dog: ['b', 'e', 'm', 'c'], chicken: ['w', 's', 'S', 'r', 'y'],
   pig: ['p', 'P', 'n', 'x'], owl: ['b', 'B', 'f', 'l', 'v', 'y'],
 };
 
 export const SPECIES: readonly SpeciesEntry[] = [
-  { id: 'pixel', label: 'pet.species.pixel', pack: 'free', skins: ['peach', 'tabby', 'midnight'] },
+  { id: 'pixel', label: 'pet.species.pixel', pack: 'free', skins: ['peach', 'tabby', 'midnight', 'cloud'] },
   { id: 'dog', label: 'pet.species.dog', pack: 'free', skins: ['biscuit', 'cocoa', 'pebble'] },
   { id: 'chicken', label: 'pet.species.chicken', pack: 'free', skins: ['cream', 'russet', 'lemon'] },
   { id: 'pig', label: 'pet.species.pig', pack: 'free', skins: ['pink', 'mud', 'ginger'] },
@@ -37,10 +37,11 @@ export const SPECIES_IDS: readonly Species[] = SPECIES.map((s) => s.id);
 export const PIXEL_SPECIES: readonly PixelSpecies[] = ['dog', 'chicken', 'pig', 'owl'];
 
 export const SKINS: Readonly<Record<SkinId, SkinEntry>> = {
-  // Kitty: b body, l belly, e eye ink
-  peach:    { id: 'peach', species: 'pixel', label: 'pet.skin.peach', pack: 'free', palette: { b: '#f4a27c', l: '#fde8dc', e: '#2a211c' } },
-  tabby:    { id: 'tabby', species: 'pixel', label: 'pet.skin.tabby', pack: 'petPack', palette: { b: '#9a8f86', l: '#efe9e2', e: '#2a211c' } },
-  midnight: { id: 'midnight', species: 'pixel', label: 'pet.skin.midnight', pack: 'petPack', palette: { b: '#3b3330', l: '#6b5d52', e: '#f3ece3' } },
+  // Kitty: b body, s stripes, l belly, i inner ear, e iris
+  peach:    { id: 'peach', species: 'pixel', label: 'pet.skin.peach', pack: 'free', palette: { b: '#e08a56', s: '#c25f2a', l: '#f6dcc8', i: '#f4c4ae', e: '#fffaf2' } },
+  tabby:    { id: 'tabby', species: 'pixel', label: 'pet.skin.tabby', pack: 'petPack', palette: { b: '#b0a69e', s: '#786a61', l: '#f2b8ab', i: '#e99d91', e: '#fffaf2' } },
+  midnight: { id: 'midnight', species: 'pixel', label: 'pet.skin.midnight', pack: 'petPack', palette: { b: '#45414f', s: '#45414f', l: '#45414f', i: '#f5a9b8', e: '#f2c14e' } },
+  cloud:    { id: 'cloud', species: 'pixel', label: 'pet.skin.cloud', pack: 'petPack', palette: { b: '#f7f4ef', s: '#f7f4ef', l: '#f7f4ef', i: '#f7b3c2', e: '#5fb8f0' } },
   // Puppy: b body, e ears, m muzzle, c collar
   biscuit:  { id: 'biscuit', species: 'dog', label: 'pet.skin.biscuit', pack: 'free', palette: { b: '#f6d2a2', e: '#9b5d3a', m: '#fff4e4', c: '#3fa58f' } },
   cocoa:    { id: 'cocoa', species: 'dog', label: 'pet.skin.cocoa', pack: 'petPack', palette: { b: '#b07a52', e: '#6b4128', m: '#ecd2b4', c: '#e0604f' } },

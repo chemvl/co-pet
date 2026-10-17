@@ -20,15 +20,14 @@ describe('catalog', () => {
     expect(resolveSkin('pig', 42)).toBe('pink');
   });
 
-  it('every species has three own skins, default first', () => {
+  it('every skin belongs to exactly one species, default first', () => {
     const ids = SPECIES.flatMap((s) => s.skins);
     for (const s of SPECIES) {
-      expect(s.skins).toHaveLength(3);
       for (const id of s.skins) expect(SKINS[id].species).toBe(s.id);
       expect(defaultSkin(s.id)).toBe(s.skins[0]);
     }
-    expect(ids).toHaveLength(15);
-    expect(new Set(ids).size).toBe(15);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort()).toEqual(Object.keys(SKINS).sort());
   });
 
   it('pack flags follow the owner rule', () => {

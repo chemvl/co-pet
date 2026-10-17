@@ -1,39 +1,26 @@
-// Renders the app icon and the menu-bar template icon from the Cat.dc.html soft-clay idle cat.
+// Renders the app icon from Kitty's pixel art (src/pet/pixelCat.ts, peach skin) and the
+// menu-bar template icon from the Cat.dc.html soft-clay cat's head silhouette.
 import { Resvg } from '@resvg/resvg-js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { SKINS } from '../src/pet/catalog';
+import { COLS, EYES, OUTLINE, PIXEL_MAP, ROWS } from '../src/pet/pixelCat';
 
 const root = join(dirname(new URL(import.meta.url).pathname), '..');
 const out = join(root, 'src-tauri/icons');
 mkdirSync(out, { recursive: true });
 
-const body = '#f4a27c', belly = '#fde8dc', ear = '#f9c9b0', blush = '#ec8a66';
-const tail = 'M96 98 C120 96 120 66 104 62';
-
-const cat = `
-<g transform="translate(20 40)">
-  <path d="${tail}" fill="none" stroke="${body}" stroke-width="9" stroke-linecap="round"/>
-  <polygon points="30,32 28,4 54,20" fill="${body}" stroke-linejoin="round"/>
-  <polygon points="90,32 92,4 66,20" fill="${body}" stroke-linejoin="round"/>
-  <polygon points="34,25 33,11 46,19" fill="${ear}"/>
-  <polygon points="86,25 87,11 74,19" fill="${ear}"/>
-  <ellipse cx="60" cy="88" rx="38" ry="29" fill="${body}"/>
-  <ellipse cx="60" cy="94" rx="21" ry="17" fill="${belly}"/>
-  <ellipse cx="44" cy="114" rx="10" ry="6" fill="${body}"/>
-  <ellipse cx="76" cy="114" rx="10" ry="6" fill="${body}"/>
-  <circle cx="60" cy="50" r="34" fill="${body}"/>
-  <circle cx="38" cy="60" r="5" fill="${blush}" opacity="0.55"/>
-  <circle cx="82" cy="60" r="5" fill="${blush}" opacity="0.55"/>
-  <circle cx="47" cy="50" r="4.5" fill="#2a211c"/>
-  <circle cx="73" cy="50" r="4.5" fill="#2a211c"/>
-  <circle cx="48.6" cy="48.4" r="1.6" fill="#ffffff"/>
-  <circle cx="74.6" cy="48.4" r="1.6" fill="#ffffff"/>
-  <polygon points="56.5,58 63.5,58 60,62" fill="#d9775a"/>
-  <path d="M60 62 Q57 66 53 64 M60 62 Q63 66 67 64" fill="none" stroke="#2a211c" stroke-width="2" stroke-linecap="round"/>
-</g>`;
-
-// The cat spans x 20..~143, y 44..160 in the 160 viewBox; centre it with a little margin.
-const appSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="8 26 144 144">${cat}</svg>`;
+// 40 px cells: the 22×17 cat is 880×680, centred on the 1024 canvas so every edge lands on a
+// whole pixel.
+const CELL = 40;
+const { palette } = SKINS.peach;
+const fills: Record<string, string> = { ...palette, o: OUTLINE };
+const cell = (x: number, y: number, fill: string) =>
+  `<rect x="${x * CELL}" y="${y * CELL}" width="${CELL}" height="${CELL}" fill="${fill}"/>`;
+const cells = PIXEL_MAP.flatMap((row, y) => [...row].flatMap((ch, x) => (fills[ch] ? [cell(x, y, fills[ch])] : [])));
+// Open eyes: the iris on the pupil.
+const eyes = EYES.flatMap(([x, y]) => [cell(x, y, palette.e), cell(x, y + 1, OUTLINE)]);
+const appSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" shape-rendering="crispEdges"><g transform="translate(${(1024 - COLS * CELL) / 2} ${(1024 - ROWS * CELL) / 2})">${cells.join('')}${eyes.join('')}</g></svg>`;
 writeFileSync(
   join(out, 'app-icon.png'),
   new Resvg(appSvg, { fitTo: { mode: 'width', value: 1024 }, background: 'rgba(0,0,0,0)' }).render().asPng(),

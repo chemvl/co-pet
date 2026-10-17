@@ -13,6 +13,7 @@
     "set-version": "bun scripts/set-version.ts",
     "fetch:llama": "bun scripts/fetch-llama.ts",
     "sign:llama": "bun scripts/sign-llama.ts",
+    "release": "bun scripts/release.ts",
     "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png"
   },
   "dependencies": {
@@ -38,6 +39,7 @@
     "@vitejs/plugin-react": "5.2.0",
     "typescript": "5.9.3",
     "vite": "7.3.7",
-    "vitest": "3.2.7"
+    "vitest": "3.2.7",
+    "wrangler": "4.151.1"
   }
 }

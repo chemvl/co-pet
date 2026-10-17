@@ -385,6 +385,8 @@ pub enum DragPlan {
 pub struct PermissionsStatus {
     pub screen_recording: bool,
     pub accessibility: bool,
+    /// `granted` | `denied` | `notDetermined`.
+    pub microphone: String,
 }
 
 /// `list_excluded_apps`: an excluded bundle id and the installed app's name (`None` when the app

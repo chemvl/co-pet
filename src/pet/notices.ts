@@ -3,7 +3,7 @@ import type { I18nKey, TFunction } from '../shared/i18n';
 import { en } from '../shared/i18n/en';
 import type { CaptureResult } from '../shared/types';
 
-export type PermissionKind = 'screenRecording' | 'accessibility';
+export type PermissionKind = 'screenRecording' | 'accessibility' | 'microphone';
 
 export interface Notice {
   message: string;

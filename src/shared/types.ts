@@ -355,7 +355,11 @@ export interface CaptureResult {
 
 export type DragPlan = string[] | { data: Record<string, string>; types: string[] };
 
-export interface PermissionsStatus { screenRecording: boolean; accessibility: boolean }
+export interface PermissionsStatus {
+  screenRecording: boolean;
+  accessibility: boolean;
+  microphone: 'granted' | 'denied' | 'notDetermined';
+}
 
 /** `pet_status`: the current `pet-visibility` and `pet-flags.sleep` values. */
 export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | null; sleep: boolean }

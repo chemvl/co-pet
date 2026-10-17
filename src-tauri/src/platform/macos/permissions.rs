@@ -1,11 +1,21 @@
-//! Screen Recording and Accessibility: status checks, OS prompts and the System Settings panes.
+//! Screen Recording, Accessibility and Microphone: status checks, OS prompts and the System
+//! Settings panes.
 use std::ffi::c_void;
+use std::sync::Mutex;
+use std::time::Duration;
 
+use block2::RcBlock;
+use objc2::runtime::Bool;
 use objc2_app_kit::NSWorkspace;
+use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
 use objc2_foundation::{NSDictionary, NSNumber, NSString, NSURL};
+use tokio::sync::oneshot;
 
 use crate::error::{AppError, AppResult};
 use crate::model::PermissionsStatus;
+
+/// How long `request_microphone` waits for the user to answer the OS prompt.
+const MICROPHONE_PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
@@ -46,10 +56,48 @@ pub fn request_accessibility() {
     unsafe { AXIsProcessTrustedWithOptions(&*options as *const _ as *const c_void) };
 }
 
+/// `granted` | `notDetermined` | `denied` (Denied or Restricted).
+pub fn microphone_status() -> &'static str {
+    // SAFETY: `AVMediaTypeAudio` is a framework constant, always present on macOS 13+.
+    let audio = unsafe { AVMediaTypeAudio }.expect("AVMediaTypeAudio");
+    // SAFETY: valid media type; callable from any thread.
+    let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio) };
+    microphone_label(status)
+}
+
+fn microphone_label(status: AVAuthorizationStatus) -> &'static str {
+    match status {
+        AVAuthorizationStatus::Authorized => "granted",
+        AVAuthorizationStatus::NotDetermined => "notDetermined",
+        _ => "denied",
+    }
+}
+
+/// Shows the OS microphone prompt (only while `notDetermined`) and resolves to whether access is
+/// granted; `false` when the user hasn't answered within two minutes.
+pub async fn request_microphone() -> bool {
+    let (tx, rx) = oneshot::channel::<bool>();
+    {
+        // Scoped: the block isn't `Send`, so it must be gone before the `await`.
+        let tx = Mutex::new(Some(tx));
+        let handler = RcBlock::new(move |granted: Bool| {
+            if let Some(tx) = tx.lock().ok().and_then(|mut tx| tx.take()) {
+                let _ = tx.send(granted.as_bool());
+            }
+        });
+        // SAFETY: `AVMediaTypeAudio` is a framework constant, always present on macOS 13+.
+        let audio = unsafe { AVMediaTypeAudio }.expect("AVMediaTypeAudio");
+        // SAFETY: valid media type; AVFoundation copies the block and calls it once on any queue.
+        unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(audio, &handler) };
+    }
+    matches!(tokio::time::timeout(MICROPHONE_PROMPT_TIMEOUT, rx).await, Ok(Ok(true)))
+}
+
 pub fn status() -> PermissionsStatus {
     PermissionsStatus {
         screen_recording: screen_recording_granted(),
         accessibility: accessibility_trusted(),
+        microphone: microphone_status().to_owned(),
     }
 }
 
@@ -58,6 +106,7 @@ pub fn open_privacy_pane(kind: &str) -> AppResult<()> {
     let anchor = match kind {
         "screenRecording" => "Privacy_ScreenCapture",
         "accessibility" => "Privacy_Accessibility",
+        "microphone" => "Privacy_Microphone",
         _ => return Err(AppError::Code("invalid")),
     };
     let link = format!("x-apple.systempreferences:com.apple.preference.security?{anchor}");
@@ -71,11 +120,36 @@ pub fn open_privacy_pane(kind: &str) -> AppResult<()> {
 }
 
 /// `request_permission`: prompt (which also registers Co-pet in the list), then open the pane.
+/// The microphone prompt is the whole flow while undecided; once decided, only the pane helps.
 pub fn request(kind: &str) -> AppResult<()> {
     match kind {
         "screenRecording" => request_screen_recording(),
         "accessibility" => request_accessibility(),
+        "microphone" if microphone_status() == "notDetermined" => {
+            tauri::async_runtime::spawn(request_microphone());
+            return Ok(());
+        }
+        "microphone" => {}
         _ => return Err(AppError::Code("invalid")),
     }
     open_privacy_pane(kind)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn microphone_label_maps_every_status() {
+        assert_eq!(microphone_label(AVAuthorizationStatus::Authorized), "granted");
+        assert_eq!(microphone_label(AVAuthorizationStatus::NotDetermined), "notDetermined");
+        assert_eq!(microphone_label(AVAuthorizationStatus::Denied), "denied");
+        assert_eq!(microphone_label(AVAuthorizationStatus::Restricted), "denied");
+    }
+
+    #[test]
+    fn unknown_kinds_are_rejected() {
+        assert!(matches!(request("camera"), Err(AppError::Code("invalid"))));
+        assert!(matches!(open_privacy_pane("camera"), Err(AppError::Code("invalid"))));
+    }
 }

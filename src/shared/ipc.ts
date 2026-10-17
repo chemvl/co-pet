@@ -30,7 +30,7 @@ export const captureScreenshot = () => invoke<CaptureResult>('capture_screenshot
 /** Send selection (hotkey): copies the frontmost app's selection, then captures it. */
 export const captureSelection = () => invoke<CaptureResult>('capture_selection');
 export const captureNote = (text: string) => invoke<CaptureResult>('capture_note', { text });
-export const requestPermission = (kind: 'screenRecording' | 'accessibility') =>
+export const requestPermission = (kind: 'screenRecording' | 'accessibility' | 'microphone') =>
   invoke<void>('request_permission', { kind });
 export const permissionsStatus = () => invoke<PermissionsStatus>('permissions_status');
 

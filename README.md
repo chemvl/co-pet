@@ -25,6 +25,7 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 | `src-mcp/` | `copet-mcp` sidecar (Bun + MCP SDK), compiled into `src-tauri/binaries/` |
 | `supabase/` | Backend for OAuth hand-off, account deletion and sync (migrations + Edge Functions) |
 | `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `render-icons.ts` |
+| `video/` | 60-second intro video (Remotion) built from the real design system and pet art — `cd video && bun run render` writes `out/co-pet-intro.mp4`; `bun run render:music` mixes in `public/music.mp3` |
 | `docs/` | Product brief, UI & UX guidelines, design boards, plans and handoff notes |
 
 ## Run it locally
@@ -99,7 +100,7 @@ Pass the file explicitly with `bun --env-file`. Plain `bun run` doesn't load the
 
 ```sh
 bun --env-file=.env.dev run tauri dev                    # dev app against local Supabase
-bun --env-file=.env.prod run tauri build --bundles app   # release bundle against the hosted project
+bun --env-file=.env.prod run tauri build --bundles app   # release bundle against the hosted project (= bun run build:prod)
 ```
 
 Every `.env` and `.env.*` file is gitignored except the `.env.example` templates.
@@ -148,7 +149,7 @@ Sign in from Settings › Account and sync with any email. The 6-digit code arri
 3. Build and open the bundle:
 
    ```sh
-   bun --env-file=.env.prod run tauri build --bundles app
+   bun run build:prod   # bun --env-file=.env.prod run tauri build --bundles app
    open src-tauri/target/release/bundle/macos/Co-pet.app
    ```
 

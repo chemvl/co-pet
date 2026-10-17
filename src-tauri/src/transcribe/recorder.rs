@@ -752,8 +752,8 @@ impl Recorder {
         lock(&self.session).is_some()
     }
 
-    /// Delete everything: stops capture, deletes the recording's folder and meeting row, and
-    /// lets transcriptions run again.
+    /// Delete everything: stops capture and deletes the recording's folder and meeting row. The
+    /// transcription queue stays held (the caller holds it until the restart).
     pub async fn abort(&self, app: &AppHandle) {
         let _op = self.op.lock().await;
         let session = lock(&self.session).take();
@@ -763,6 +763,5 @@ impl Recorder {
             eprintln!("[recorder] abort: {e}");
         }
         discard(app, &id, &dir);
-        release(&app.state::<TranscribeQueue>());
     }
 }

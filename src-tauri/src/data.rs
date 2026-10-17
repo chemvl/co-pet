@@ -249,8 +249,9 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     if let Some(recorder) = app.try_state::<Recorder>() {
         recorder.abort(app).await;
     }
+    // Nothing may start before the restart: holds the queue and cancels the running job.
     if let Some(queue) = app.try_state::<TranscribeQueue>() {
-        queue.cancel_current();
+        queue.pause_for_recording();
     }
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {

@@ -807,6 +807,59 @@ mod tests {
     }
 
     #[test]
+    fn v9_keeps_task_events_and_feedback() {
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 8).unwrap();
+        c.execute_batch(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES ('t1', 'Task', 1, 1);
+             INSERT INTO task_events (id, task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at)
+               VALUES ('e1', 't1', 5, 'user', NULL, 'edited', '{\"title\":\"A\"}', '{\"title\":\"B\"}', NULL, 6);
+             INSERT INTO next_feedback (id, task_id, trigger, action, at) VALUES ('f1', 't1', 'bubble', 'shown', 9);",
+        )
+        .unwrap();
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        let event: (String, i64, String, Option<String>, String, String, String, Option<i64>, i64) = c
+            .query_row(
+                "SELECT task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at
+                   FROM task_events WHERE id = 'e1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            event,
+            ("t1".into(), 5, "user".into(), None, "edited".into(), "{\"title\":\"A\"}".into(), "{\"title\":\"B\"}".into(), None, 6)
+        );
+        let feedback: (String, String, String, i64) = c
+            .query_row("SELECT task_id, trigger, action, at FROM next_feedback WHERE id = 'f1'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .unwrap();
+        assert_eq!(feedback, ("t1".into(), "bubble".into(), "shown".into(), 9));
+        c.execute(
+            "INSERT INTO task_events (id, task_id, at, actor, action, updated_at) VALUES ('e2', 't1', 7, 'meeting', 'created', 7)",
+            [],
+        )
+        .unwrap();
+        c.execute("INSERT INTO next_feedback (id, task_id, trigger, action, at) VALUES ('f2', 't1', 'afterMeeting', 'shown', 10)", [])
+            .unwrap();
+        let hotkeys: serde_json::Value = serde_json::from_str(
+            &c.query_row("SELECT value FROM settings WHERE key = 'hotkeys'", [], |r| r.get::<_, String>(0)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            hotkeys,
+            serde_json::json!({
+                "focusPet": "CommandOrControl+Shift+Space",
+                "sendSelection": "CommandOrControl+Shift+C",
+                "captureScreen": "CommandOrControl+Shift+S",
+                "quickNote": "CommandOrControl+Shift+N",
+                "recordMeeting": "CommandOrControl+Alt+R"
+            })
+        );
+    }
+
+    #[test]
     fn fts_folds_vietnamese() {
         let db = db();
         let mut conn = db.conn();

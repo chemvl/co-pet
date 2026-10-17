@@ -33,7 +33,7 @@ pub const SYNC_TABLES: [(&str, &str, u8); 8] = [
 ];
 
 /// Settings keys that sync across devices; every other key is per-device.
-pub const SYNCED_SETTINGS: [&str; 15] = [
+pub const SYNCED_SETTINGS: [&str; 20] = [
     "ui.language",
     "pet.name",
     "pet.style",
@@ -49,6 +49,11 @@ pub const SYNCED_SETTINGS: [&str; 15] = [
     "whatsNext.idleMinutes",
     "whatsNext.workHours",
     "whatsNext.maxPerHour",
+    "transcribe.language",
+    "transcribe.summaryLanguage",
+    "transcribe.audioRetentionDays",
+    "transcribe.consentShown",
+    "whatsNext.afterMeeting",
 ];
 
 const CURSOR: &str = "cursor";
@@ -192,7 +197,9 @@ mod tests {
                 }
             }
         }
-        let count: i64 = c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync\\_%' ESCAPE '\\'", [], |r| r.get(0)).unwrap();
+        let count: i64 = c
+            .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync\\_%' ESCAPE '\\' AND tbl_name != 'meetings'", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 2 * SYNC_TABLES.len() as i64);
     }
 

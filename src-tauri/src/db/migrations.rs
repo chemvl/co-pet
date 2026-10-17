@@ -330,6 +330,85 @@ BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('task_exports', NEW.i
   ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
 "#;
 
+/// Schema v9: meetings (Transcribe), the item a meeting summarizes, and the `meeting` task actor /
+/// `afterMeeting` What's Next trigger (SQLite cannot alter a CHECK, so both tables are rebuilt).
+const V9: &str = r#"
+CREATE TABLE meetings (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  title_source TEXT NOT NULL DEFAULT 'auto' CHECK (title_source IN ('auto','ai','user')),
+  source TEXT NOT NULL CHECK (source IN ('recording','import')),
+  source_item_id TEXT REFERENCES items(id),       -- imported from this item's file
+  device_id TEXT NOT NULL,                         -- sync.deviceId of the Mac holding the audio
+  started_at INTEGER NOT NULL,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  language TEXT NOT NULL DEFAULT 'auto' CHECK (language IN ('auto','en','vi','zh','vi+en')),
+  langs TEXT NOT NULL DEFAULT '[]',                -- detected segment languages, most frequent first
+  state TEXT NOT NULL CHECK (state IN ('recording','queued','transcribing','done','failed')),
+  error TEXT,                                      -- needsSpeechModel|audioConvert|unsupportedAudio|speechModel|transcribeFailed|noAudio
+  has_mic INTEGER NOT NULL DEFAULT 0,
+  has_system INTEGER NOT NULL DEFAULT 0,
+  diarized INTEGER NOT NULL DEFAULT 0,
+  speakers TEXT NOT NULL DEFAULT '[]',             -- JSON [Speaker]
+  transcript TEXT NOT NULL DEFAULT '[]',           -- JSON [TranscriptSeg]
+  summary_state TEXT NOT NULL DEFAULT 'none' CHECK (summary_state IN ('none','pending','running','done','skipped','failed')),
+  summary_error TEXT,                              -- aiOff|noModel|private|sensitive|noSpeech|failed
+  summary_lang TEXT,                               -- en|vi|zh
+  summary TEXT NOT NULL DEFAULT '[]',              -- JSON [string]
+  decisions TEXT NOT NULL DEFAULT '[]',
+  questions TEXT NOT NULL DEFAULT '[]',
+  actions TEXT NOT NULL DEFAULT '[]',              -- JSON [ActionItem]
+  changes TEXT NOT NULL DEFAULT '[]',              -- JSON [TaskChange]
+  tasks_created_at INTEGER,                        -- set once, by the first successful summary
+  audio_deleted_at INTEGER,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER);
+CREATE INDEX meetings_list ON meetings(started_at DESC) WHERE deleted_at IS NULL;
+ALTER TABLE items ADD COLUMN meeting_id TEXT;     -- the meeting this item summarizes; no FK (sync order)
+CREATE INDEX items_meeting ON items(meeting_id) WHERE meeting_id IS NOT NULL;
+CREATE TABLE task_events_v2 (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), at INTEGER NOT NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user','agent','next','meeting')), client_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('created','edited','done','reopened','snoozed','trashed','restored')),
+  before_json TEXT, after_json TEXT, undone_at INTEGER, updated_at INTEGER NOT NULL);
+INSERT INTO task_events_v2 SELECT id, task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at FROM task_events;
+DROP TABLE task_events;
+ALTER TABLE task_events_v2 RENAME TO task_events;
+CREATE INDEX task_events_task ON task_events(task_id, at DESC);
+CREATE TABLE next_feedback_v2 (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
+  trigger TEXT NOT NULL CHECK (trigger IN ('bubble','return','afterDone','afterMeeting','agent','home')),
+  action TEXT NOT NULL CHECK (action IN ('shown','start','done','snooze','skip')),
+  at INTEGER NOT NULL);
+INSERT INTO next_feedback_v2 SELECT id, task_id, trigger, action, at FROM next_feedback;
+DROP TABLE next_feedback;
+ALTER TABLE next_feedback_v2 RENAME TO next_feedback;
+CREATE INDEX next_feedback_at ON next_feedback(at DESC);
+INSERT INTO settings (key, value, updated_at) VALUES
+  ('transcribe.language', '"auto"', 0),
+  ('transcribe.summaryLanguage', '"meeting"', 0),   -- meeting | en | vi | zh
+  ('transcribe.audioRetentionDays', '30', 0),      -- 7 | 30 | 90 | null (keep)
+  ('transcribe.consentShown', 'false', 0),
+  ('whatsNext.afterMeeting', 'true', 0);
+UPDATE settings SET value = json_set(value, '$.recordMeeting', 'CommandOrControl+Alt+R')
+  WHERE key = 'hotkeys' AND json_extract(value, '$.recordMeeting') IS NULL;
+DROP TRIGGER sync_settings_ins;
+DROP TRIGGER sync_settings_upd;
+CREATE TRIGGER sync_settings_ins AFTER INSERT ON settings WHEN (SELECT applying FROM sync_guard) = 0
+  AND NEW.key IN ('ui.language','pet.name','pet.style','pet.skin','pet.size','pet.sleepHours','capture.removeOriginal','capture.excludedApps','triage.confidenceThreshold','privacy.secretDetection','whatsNext.onReturn','whatsNext.afterDone','whatsNext.idleMinutes','whatsNext.workHours','whatsNext.maxPerHour','whatsNext.afterMeeting','transcribe.language','transcribe.summaryLanguage','transcribe.audioRetentionDays','transcribe.consentShown')
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_settings_upd AFTER UPDATE ON settings WHEN (SELECT applying FROM sync_guard) = 0
+  AND NEW.key IN ('ui.language','pet.name','pet.style','pet.skin','pet.size','pet.sleepHours','capture.removeOriginal','capture.excludedApps','triage.confidenceThreshold','privacy.secretDetection','whatsNext.onReturn','whatsNext.afterDone','whatsNext.idleMinutes','whatsNext.workHours','whatsNext.maxPerHour','whatsNext.afterMeeting','transcribe.language','transcribe.summaryLanguage','transcribe.audioRetentionDays','transcribe.consentShown')
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_meetings_ins AFTER INSERT ON meetings WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('meetings', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_meetings_upd AFTER UPDATE ON meetings WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('meetings', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9)])
 });

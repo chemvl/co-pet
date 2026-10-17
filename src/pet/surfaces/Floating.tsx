@@ -7,6 +7,8 @@ export function Floating(p: {
   place: (size: Size) => Point;
   onRect: (rect: Box | null) => void;
   children: ReactNode;
+  /** extra class on the wrapper, e.g. `pt-floating--hud` */
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size | null>(null);
@@ -37,7 +39,7 @@ export function Floating(p: {
   return (
     <div
       ref={ref}
-      className="pt-floating"
+      className={p.className ? `pt-floating ${p.className}` : 'pt-floating'}
       // Unmeasured: invisible but still focusable, so autofocus inside works.
       style={pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, opacity: 0 }}
     >

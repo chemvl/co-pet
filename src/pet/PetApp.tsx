@@ -751,7 +751,7 @@ export function PetApp() {
         </div>
       ) : null}
       <div
-        className={`pt-dock pt-dock--${edge}${hidden ? ' is-hidden' : ''}${halo === 'fading' ? ' is-halo-out' : ''}`}
+        className={`pt-dock pt-dock--${edge}${hidden ? ' is-hidden' : ''}${halo === 'fading' ? ' is-halo-out' : ''}${surface === 'bubbles' ? ' is-bubbles' : ''}`}
         style={{ left: box.x, top: box.y, width: DOCK_BOX, height: DOCK_BOX, '--pt-off': `${size + 8}px`, visibility: moving ? 'hidden' : undefined } as CSSProperties}
         aria-hidden={hidden || undefined}
         onKeyDown={onDockKeyDown}
@@ -899,7 +899,7 @@ export function PetApp() {
       ) : null}
 
       {!hidden && recordingData && recState !== 'idle' && WITH_HUD.includes(surface) ? (
-        <Floating place={placeNextToPet} onRect={setHudRect}>
+        <Floating place={placeNextToPet} onRect={setHudRect} className="pt-floating--hud">
           <RecordingDock
             status={recordingData}
             receivedAt={recordingAt}

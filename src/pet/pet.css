@@ -29,6 +29,11 @@ html, body { background: transparent; }
 .pt-moving { position: absolute; pointer-events: none; z-index: 2; }
 
 .pt-floating { position: absolute; z-index: 3; }
+/* The Recording HUD sits a layer below the other surfaces; the open bubble arc rises above it
+   (only the pet and the bubbles take the pointer there), so every bubble stays whole and clickable. */
+.pt-floating--hud { z-index: 2; }
+.pt-dock.is-bubbles { z-index: 3; pointer-events: none; }
+.pt-dock.is-bubbles .cp-pet, .pt-dock.is-bubbles .cp-bubble { pointer-events: auto; }
 
 /* Tray: at most 70% of the work area, the list scrolls. */
 .pt-tray .cp-tray { max-height: var(--pt-tray-max); }

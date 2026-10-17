@@ -5,7 +5,7 @@ import type {
   AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskStatus, TaskSummary,
-  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
+  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, UpdateStatus, RecordingStatus,
   MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider,
 } from './types';
 
@@ -267,6 +267,10 @@ export const copyConcealedText = (text: string) => invoke<void>('copy_concealed_
 export const syncStatus = () => invoke<SyncStatus>('sync_status');
 /** Runs a sync (after one in progress) and resolves with the status it ended in. */
 export const syncNow = () => invoke<SyncStatus>('sync_now');
+
+export const updateStatus = () => invoke<UpdateStatus>('update_status');
+export const checkForUpdates = () => invoke<UpdateStatus>('update_check');
+export const installUpdate = () => invoke<void>('update_install');
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

@@ -1,18 +1,20 @@
-//! Menu bar icon (Step 10.1): the cat-head template image with Open home · Show pet · Pause/Resume
+//! Menu bar icon (Step 10.1): the cat-head template image with (Restart to update to X when an
+//! update is ready) · Open home · Show pet · Pause/Resume
 //! pet · Settings · Quit Co-pet. Labels follow `ui.language`; the menu is rebuilt when the
 //! language or `pet.paused` changes.
 use serde_json::Value;
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Listener, Wry};
+use tauri::{AppHandle, Listener, Manager, Wry};
 
 use crate::db::settings;
 use crate::error::AppResult;
 use crate::events;
 use crate::i18n::{self, tr};
 use crate::platform::macos::fullscreen;
-use crate::{system, windows};
+use crate::model::UpdateState;
+use crate::{system, updater, windows};
 
 const TRAY_ID: &str = "copet";
 const ICON: &[u8] = include_bytes!("../icons/tray-template.png");
@@ -52,18 +54,39 @@ fn build_menu(app: &AppHandle) -> AppResult<Menu<Wry>> {
     let paused = settings::read::<bool>(app, "pet.paused").unwrap_or(false);
     let item = |id: &str, key: &str| MenuItem::with_id(app, id, tr(lang, key), true, None::<&str>);
     let pause = if paused { "tray.resumePet" } else { "tray.pausePet" };
-    Ok(Menu::with_items(
-        app,
-        &[
-            &item("openHome", "tray.openHome")?,
-            &item("showPet", "tray.showPet")?,
-            &item("togglePause", pause)?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("settings", "tray.settings")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("quit", "tray.quit")?,
-        ],
-    )?)
+    let ready = app.try_state::<updater::Updates>().map(|u| u.status()).and_then(|s| match s.state {
+        UpdateState::Ready => s.version,
+        _ => None,
+    });
+    let restart = match ready {
+        Some(v) => Some((
+            MenuItem::with_id(
+                app,
+                "restartUpdate",
+                tr(lang, "tray.restartToUpdate").replace("{version}", &v),
+                true,
+                None::<&str>,
+            )?,
+            PredefinedMenuItem::separator(app)?,
+        )),
+        None => None,
+    };
+    let rest = [
+        item("openHome", "tray.openHome")?,
+        item("showPet", "tray.showPet")?,
+        item("togglePause", pause)?,
+        item("settings", "tray.settings")?,
+        item("quit", "tray.quit")?,
+    ];
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = Vec::with_capacity(9);
+    if let Some((restart, sep)) = &restart {
+        items.push(restart);
+        items.push(sep);
+    }
+    items.extend([&rest[0] as &dyn IsMenuItem<Wry>, &rest[1], &rest[2], &sep1, &rest[3], &sep2, &rest[4]]);
+    Ok(Menu::with_items(app, &items)?)
 }
 
 fn on_menu(app: &AppHandle, id: &str) {
@@ -78,6 +101,15 @@ fn on_menu(app: &AppHandle, id: &str) {
             settings::set(app, "pet.paused", &Value::Bool(!paused))
         }
         "settings" => windows::open_home(app, Some("settings/general".into())),
+        "restartUpdate" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = updater::install(&app).await {
+                    eprintln!("[tray] restartUpdate: {e}");
+                }
+            });
+            Ok(())
+        }
         "quit" => {
             system::request_quit(app);
             Ok(())

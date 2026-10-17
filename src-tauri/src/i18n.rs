@@ -39,6 +39,7 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tray.pausePet" => ("Pause pet", "Tạm dừng thú cưng"),
         "tray.resumePet" => ("Resume pet", "Tiếp tục thú cưng"),
         "tray.settings" => ("Settings", "Cài đặt"),
+        "tray.restartToUpdate" => ("Restart to update to {version}", "Khởi động lại để cập nhật lên {version}"),
         "tray.quit" => ("Quit Co-pet", "Thoát Co-pet"),
         "quit.recording.title" => ("Stop recording and quit?", "Dừng ghi âm và thoát?"),
         "quit.recording.body" => (

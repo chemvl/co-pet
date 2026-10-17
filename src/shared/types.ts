@@ -334,6 +334,17 @@ export interface AiStatus {
   recommendedId: string;
 }
 
+export type SpeechPackId = 'speech' | 'speaker';
+export interface PackStatus {
+  id: SpeechPackId;
+  state: AiState;
+  bytesDone: number;
+  bytesTotal: number;
+  error: string | null;
+}
+/** Speech pack first, then speaker. */
+export interface SpeechStatus { packs: PackStatus[] }
+
 export interface CaptureResult {
   status: 'saved' | 'duplicate' | 'skipped' | 'failed';
   itemIds: string[];
@@ -517,6 +528,7 @@ export interface EventPayloads {
   'pet-visibility': { hidden: boolean; reason: 'fullscreen' | 'user' | null };
   'pet-placement': Placement;
   'ai-status': AiStatus;
+  'speech-status': SpeechStatus;
   'settings-changed': { key: string };
   'categories-changed': Record<string, never>;
   'tasks-changed': { ids: string[] };

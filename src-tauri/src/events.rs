@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, SyncStatus};
+use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, SpeechStatus, SyncStatus};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -15,6 +15,7 @@ pub const POINTER_REGION: &str = "pointer-region";
 pub const PET_VISIBILITY: &str = "pet-visibility";
 pub const PET_PLACEMENT: &str = "pet-placement";
 pub const AI_STATUS: &str = "ai-status";
+pub const SPEECH_STATUS: &str = "speech-status";
 pub const SETTINGS_CHANGED: &str = "settings-changed";
 pub const CATEGORIES_CHANGED: &str = "categories-changed";
 pub const TASKS_CHANGED: &str = "tasks-changed";
@@ -288,6 +289,10 @@ pub fn pet_placement(app: &AppHandle, p: Placement) {
 
 pub fn ai_status(app: &AppHandle, s: AiStatus) {
     emit(app, AI_STATUS, s);
+}
+
+pub fn speech_status(app: &AppHandle, s: SpeechStatus) {
+    emit(app, SPEECH_STATUS, s);
 }
 
 pub fn categories_changed(app: &AppHandle) {

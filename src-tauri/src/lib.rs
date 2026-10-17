@@ -25,6 +25,7 @@ mod export;
 mod agent;
 mod account;
 mod sync;
+mod transcribe;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -75,6 +76,8 @@ pub fn run() {
             llm::reap_orphans(&handle);
             system::quit_on_signals(&handle);
             app.state::<llm::download::Downloader>().resume_if_needed(&handle);
+            app.manage(transcribe::models::PackDownloader::default());
+            app.state::<transcribe::models::PackDownloader>().resume_if_needed(&handle);
             // After Paths, Db, Downloader and LlmServer: the worker uses all of them.
             app.manage(triage::start(&handle));
             tray_icon::create(&handle)?;
@@ -131,6 +134,9 @@ pub fn run() {
             commands::ai_download,
             commands::ai_pause,
             commands::ai_select_model,
+            commands::speech_status,
+            commands::speech_download,
+            commands::speech_pause,
             commands::recategorize,
             commands::make_rule_from_item,
             commands::set_pinned,

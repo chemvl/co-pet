@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
-  AiStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
+  AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus,
@@ -44,6 +44,9 @@ export const pasteItems = (ids: string[]) => invoke<'ok' | 'needsAccessibility'>
 export const aiStatus = () => invoke<AiStatus>('ai_status');
 export const aiDownload = (modelId: string) => invoke<void>('ai_download', { modelId });
 export const aiPause = () => invoke<void>('ai_pause');
+export const speechStatus = () => invoke<SpeechStatus>('speech_status');
+export const speechDownload = (pack: SpeechPackId) => invoke<void>('speech_download', { pack });
+export const speechPause = (pack: SpeechPackId) => invoke<void>('speech_pause', { pack });
 export const aiSelectModel = (modelId: string) => invoke<void>('ai_select_model', { modelId });
 export const recategorize = (ids: string[], categoryId: CategoryId) =>
   invoke<{ eventIds: string[] }>('recategorize', { ids, categoryId });

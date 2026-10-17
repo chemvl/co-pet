@@ -328,6 +328,25 @@ pub struct ModelInfo {
     pub downloaded: bool,
 }
 
+/// One transcription model pack (`id`: `speech | speaker`).
+/// `state`: `none | downloading | paused | verifying | ready | failed`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackStatus {
+    pub id: String,
+    pub state: String,
+    pub bytes_done: u64,
+    pub bytes_total: u64,
+    pub error: Option<String>,
+}
+
+/// Speech pack first, then speaker.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechStatus {
+    pub packs: Vec<PackStatus>,
+}
+
 /// `state`: `none | downloading | paused | verifying | ready | failed`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

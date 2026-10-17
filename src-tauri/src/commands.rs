@@ -156,6 +156,33 @@ pub fn ai_pause(app: AppHandle, dl: State<'_, crate::llm::download::Downloader>)
 }
 
 #[tauri::command]
+pub fn speech_status(
+    app: AppHandle,
+    dl: State<'_, crate::transcribe::models::PackDownloader>,
+) -> crate::model::SpeechStatus {
+    dl.status(&app)
+}
+
+#[tauri::command]
+pub fn speech_download(
+    app: AppHandle,
+    dl: State<'_, crate::transcribe::models::PackDownloader>,
+    pack: String,
+) -> AppResult<()> {
+    dl.start(&app, pack.parse()?)
+}
+
+#[tauri::command]
+pub fn speech_pause(
+    app: AppHandle,
+    dl: State<'_, crate::transcribe::models::PackDownloader>,
+    pack: String,
+) -> AppResult<()> {
+    dl.pause(&app, pack.parse()?);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn ai_select_model(app: AppHandle, model_id: String) -> AppResult<()> {
     crate::llm::select_model(&app, &model_id).await
 }

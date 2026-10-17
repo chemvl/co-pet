@@ -7,13 +7,14 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { useCallback, useEffect } from 'react';
 import { useT } from './i18n';
 import {
-  accountStatus, aiStatus, syncStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
+  accountStatus, aiStatus, speechStatus, syncStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
   setSetting,
 } from './ipc';
-import type { AiStatus, Json, SyncStatus } from './types';
+import type { AiStatus, Json, SpeechStatus, SyncStatus } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
 export const AI_STATUS_KEY = ['aiStatus'] as const;
+export const SPEECH_STATUS_KEY = ['speechStatus'] as const;
 export const CATEGORIES_KEY = ['categories'] as const;
 export const INTEGRATIONS_KEY = ['integrations'] as const;
 export const BACKEND_KEY = ['backendStatus'] as const;
@@ -92,6 +93,21 @@ export function useAiStatus() {
     });
   }, [qc]);
   return useQuery({ queryKey: AI_STATUS_KEY, queryFn: aiStatus, staleTime: Infinity });
+}
+
+const speechSubscribed = new WeakSet<QueryClient>();
+
+/** Speech and speaker model packs, kept fresh by `speech-status`. */
+export function useSpeechStatus() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (speechSubscribed.has(qc)) return;
+    speechSubscribed.add(qc);
+    void on('speech-status', (s) => {
+      qc.setQueryData<SpeechStatus>(SPEECH_STATUS_KEY, s);
+    });
+  }, [qc]);
+  return useQuery({ queryKey: SPEECH_STATUS_KEY, queryFn: speechStatus, staleTime: Infinity });
 }
 
 /** Notion and Asana: connection, target and this device's queue. */

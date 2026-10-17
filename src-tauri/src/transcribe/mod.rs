@@ -6,6 +6,7 @@ pub mod extract;
 pub mod models;
 pub mod recorder;
 pub mod stt;
+pub mod summary;
 pub mod wer;
 pub mod worker;
 

@@ -380,7 +380,8 @@ function History({ task, onUndo }: { task: TaskDetail; onUndo: (eventId: string)
       {task.events.map((ev) => (
         <li key={ev.id} className={`hm-hist__row${ev.undoneAt != null ? ' is-undone' : ''}`}>
           <span className="hm-grow">
-            {t(`tasks.history.${ev.action}`)} · {whenShort(ev.at, lang, true)}
+            {t(ev.actor === 'meeting' && ev.action === 'created' ? 'tasks.history.fromMeeting' : `tasks.history.${ev.action}`)} ·{' '}
+            {whenShort(ev.at, lang, true)}
           </span>
           {ev.undoneAt != null ? (
             <span className="caption hm-muted">{t('item.history.undone')}</span>

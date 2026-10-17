@@ -16,6 +16,7 @@ use super::audio::{self, Afconvert, Convert, TrackWriter};
 use super::diarize::{Diarizer, SherpaDiarizer};
 use super::models::{self, Pack, SPEAKER, SPEECH};
 use super::stt::{RawSeg, SpeechToText, WhisperStt};
+use super::summary;
 use crate::db::items::{self, MeetingItem};
 use crate::db::meetings::{self, MeetingRow};
 use crate::db::{now_ms, settings, Db};
@@ -393,7 +394,7 @@ fn archive(convert: &dyn Convert, dir: &Path, mic: &[f32], system: &[f32]) -> Ap
 }
 
 /// The meeting item's id, summary and `sensitive` flag, when it has one.
-fn item_state(conn: &Connection, meeting_id: &str) -> AppResult<Option<(String, Option<String>, bool)>> {
+pub(super) fn item_state(conn: &Connection, meeting_id: &str) -> AppResult<Option<(String, Option<String>, bool)>> {
     let Some(item_id) = meetings::item_id(conn, meeting_id)? else { return Ok(None) };
     Ok(conn
         .query_row("SELECT summary, sensitive FROM items WHERE id = ?1", [&item_id], |r| {
@@ -403,7 +404,7 @@ fn item_state(conn: &Connection, meeting_id: &str) -> AppResult<Option<(String, 
 }
 
 /// Writes the meeting's Inbox item from the row (Markdown without the transcript).
-fn write_item(
+pub(super) fn write_item(
     conn: &mut Connection,
     m: &MeetingRow,
     lang: Lang,
@@ -433,51 +434,65 @@ fn refresh_item(conn: &mut Connection, id: &str, lang: Lang) -> AppResult<Option
 
 // ---------- worker loop ----------
 
-/// The next transcription; `None` while held, with nothing queued, or without the speech pack
-/// (queued meetings then show `needsSpeechModel`). Only transcriptions are picked here; Task 5.3
-/// adds summaries (`meetings::pending_summaries`) as a second branch.
-fn next_job(app: &AppHandle) -> AppResult<Option<String>> {
+enum Job {
+    Transcribe(String),
+    Summarize(String),
+}
+
+/// The next job: a transcription, else a summary. `None` while held or with nothing to do.
+/// Without the speech pack queued meetings wait (and show `needsSpeechModel`).
+fn next_job(app: &AppHandle) -> AppResult<Option<Job>> {
     if app.state::<TranscribeQueue>().held.load(SeqCst) {
         return Ok(None);
     }
     let ready = models::ready(&app.state::<Paths>(), Pack::Speech);
-    let marked = {
+    let (marked, summary) = {
         let db = app.state::<Db>();
         let conn = db.conn();
-        let queued = meetings::queued_for(&conn, &export::device_id(&conn)?)?;
-        if ready {
-            return Ok(queued.into_iter().next());
-        }
+        let device = export::device_id(&conn)?;
+        let queued = meetings::queued_for(&conn, &device)?;
         let mut marked = Vec::new();
-        for id in queued {
-            if mark_needs_model(&conn, &id)? {
-                marked.push(id);
+        if ready {
+            if let Some(id) = queued.into_iter().next() {
+                return Ok(Some(Job::Transcribe(id)));
+            }
+        } else {
+            for id in queued {
+                if mark_needs_model(&conn, &id)? {
+                    marked.push(id);
+                }
             }
         }
-        marked
+        (marked, meetings::pending_summaries(&conn, &device)?.into_iter().next())
     };
     if !marked.is_empty() {
         meetings::notify_changed(app, marked);
     }
-    Ok(None)
+    Ok(summary.map(Job::Summarize))
 }
 
 async fn run(app: AppHandle) {
     let queue = app.state::<TranscribeQueue>();
     loop {
-        match next_job(&app) {
-            Ok(Some(id)) => {
+        let failed = match next_job(&app) {
+            Ok(Some(Job::Transcribe(id))) => {
                 process(&app, &id).await;
                 continue;
             }
-            Ok(None) => queue.notify.notified().await,
-            Err(e) => {
-                eprintln!("[transcribe] queue: {e}");
-                tokio::select! {
-                    _ = tokio::time::sleep(RETRY_AFTER) => {}
-                    _ = queue.notify.notified() => {}
-                }
+            Ok(Some(Job::Summarize(id))) => match summary::run_pending(&app, &id).await {
+                Ok(()) => continue,
+                Err(e) => format!("summary {id}: {e}"),
+            },
+            Ok(None) => {
+                queue.notify.notified().await;
+                continue;
             }
+            Err(e) => format!("queue: {e}"),
+        };
+        eprintln!("[transcribe] {failed}");
+        tokio::select! {
+            _ = tokio::time::sleep(RETRY_AFTER) => {}
+            _ = queue.notify.notified() => {}
         }
     }
 }

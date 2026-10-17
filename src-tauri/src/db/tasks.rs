@@ -502,6 +502,20 @@ pub fn for_item(conn: &Connection, item_id: &str) -> AppResult<Vec<TaskSummary>>
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
+/// Open tasks a meeting summary may propose changes to: live, open, and not private (source item
+/// sensitive or in an "exclude from AI" category, as `next::is_private`); soonest due first
+/// (undated last), then most recently updated; at most 30.
+pub fn open_for_meeting(conn: &Connection) -> AppResult<Vec<TaskSummary>> {
+    let mut stmt = conn.prepare(&format!(
+        "{SUMMARY_SELECT} WHERE t.deleted_at IS NULL AND t.status = 'open'
+           AND NOT EXISTS (SELECT 1 FROM items pi LEFT JOIN categories pc ON pc.id = pi.category_id
+             WHERE pi.id = t.source_item_id AND (pi.sensitive = 1 OR pc.exclude_from_ai = 1))
+         ORDER BY t.due_date IS NULL, t.due_date, t.updated_at DESC LIMIT 30"
+    ))?;
+    let rows = stmt.query_map([], map_summary)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
 /// Live open tasks not snoozed at `now_ms` (`snoozed_until` NULL or ≤ now), unordered;
 /// `agent_visible` keeps only tasks agents may see.
 pub fn open_unsnoozed(conn: &Connection, now_ms: i64, agent_visible: bool) -> AppResult<Vec<TaskSummary>> {

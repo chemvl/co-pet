@@ -487,7 +487,6 @@ pub enum Actor {
     /// An MCP client (`mcp_clients.id`).
     Agent(String),
     /// Tasks created from a meeting's action items.
-    #[allow(dead_code)] // constructed by the transcribe worker (later Phase 3 task)
     Meeting,
 }
 

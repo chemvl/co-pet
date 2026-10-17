@@ -59,23 +59,24 @@ impl ReturnWatch {
     }
 }
 
-/// Proactive cards (`return`, `afterDone`) shown in the hour before `now_ms`.
+/// Proactive cards (`return`, `afterDone`, `afterMeeting`) shown in the hour before `now_ms`.
 fn shown_last_hour(conn: &Connection, now_ms: i64) -> AppResult<i64> {
     Ok(conn.query_row(
         "SELECT COUNT(*) FROM next_feedback
-         WHERE action = 'shown' AND trigger IN ('return', 'afterDone') AND at > ?1",
+         WHERE action = 'shown' AND trigger IN ('return', 'afterDone', 'afterMeeting') AND at > ?1",
         [now_ms - HOUR_MS],
         |r| r.get(0),
     )?)
 }
 
-/// The settings-based guardrails for `trigger` (`return | afterDone`) at `now`: the trigger's
-/// switch, onboarding done, inside work hours, pet not paused or hidden by the user, and fewer
-/// than `whatsNext.maxPerHour` proactive cards shown in the last hour.
+/// The settings-based guardrails for `trigger` (`return | afterDone | afterMeeting`) at `now`:
+/// the trigger's switch, onboarding done, inside work hours, pet not paused or hidden by the
+/// user, and fewer than `whatsNext.maxPerHour` proactive cards shown in the last hour.
 fn settings_allow(conn: &Connection, trigger: &str, now: DateTime<Local>) -> AppResult<bool> {
     let switch = match trigger {
         "return" => "whatsNext.onReturn",
         "afterDone" => "whatsNext.afterDone",
+        "afterMeeting" => "whatsNext.afterMeeting",
         _ => return Err(AppError::Code("invalid")),
     };
     if !settings::get::<bool>(conn, switch)?
@@ -167,10 +168,19 @@ pub fn start(app: &AppHandle) {
 
 /// After a task is marked done from Home (or by an agent): the next card 2 s later.
 pub fn after_done(app: &AppHandle) {
+    offer_later(app, "afterDone");
+}
+
+/// After a meeting's first summary created tasks: the next card 2 s later.
+pub fn after_meeting(app: &AppHandle) {
+    offer_later(app, "afterMeeting");
+}
+
+fn offer_later(app: &AppHandle, trigger: &'static str) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(AFTER_DONE_DELAY).await;
-        propose(&app, "afterDone").await;
+        propose(&app, trigger).await;
     });
 }
 
@@ -290,5 +300,25 @@ mod tests {
         assert!(!settings_allow(&conn, "afterDone", now).unwrap(), "2 of 2 per hour");
         set("whatsNext.maxPerHour", json!(3));
         assert!(settings_allow(&conn, "afterDone", now).unwrap());
+    }
+
+    #[test]
+    fn after_meeting_trigger_respects_switch() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let now = at(16, 10, 0);
+        let set = |k: &str, v: serde_json::Value| settings::put(&conn, k, &v).unwrap();
+        set("onboarding.completed", json!(true));
+        assert!(settings_allow(&conn, "afterMeeting", now).unwrap(), "on by default");
+        set("whatsNext.afterMeeting", json!(false));
+        assert!(!settings_allow(&conn, "afterMeeting", now).unwrap());
+        assert!(settings_allow(&conn, "afterDone", now).unwrap(), "other switches unaffected");
+        set("whatsNext.afterMeeting", json!(true));
+        let ms = now.timestamp_millis();
+        let t = task(&conn);
+        feedback(&conn, &t, "afterMeeting", "shown", ms - 60_000);
+        feedback(&conn, &t, "return", "shown", ms - 60_000);
+        assert_eq!(shown_last_hour(&conn, ms).unwrap(), 2);
+        assert!(!settings_allow(&conn, "afterMeeting", now).unwrap(), "counts toward 2 per hour");
     }
 }

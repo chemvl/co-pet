@@ -300,7 +300,7 @@ export interface TaskCreated {
   eventIds: string[];
 }
 
-export type NextTrigger = 'bubble' | 'return' | 'afterDone' | 'agent' | 'home';
+export type NextTrigger = 'bubble' | 'return' | 'afterDone' | 'afterMeeting' | 'agent' | 'home';
 export type NextAction = 'shown' | 'start' | 'done' | 'snooze' | 'skip';
 export type NextReasonKey =
   | 'overdue' | 'dueSoon' | 'dueToday' | 'dueTomorrow' | 'dueThisWeek' | 'highPriority' | 'waiting';
@@ -559,7 +559,7 @@ export interface EventPayloads {
   /** Pet window only: the outcome of a native drop on the pet. */
   'capture-result': CaptureResult;
   /** Pet window only: a proactive What's Next card. */
-  'whats-next': { card: NextCard; trigger: 'return' | 'afterDone' };
+  'whats-next': { card: NextCard; trigger: 'return' | 'afterDone' | 'afterMeeting' };
   /** Export jobs changed; task lists show `TaskSummary.export`. */
   'exports-changed': { taskIds: string[] };
   /** `provider` is null only for an OAuth handoff this app never started. */

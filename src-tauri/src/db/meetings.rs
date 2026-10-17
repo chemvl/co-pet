@@ -1,7 +1,5 @@
 //! Meeting reads and writes. JSON columns hold the camelCase shapes of `model`'s meeting types;
 //! every write bumps `updated_at`.
-// Callers (transcribe worker, meeting commands, MCP) land in later Phase 3 tasks.
-#![allow(dead_code)]
 use chrono::{Local, TimeZone};
 use rusqlite::types::Type;
 use rusqlite::{params, Connection, OptionalExtension, Row, ToSql};

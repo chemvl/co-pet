@@ -334,6 +334,7 @@ export const vi: Record<keyof typeof en, string> = {
   'tasks.field.source': 'Nguồn',
   'tasks.noSource': 'Không có mục nguồn',
   'tasks.history.created': 'Đã tạo',
+  'tasks.history.fromMeeting': 'Thêm từ cuộc họp',
   'tasks.history.edited': 'Đã sửa',
   'tasks.history.done': 'Đã đánh dấu xong',
   'tasks.history.reopened': 'Đã mở lại',

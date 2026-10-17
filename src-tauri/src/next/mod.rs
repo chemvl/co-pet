@@ -21,7 +21,7 @@ use crate::paths::Paths;
 use crate::windows;
 
 mod proactive;
-pub use proactive::{after_done, start};
+pub use proactive::{after_done, after_meeting, start};
 
 /// Candidates returned by [`rank`].
 const MAX_CANDIDATES: usize = 8;
@@ -32,7 +32,7 @@ const NOTES_LIMIT: usize = 300;
 const DAY_MS: i64 = 86_400_000;
 /// The card's Snooze: one hour.
 const SNOOZE_MS: i64 = 3_600_000;
-const TRIGGERS: [&str; 5] = ["bubble", "return", "afterDone", "agent", "home"];
+const TRIGGERS: [&str; 6] = ["bubble", "return", "afterDone", "afterMeeting", "agent", "home"];
 const ACTIONS: [&str; 5] = ["shown", "start", "done", "snooze", "skip"];
 /// URL schemes Start opens, as the webviews' `opener:default` scope.
 const OPEN_SCHEMES: [&str; 4] = ["http:", "https:", "mailto:", "tel:"];
@@ -334,8 +334,9 @@ enum Target {
     Home(String),
 }
 
-/// The source item's link (web/mail/tel schemes only), else its file, else the item in Home.
-/// Without a live source item: the task's latest exported page/task URL, else the task in Home.
+/// A meeting's item opens its meeting in Home; otherwise the source item's link (web/mail/tel
+/// schemes only), else its file, else the item in Home. Without a live source item: the task's
+/// latest exported page/task URL, else the task in Home.
 fn start_target(task_id: &str, source: Option<&ItemRow>, exported_url: Option<&str>) -> Target {
     let openable = |u: &&str| OPEN_SCHEMES.iter().any(|s| u.get(..s.len()).is_some_and(|p| p.eq_ignore_ascii_case(s)));
     let Some(item) = source.filter(|i| i.deleted_at.is_none()) else {
@@ -344,7 +345,9 @@ fn start_target(task_id: &str, source: Option<&ItemRow>, exported_url: Option<&s
             None => Target::Home(format!("tasks/open/{task_id}")),
         };
     };
-    if let Some(url) = item.url.as_deref().filter(openable) {
+    if let Some(meeting) = &item.meeting_id {
+        Target::Home(format!("meetings/{meeting}"))
+    } else if let Some(url) = item.url.as_deref().filter(openable) {
         Target::Url(url.to_owned())
     } else if let Some(rel) = &item.file_path {
         Target::File(rel.clone())
@@ -726,6 +729,8 @@ mod tests {
         assert_eq!(start_target("t1", Some(&text), None), Target::Home("item/i1".into()));
         let trashed = ItemRow { deleted_at: Some(1), ..link };
         assert_eq!(start_target("t1", Some(&trashed), None), Target::Home("tasks/open/t1".into()));
+        let meeting = ItemRow { meeting_id: Some("m1".into()), ..item(None, None) };
+        assert_eq!(start_target("t1", Some(&meeting), None), Target::Home("meetings/m1".into()));
     }
 
     #[test]

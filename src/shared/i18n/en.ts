@@ -333,6 +333,7 @@ export const en = {
   'tasks.field.source': 'Source',
   'tasks.noSource': 'No source item',
   'tasks.history.created': 'Created',
+  'tasks.history.fromMeeting': 'Added from a meeting',
   'tasks.history.edited': 'Edited',
   'tasks.history.done': 'Marked done',
   'tasks.history.reopened': 'Reopened',

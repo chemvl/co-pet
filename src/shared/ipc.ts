@@ -73,6 +73,24 @@ export const retryMeeting = (id: string) => invoke<void>('retry_meeting', { id }
 export const retranscribeMeeting = (id: string, language: string) =>
   invoke<void>('retranscribe_meeting', { id, language });
 export const deleteMeeting = (id: string) => invoke<void>('delete_meeting', { id });
+/** Re-summarizes a done meeting in `lang` (notes only). Rejects with `busy` or `invalid`. */
+export const resummarizeMeeting = (id: string, lang: 'en' | 'vi' | 'zh') =>
+  invoke<void>('resummarize_meeting', { id, lang });
+/** Queues a skipped or failed summary again. Rejects with `invalid` otherwise. */
+export const summarizeMeeting = (id: string) => invoke<void>('summarize_meeting', { id });
+/** Rejects with `notFound` (change or task) or `invalid` (not pending). */
+export const applyMeetingChange = (meetingId: string, changeId: string) =>
+  invoke<{ eventIds: string[] }>('apply_meeting_change', { meetingId, changeId });
+/** Rejects with `notFound` or `invalid` (not applied). */
+export const undoMeetingChange = (meetingId: string, changeId: string) =>
+  invoke<void>('undo_meeting_change', { meetingId, changeId });
+/** Rejects with `notFound` or `invalid` (not pending). */
+export const ignoreMeetingChange = (meetingId: string, changeId: string) =>
+  invoke<void>('ignore_meeting_change', { meetingId, changeId });
+/** Rejects with `notFound` or `invalid` (already a task). */
+export const addActionToTasks = (meetingId: string, actionId: string) =>
+  invoke<TaskSummary>('add_action_to_tasks', { meetingId, actionId });
+export const copyMeetingMarkdown = (id: string) => invoke<void>('copy_meeting_markdown', { id });
 export const aiSelectModel = (modelId: string) => invoke<void>('ai_select_model', { modelId });
 export const recategorize = (ids: string[], categoryId: CategoryId) =>
   invoke<{ eventIds: string[] }>('recategorize', { ids, categoryId });

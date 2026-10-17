@@ -270,6 +270,53 @@ pub fn delete_meeting(app: AppHandle, id: String) -> AppResult<()> {
     crate::transcribe::worker::delete(&app, &id)
 }
 
+/// Re-summarizes a done meeting in `lang` (`en|vi|zh`); only the notes change. Errors: `busy`,
+/// `invalid`.
+#[tauri::command]
+pub async fn resummarize_meeting(app: AppHandle, id: String, lang: String) -> AppResult<()> {
+    crate::transcribe::summary::resummarize(&app, &id, &lang).await
+}
+
+/// Queues a skipped or failed summary again. Errors: `invalid`.
+#[tauri::command]
+pub fn summarize_meeting(app: AppHandle, id: String) -> AppResult<()> {
+    crate::transcribe::summary::summarize_again(&app, &id)
+}
+
+/// Errors: `notFound` (change or task), `invalid` (not pending).
+#[tauri::command]
+pub fn apply_meeting_change(
+    app: AppHandle,
+    meeting_id: String,
+    change_id: String,
+) -> AppResult<crate::model::EventIds> {
+    let event_ids = crate::transcribe::summary::apply_meeting_change(&app, &meeting_id, &change_id)?;
+    Ok(crate::model::EventIds { event_ids })
+}
+
+/// Errors: `notFound`, `invalid` (not applied).
+#[tauri::command]
+pub fn undo_meeting_change(app: AppHandle, meeting_id: String, change_id: String) -> AppResult<()> {
+    crate::transcribe::summary::undo_meeting_change(&app, &meeting_id, &change_id)
+}
+
+/// Errors: `notFound`, `invalid` (not pending).
+#[tauri::command]
+pub fn ignore_meeting_change(app: AppHandle, meeting_id: String, change_id: String) -> AppResult<()> {
+    crate::transcribe::summary::ignore_meeting_change(&app, &meeting_id, &change_id)
+}
+
+/// Errors: `notFound`, `invalid` (already a task).
+#[tauri::command]
+pub fn add_action_to_tasks(app: AppHandle, meeting_id: String, action_id: String) -> AppResult<crate::model::TaskSummary> {
+    crate::transcribe::summary::add_action_to_tasks(&app, &meeting_id, &action_id)
+}
+
+#[tauri::command]
+pub async fn copy_meeting_markdown(app: AppHandle, id: String) -> AppResult<()> {
+    crate::transcribe::summary::copy_markdown(&app, &id).await
+}
+
 #[tauri::command]
 pub async fn ai_select_model(app: AppHandle, model_id: String) -> AppResult<()> {
     crate::llm::select_model(&app, &model_id).await

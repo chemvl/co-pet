@@ -145,7 +145,7 @@ pub struct RecordingLevel {
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesChanged {}
 
-/// `trigger`: `return | afterDone`.
+/// `trigger`: `return | afterDone | afterMeeting`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WhatsNextEvent {

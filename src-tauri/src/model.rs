@@ -533,6 +533,8 @@ pub enum Actor {
     Agent(String),
     /// Tasks created from a meeting's action items.
     Meeting,
+    /// Status pulled from Notion or Asana by the status sync.
+    Service(crate::export::Provider),
 }
 
 impl Actor {
@@ -541,7 +543,7 @@ impl Actor {
         match self {
             Actor::User => Ok("user"),
             Actor::Agent(_) => Ok("agent"),
-            Actor::Next | Actor::Meeting => Err(AppError::Code("invalid")),
+            Actor::Next | Actor::Meeting | Actor::Service(_) => Err(AppError::Code("invalid")),
         }
     }
 
@@ -552,6 +554,7 @@ impl Actor {
             Actor::Next => "next",
             Actor::Agent(_) => "agent",
             Actor::Meeting => "meeting",
+            Actor::Service(p) => p.as_str(),
         })
     }
 
@@ -559,7 +562,7 @@ impl Actor {
     pub fn client_id(&self) -> Option<&str> {
         match self {
             Actor::Agent(id) => Some(id),
-            Actor::User | Actor::Next | Actor::Meeting => None,
+            Actor::User | Actor::Next | Actor::Meeting | Actor::Service(_) => None,
         }
     }
 }

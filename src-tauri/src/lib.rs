@@ -88,6 +88,7 @@ pub fn run() {
             platform::macos::idle::start(&handle);
             next::start(&handle);
             export::queue::start(&handle);
+            export::status::start(&handle);
             // After the export queue: `export_task` pokes it.
             agent::start(&handle);
             sync::start(&handle);

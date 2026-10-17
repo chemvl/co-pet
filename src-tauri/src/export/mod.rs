@@ -7,6 +7,7 @@ pub mod asana;
 pub mod notion;
 pub mod oauth;
 pub mod queue;
+pub mod status;
 
 use std::path::{Path, PathBuf};
 use std::str::FromStr;

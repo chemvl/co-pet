@@ -234,6 +234,7 @@ async fn run_job(app: &AppHandle, job: Job) {
     let Some(prepared) = prepared.transpose() else { return };
     events::exports_changed(app, vec![job.task_id.clone()]);
     let provider = prepared.as_ref().ok().map(|(p, _, _)| *p);
+    let done = prepared.as_ref().ok().map(|(_, _, payload)| payload.done);
     let result = match prepared {
         Ok((p, target, payload)) => super::export(p, &target, &payload).await,
         Err(e) => Err(e),
@@ -245,7 +246,7 @@ async fn run_job(app: &AppHandle, job: Job) {
     let written = {
         let db = app.state::<Db>();
         let conn = db.conn();
-        write(&conn, &job.id, &update, now_ms())
+        write_exported(&conn, &job.id, &update, done, now_ms())
     };
     if let Err(e) = written {
         eprintln!("[export] job {}: {e}", job.id);
@@ -296,6 +297,15 @@ fn write(conn: &Connection, id: &str, u: &Update, now: i64) -> AppResult<()> {
         )?;
     }
     Ok(())
+}
+
+/// `write`, then for an exported job the status sync's base: `done` = the payload's `done`.
+fn write_exported(conn: &Connection, id: &str, u: &Update, done: Option<bool>, now: i64) -> AppResult<()> {
+    write(conn, id, u, now)?;
+    match (&u.exported, done) {
+        (Some(e), Some(d)) => super::status::on_exported(conn, id, &e.external_id, d, now),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -451,5 +461,21 @@ mod tests {
         assert_eq!(url(&conn), None);
         write(&conn, &format!("{agent}:notion"), &ok("https://n/agent"), 3).unwrap();
         assert_eq!(url(&conn).as_deref(), Some("https://n/agent"));
+    }
+
+    #[test]
+    fn exported_job_records_status_base() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let j = queued_asana(&conn);
+        let (_, _, payload) = prepare(&conn, Path::new("/lib"), &j, i18n::Lang::En, 2).unwrap().unwrap();
+        let ok = outcome(0, Ok(Exported { external_id: "9".into(), external_url: "https://a/9".into() }), 3);
+        write_exported(&conn, &j.id, &ok, Some(payload.done), 3).unwrap();
+        let base: (String, bool) = conn
+            .query_row("SELECT external_id, synced_done FROM export_status WHERE export_id = ?1", [&j.id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(base, ("9".to_string(), false));
     }
 }

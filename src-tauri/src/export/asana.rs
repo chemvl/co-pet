@@ -119,13 +119,11 @@ pub async fn sections(token: &str, project_gid: &str) -> Result<Vec<TargetOption
 }
 
 /// 404 maps to `TargetMissing` through `classify`; callers treat it as gone.
-#[allow(dead_code)] // called by export::status (Task 6.2)
 pub async fn task_status(token: &str, gid: &str) -> Result<RemoteState, ExportError> {
     let path = format!("/tasks/{}?{STATUS_FIELDS}", path_segment(gid));
     Ok(parse_task_status(&send(get(&path, token)).await?))
 }
 
-#[allow(dead_code)] // called by export::status (Task 6.2)
 pub async fn set_task_status(token: &str, gid: &str, done: bool) -> Result<RemoteState, ExportError> {
     let path = format!("/tasks/{}?{STATUS_FIELDS}", path_segment(gid));
     Ok(parse_task_status(&send(put(&path, token).json(&status_body(done))).await?))

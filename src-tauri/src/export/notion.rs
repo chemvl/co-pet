@@ -291,13 +291,11 @@ fn page_path(page_id: &str) -> String {
     format!("/pages/{}", path_segment(page_id))
 }
 
-#[allow(dead_code)] // called by export::status (Task 6.2)
 pub async fn page_status(token: &str, page_id: &str, map: &NotionStatusMap) -> Result<RemoteState, ExportError> {
     let r = req(reqwest::Method::GET, &page_path(page_id), token).query(&[("filter_properties", map.prop.as_str())]);
     Ok(parse_page_status(&send(r).await?, map))
 }
 
-#[allow(dead_code)] // called by export::status (Task 6.2)
 pub async fn set_page_status(token: &str, page_id: &str, map: &NotionStatusMap, done: bool) -> Result<RemoteState, ExportError> {
     let r = req(reqwest::Method::PATCH, &page_path(page_id), token)
         .query(&[("filter_properties", map.prop.as_str())])

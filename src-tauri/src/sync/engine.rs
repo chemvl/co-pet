@@ -1,6 +1,7 @@
-//! The sync loop and one run. A run pushes `sync_outbox` (batches of 100, parents first), pulls
-//! by server `seq` from `sync_state.cursor` (pages of 100, each applied in one transaction with
-//! its cursor) and moves up to 20 files. The loop runs after a `poke` (2 s later, so a burst of
+//! The sync loop and one run. A run pushes `sync_outbox` (batches of up to 100 rows and
+//! 4 000 000 payload bytes, parents first), pulls by server `seq` from `sync_state.cursor`
+//! (pages of 100, each applied in one transaction with its cursor) and moves up to 20 files.
+//! The loop runs after a `poke` (2 s later, so a burst of
 //! changes is one run) or every 60 s while sync is on; while it is off, paused or waiting for a
 //! key or sign-in, only a poke wakes it, and that run does no network or database work.
 use std::sync::{LazyLock, Mutex};
@@ -27,6 +28,9 @@ use crate::paths::Paths;
 
 /// Rows per push.
 const BATCH: usize = 100;
+/// Sealed payload bytes per push (meeting rows carry whole transcripts); a single larger row is
+/// sent alone.
+const BATCH_BYTES: usize = 4_000_000;
 /// Rows per pull.
 const PAGE: usize = 100;
 const TICK: Duration = Duration::from_secs(60);
@@ -264,6 +268,9 @@ fn emit_applied(app: &AppHandle, a: Applied) {
     if !a.task_ids.is_empty() {
         events::tasks_changed(app, a.task_ids);
     }
+    if !a.meeting_ids.is_empty() {
+        events::meetings_changed(app, a.meeting_ids);
+    }
     if a.categories {
         events::categories_changed(app);
     }
@@ -324,6 +331,8 @@ struct Entry {
 
 /// Pushes what was queued before the push began; a row queued again meanwhile (changed during
 /// the push) keeps its entry for the next run. Pushed items' files are registered for upload.
+/// A batch ends at `BATCH` rows or before the row that would take it over `BATCH_BYTES`; the
+/// rows left out stay queued for the next batch.
 async fn push<R: Remote>(cx: &Ctx<'_>, remote: &R, device_id: &str, on: &mut impl FnMut(Progress)) -> Result<(), SyncError> {
     let since = now_ms();
     loop {
@@ -336,6 +345,7 @@ async fn push<R: Remote>(cx: &Ctx<'_>, remote: &R, device_id: &str, on: &mut imp
             let mut rows = Vec::with_capacity(entries.len());
             let mut item_ids = Vec::new();
             let mut pushed = Vec::with_capacity(entries.len());
+            let mut bytes = 0;
             for e in entries {
                 let found = match synced_table(&e.tbl) {
                     Some((tbl, key)) => read_row(&conn, tbl, key, &e.id)?.map(|row| (tbl, row)),
@@ -346,6 +356,11 @@ async fn push<R: Remote>(cx: &Ctx<'_>, remote: &R, device_id: &str, on: &mut imp
                     delete_entry(&conn, &e)?;
                     continue;
                 };
+                let payload = seal_row(&cx.keys.record, tbl, &e.id, &row);
+                if !rows.is_empty() && bytes + payload.len() > BATCH_BYTES {
+                    break;
+                }
+                bytes += payload.len();
                 if tbl == "items" {
                     item_ids.push(e.id.clone());
                 }
@@ -355,7 +370,7 @@ async fn push<R: Remote>(cx: &Ctx<'_>, remote: &R, device_id: &str, on: &mut imp
                     updated_at: row.get("updated_at").and_then(Value::as_i64).unwrap_or(0),
                     device_id: device_id.to_string(),
                     deleted: row.get("deleted_at").is_some_and(|v| !v.is_null()),
-                    payload: seal_row(&cx.keys.record, tbl, &e.id, &row),
+                    payload,
                     seq: 0,
                 });
                 pushed.push(e);
@@ -633,6 +648,115 @@ mod tests {
         sync(&a, &remote, &keys).await;
         assert_eq!(remote.rows().len(), seeded, "the second run queues nothing new");
         assert!(last_synced_at(&a.db.conn()).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn meeting_row_syncs_and_audio_does_not() {
+        use crate::db::meetings;
+        use crate::model::TranscriptSeg;
+
+        let (a, b, keys, remote) = (device("aaaa"), device("bbbb"), keys(), MemoryRemote::default());
+        let id = {
+            let c = a.db.conn();
+            let id = meetings::create(&c, "recording", "vi+en", "aaaa", 1_700_000_000_000, "Weekly sync", None).unwrap();
+            let segs = [
+                TranscriptSeg { start_ms: 0, end_ms: 2_400, speaker: "me".into(), text: "Chào cả nhà".into(), lang: "vi".into() },
+                TranscriptSeg { start_ms: 2_400, end_ms: 5_000, speaker: "others".into(), text: "Let's start".into(), lang: "en".into() },
+            ];
+            meetings::save_transcript(&c, &id, &segs, &[], &["vi".into(), "en".into()], false).unwrap();
+            meetings::set_state(&c, &id, "done", None).unwrap();
+            id
+        };
+        let item = items::upsert_meeting_item(
+            &mut a.db.conn(),
+            &items::MeetingItem {
+                meeting_id: id.clone(),
+                title: "Weekly sync".into(),
+                summary: Some("Kickoff".into()),
+                payload: "## Summary\n- Kickoff".into(),
+                sensitive: false,
+                captured_at: 1_700_000_000_000,
+            },
+        )
+        .unwrap();
+        let dir = a.paths.recording_dir(&id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mix.m4a"), b"m4a audio").unwrap();
+
+        sync(&a, &remote, &keys).await;
+        sync(&b, &remote, &keys).await;
+
+        let on_a = meetings::get(&a.db.conn(), &id).unwrap();
+        assert_eq!(on_a.transcript.len(), 2);
+        assert_eq!(meetings::get(&b.db.conn(), &id).unwrap(), on_a, "B has the meeting and its transcript");
+        let pulled = items::get_row(&b.db.conn(), &item).unwrap();
+        assert_eq!(pulled.meeting_id.as_deref(), Some(id.as_str()));
+        assert_eq!(meetings::item_id(&b.db.conn(), &id).unwrap(), Some(item));
+        let recordings: i64 = a
+            .db
+            .conn()
+            .query_row("SELECT count(*) FROM sync_blobs WHERE rel LIKE 'recordings/%'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(recordings, 0, "meeting audio is never registered for upload");
+        assert!(remote.blobs().is_empty(), "no file left this Mac");
+        assert!(!b.paths.recording_dir(&id).exists());
+    }
+
+    /// Records each pushed batch as `(tbl/id, payload bytes)`.
+    struct Batches<'a> {
+        inner: &'a MemoryRemote,
+        seen: Mutex<Vec<Vec<(String, usize)>>>,
+    }
+
+    impl Remote for Batches<'_> {
+        async fn push(&self, rows: &[RemoteRow]) -> Result<u32, SyncError> {
+            self.seen.lock().unwrap().push(rows.iter().map(|r| (format!("{}/{}", r.tbl, r.id), r.payload.len())).collect());
+            self.inner.push(rows).await
+        }
+        async fn pull(&self, after: i64, limit: usize) -> Result<Vec<RemoteRow>, SyncError> {
+            self.inner.pull(after, limit).await
+        }
+        async fn put_blob(&self, name: &str, bytes: Vec<u8>) -> Result<(), SyncError> {
+            self.inner.put_blob(name, bytes).await
+        }
+        async fn get_blob(&self, name: &str) -> Result<Option<Vec<u8>>, SyncError> {
+            self.inner.get_blob(name).await
+        }
+    }
+
+    #[tokio::test]
+    async fn push_batches_stay_under_the_byte_cap() {
+        let (a, b, keys, memory) = (device("aaaa"), device("bbbb"), keys(), MemoryRemote::default());
+        // Sealed and base64'd, 1.2 MB of notes is ~1.6 MB: two fit under 4 MB, three don't. The
+        // 3.5 MB one (~4.7 MB sealed) is over the cap on its own.
+        for (id, len) in [("t1", 1_200_000), ("t2", 1_200_000), ("t3", 1_200_000), ("t4", 3_500_000)] {
+            a.db.conn()
+                .execute("INSERT INTO tasks (id, title, notes, created_at, updated_at) VALUES (?1, ?1, ?2, 1, 1)", params![id, "x".repeat(len)])
+                .unwrap();
+        }
+        let remote = Batches { inner: &memory, seen: Mutex::new(Vec::new()) };
+        sync_device(&a, &remote, &keys).await.unwrap();
+        let batches = remote.seen.into_inner().unwrap();
+
+        let tasks: Vec<Vec<&str>> = batches
+            .iter()
+            .map(|b| b.iter().filter_map(|(k, _)| k.strip_prefix("tasks/")).collect::<Vec<_>>())
+            .filter(|t| !t.is_empty())
+            .collect();
+        assert_eq!(tasks, [vec!["t1", "t2"], vec!["t3"], vec!["t4"]]);
+        for batch in &batches {
+            let bytes: usize = batch.iter().map(|(_, n)| n).sum();
+            assert!(batch.len() <= BATCH, "{} rows", batch.len());
+            assert!(batch.len() == 1 || bytes <= BATCH_BYTES, "{bytes} bytes in {} rows", batch.len());
+        }
+        let t4 = batches.iter().find(|b| b.iter().any(|(k, _)| k == "tasks/t4")).unwrap();
+        assert_eq!(t4.len(), 1, "a row over the cap is sent alone");
+        assert!(t4[0].1 > BATCH_BYTES);
+        assert_eq!(outbox_len(&a.db.conn()), 0, "every row was pushed");
+
+        sync(&b, &memory, &keys).await;
+        let notes: i64 = b.db.conn().query_row("SELECT length(notes) FROM tasks WHERE id = 't4'", [], |r| r.get(0)).unwrap();
+        assert_eq!(notes, 3_500_000);
     }
 
     /// A user signed up (or signed in) with a password on the local stack.

@@ -21,7 +21,7 @@ use crate::error::AppResult;
 pub use engine::{forget, last_synced_at, poke, start, status, sync_now};
 
 /// Synced tables: (table, key column, push order). Push order keeps parents ahead of children.
-pub const SYNC_TABLES: [(&str, &str, u8); 8] = [
+pub const SYNC_TABLES: [(&str, &str, u8); 9] = [
     ("categories", "id", 0),
     ("settings", "key", 1),
     ("rules", "id", 2),
@@ -30,6 +30,7 @@ pub const SYNC_TABLES: [(&str, &str, u8); 8] = [
     ("tasks", "id", 5),
     ("export_targets", "id", 6),
     ("task_exports", "id", 7),
+    ("meetings", "id", 8),
 ];
 
 /// Settings keys that sync across devices; every other key is per-device.
@@ -198,7 +199,7 @@ mod tests {
             }
         }
         let count: i64 = c
-            .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync\\_%' ESCAPE '\\' AND tbl_name != 'meetings'", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync\\_%' ESCAPE '\\'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2 * SYNC_TABLES.len() as i64);
     }

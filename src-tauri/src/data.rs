@@ -92,14 +92,15 @@ fn app_name(url: &objc2_foundation::NSURL) -> Option<String> {
 // ---------- export ----------
 
 /// Writes `<dir>/Co-pet export <YYYY-MM-DD HHmm>/` with `items.json` (every column of every
-/// non-deleted item), `tasks.json`, `rules.json`, `categories.json` and `files/` (copies of stored files).
-/// Returns the folder.
+/// non-deleted item), `tasks.json`, `rules.json`, `categories.json`, `meetings.json`, `files/`
+/// (copies of stored files) and `meetings/` (each meeting's `mix.m4a` still on this Mac, named
+/// after its title). Returns the folder.
 pub fn export_all(app: &AppHandle, dir: &Path) -> AppResult<PathBuf> {
     if !dir.is_dir() {
         return Err(AppError::Code("notFound"));
     }
     let paths = app.state::<Paths>();
-    let (items, tasks, rules, categories) = {
+    let (items, tasks, rules, categories, meetings) = {
         let db = app.state::<Db>();
         let conn = db.conn();
         (
@@ -107,17 +108,21 @@ pub fn export_all(app: &AppHandle, dir: &Path) -> AppResult<PathBuf> {
             rows_json(&conn, "SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY created_at")?,
             rows_json(&conn, "SELECT * FROM rules WHERE deleted_at IS NULL ORDER BY builtin, position")?,
             rows_json(&conn, "SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY position, id")?,
+            rows_json(&conn, "SELECT * FROM meetings WHERE deleted_at IS NULL ORDER BY started_at")?,
         )
     };
 
     let stamp = chrono::Local::now().format("%Y-%m-%d %H%M").to_string();
     let out = unique_dir(dir, &format!("Co-pet export {stamp}"));
     let files = out.join("files");
+    let audio = out.join("meetings");
     std::fs::create_dir_all(&files)?;
+    std::fs::create_dir_all(&audio)?;
     std::fs::write(out.join("items.json"), serde_json::to_vec_pretty(&items)?)?;
     std::fs::write(out.join("tasks.json"), serde_json::to_vec_pretty(&tasks)?)?;
     std::fs::write(out.join("rules.json"), serde_json::to_vec_pretty(&rules)?)?;
     std::fs::write(out.join("categories.json"), serde_json::to_vec_pretty(&categories)?)?;
+    std::fs::write(out.join("meetings.json"), serde_json::to_vec_pretty(&meetings)?)?;
 
     let mut taken = HashSet::new();
     for item in &items {
@@ -125,6 +130,19 @@ pub fn export_all(app: &AppHandle, dir: &Path) -> AppResult<PathBuf> {
         let src = paths.abs(rel);
         let name = export_name(item, rel);
         let dest = unique_name(&files, &name, &mut taken);
+        if let Err(e) = std::fs::copy(&src, &dest) {
+            eprintln!("[export] {} → {}: {e}", src.display(), dest.display());
+        }
+    }
+    taken.clear();
+    for meeting in &meetings {
+        let Some(id) = meeting["id"].as_str() else { continue };
+        let src = paths.recording_dir(id).join("mix.m4a");
+        if !src.is_file() {
+            continue;
+        }
+        let title = meeting["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).unwrap_or(id);
+        let dest = unique_name(&audio, &format!("{}.m4a", title.replace(['/', ':'], "_")), &mut taken);
         if let Err(e) = std::fs::copy(&src, &dest) {
             eprintln!("[export] {} → {}: {e}", src.display(), dest.display());
         }
@@ -217,9 +235,9 @@ pub(crate) fn phrase_ok(typed: &str, phrases: &[&str]) -> bool {
     phrases.contains(&typed.as_str())
 }
 
-/// Deletes the export tokens, the account session and sync key from the keychain, the database
-/// and the library (models stay), then restarts into onboarding. Error `confirmation` when the
-/// typed phrase doesn't match.
+/// Deletes the export tokens, the account session and sync key from the keychain, the database,
+/// the library and the meeting recordings (models stay), then restarts into onboarding. Error
+/// `confirmation` when the typed phrase doesn't match.
 pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult<()> {
     if !phrase_ok(confirmation, &CONFIRMATIONS) {
         return Err(AppError::Code("confirmation"));
@@ -246,10 +264,12 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
                 _ => {}
             }
         }
-        if paths.library.exists() {
-            std::fs::remove_dir_all(&paths.library)?;
+        for dir in [&paths.library, &paths.recordings] {
+            if dir.exists() {
+                std::fs::remove_dir_all(dir)?;
+            }
         }
-        eprintln!("[data] deleted the keychain entries, the database and the library; restarting");
+        eprintln!("[data] deleted the keychain entries, the database, the library and the recordings; restarting");
         // Exits through `RunEvent::Exit` (which stops `llama-server` again) and relaunches.
         app.restart();
     })

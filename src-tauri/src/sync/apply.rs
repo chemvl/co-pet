@@ -20,6 +20,7 @@ use crate::paths::Paths;
 pub(crate) struct Applied {
     pub item_ids: Vec<String>,
     pub task_ids: Vec<String>,
+    pub meeting_ids: Vec<String>,
     /// Categories, rules or category examples changed.
     pub categories: bool,
     pub settings_keys: Vec<String>,
@@ -127,6 +128,7 @@ fn apply_rows(conn: &Connection, rows: &[RemoteRow], record_key: &[u8; 32], path
                 applied.item_ids.push(r.id.clone());
             }
             "tasks" => applied.task_ids.push(r.id.clone()),
+            "meetings" => applied.meeting_ids.push(r.id.clone()),
             "settings" => applied.settings_keys.push(r.id.clone()),
             "export_targets" | "task_exports" => applied.exports = true,
             _ => applied.categories = true,

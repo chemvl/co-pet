@@ -10,7 +10,7 @@ export interface TokenJson {
 }
 
 export const ASANA_SCOPES =
-  "tasks:write workspaces:read projects:read attachments:write users:read";
+  "tasks:read tasks:write workspaces:read projects:read attachments:write users:read";
 
 export function isProvider(v: unknown): v is Provider {
   return v === "notion" || v === "asana";

@@ -5,7 +5,7 @@ use reqwest::multipart::{Form, Part};
 use reqwest::RequestBuilder;
 use serde_json::{json, Map, Value};
 
-use super::{path_segment, send, ExportError, ExportPayload, Exported};
+use super::{path_segment, rfc3339_ms, send, ExportError, ExportPayload, Exported, RemoteState};
 use crate::backend;
 use crate::model::{AsanaConfig, TargetOption};
 
@@ -18,6 +18,12 @@ fn get(path: &str, token: &str) -> RequestBuilder {
 fn post(path: &str, token: &str) -> RequestBuilder {
     backend::http().post(format!("{BASE}{path}")).bearer_auth(token)
 }
+
+fn put(path: &str, token: &str) -> RequestBuilder {
+    backend::http().put(format!("{BASE}{path}")).bearer_auth(token)
+}
+
+const STATUS_FIELDS: &str = "opt_fields=completed,modified_at";
 
 // ---------- pure ----------
 
@@ -80,6 +86,18 @@ pub fn parse_task(v: &Value) -> Result<Exported, ExportError> {
     }
 }
 
+/// `Status` from `data.completed` and a parseable `data.modified_at`, else `Unknown`.
+pub fn parse_task_status(v: &Value) -> RemoteState {
+    match (v["data"]["completed"].as_bool(), rfc3339_ms(v["data"]["modified_at"].as_str())) {
+        (Some(done), Some(modified_at)) => RemoteState::Status { done, modified_at },
+        _ => RemoteState::Unknown,
+    }
+}
+
+pub fn status_body(done: bool) -> Value {
+    json!({ "data": { "completed": done } })
+}
+
 // ---------- HTTP ----------
 
 pub async fn me(token: &str) -> Result<String, ExportError> {
@@ -98,6 +116,19 @@ pub async fn projects(token: &str, workspace_gid: &str) -> Result<Vec<TargetOpti
 pub async fn sections(token: &str, project_gid: &str) -> Result<Vec<TargetOption>, ExportError> {
     let path = format!("/projects/{}/sections?limit=100", path_segment(project_gid));
     Ok(parse_options(&send(get(&path, token)).await?))
+}
+
+/// 404 maps to `TargetMissing` through `classify`; callers treat it as gone.
+#[allow(dead_code)] // called by export::status (Task 6.2)
+pub async fn task_status(token: &str, gid: &str) -> Result<RemoteState, ExportError> {
+    let path = format!("/tasks/{}?{STATUS_FIELDS}", path_segment(gid));
+    Ok(parse_task_status(&send(get(&path, token)).await?))
+}
+
+#[allow(dead_code)] // called by export::status (Task 6.2)
+pub async fn set_task_status(token: &str, gid: &str, done: bool) -> Result<RemoteState, ExportError> {
+    let path = format!("/tasks/{}?{STATUS_FIELDS}", path_segment(gid));
+    Ok(parse_task_status(&send(put(&path, token).json(&status_body(done))).await?))
 }
 
 /// Creates the task, then attaches the source file; an attachment failure is only logged.
@@ -176,5 +207,13 @@ mod tests {
             Exported { external_id: "9".into(), external_url: "https://app.asana.com/0/1/9".into() }
         );
         assert!(parse_task(&json!({ "errors": [] })).is_err());
+    }
+
+    #[test]
+    fn parses_task_status() {
+        let v = json!({ "data": { "gid": "9", "completed": true, "modified_at": "2026-10-17T07:28:00.000Z" } });
+        assert_eq!(parse_task_status(&v), RemoteState::Status { done: true, modified_at: 1_792_222_080_000 });
+        assert_eq!(parse_task_status(&json!({ "data": { "gid": "9", "completed": true } })), RemoteState::Unknown);
+        assert_eq!(status_body(false), json!({ "data": { "completed": false } }));
     }
 }

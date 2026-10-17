@@ -27,7 +27,7 @@ Deno.test("authorizeUrl builds provider URLs with encoded redirect and scope", (
   assertEquals(n.searchParams.get("redirect_uri"), "https://x.supabase.co/functions/v1/oauth/callback");
   const a = authorizeUrl("asana", "aid", "https://r", "s");
   assert(a.startsWith("https://app.asana.com/-/oauth_authorize?client_id=aid&response_type=code"));
-  assert(a.endsWith("&scope=tasks%3Awrite%20workspaces%3Aread%20projects%3Aread%20attachments%3Awrite%20users%3Aread"));
+  assert(a.endsWith("&scope=tasks%3Aread%20tasks%3Awrite%20workspaces%3Aread%20projects%3Aread%20attachments%3Awrite%20users%3Aread"));
 });
 
 Deno.test("doneUrl encodes params", () => {

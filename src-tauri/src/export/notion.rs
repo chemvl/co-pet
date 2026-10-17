@@ -4,7 +4,7 @@ use chrono::{Local, NaiveDate, NaiveTime, TimeZone};
 use reqwest::RequestBuilder;
 use serde_json::{json, Map, Value};
 
-use super::{path_segment, send, ExportError, ExportPayload, Exported};
+use super::{path_segment, rfc3339_ms, send, ExportError, ExportPayload, Exported, RemoteState};
 use crate::backend;
 use crate::db::search::fold;
 use crate::i18n::Lang;
@@ -183,6 +183,37 @@ fn date_start(date: &str, time: Option<&str>) -> Option<String> {
     Some(local.format("%Y-%m-%dT%H:%M:00%:z").to_string())
 }
 
+fn status_key(s: &NotionStatusMap) -> &'static str {
+    if s.kind == "select" { "select" } else { "status" }
+}
+
+/// The status/select property value for option `done` or `todo`.
+fn status_value(s: &NotionStatusMap, done: bool) -> Value {
+    json!({ (status_key(s)): { "name": if done { &s.done } else { &s.todo } } })
+}
+
+/// `Gone` when trashed/archived; `Unknown` without a parseable `last_edited_time` or when the
+/// mapped property is missing or of another type. A null select counts as open.
+pub fn parse_page_status(v: &Value, map: &NotionStatusMap) -> RemoteState {
+    if v["in_trash"].as_bool() == Some(true) || v["is_archived"].as_bool() == Some(true) {
+        return RemoteState::Gone;
+    }
+    let Some(modified_at) = rfc3339_ms(v["last_edited_time"].as_str()) else {
+        return RemoteState::Unknown;
+    };
+    let key = status_key(map);
+    let prop = &v["properties"][&map.prop];
+    if prop["type"].as_str() != Some(key) {
+        return RemoteState::Unknown;
+    }
+    RemoteState::Status { done: prop[key]["name"].as_str() == Some(map.done.as_str()), modified_at }
+}
+
+/// The `PATCH /pages/{id}` body that sets only the status property.
+pub fn status_patch_body(map: &NotionStatusMap, done: bool) -> Value {
+    json!({ "properties": { (map.prop.clone()): status_value(map, done) } })
+}
+
 /// The `POST /pages` body. Unmapped properties are omitted; the source becomes a last
 /// paragraph only when no URL property is mapped.
 pub fn page_body(cfg: &NotionConfig, p: &ExportPayload) -> Value {
@@ -190,9 +221,7 @@ pub fn page_body(cfg: &NotionConfig, p: &ExportPayload) -> Value {
     let mut props = Map::new();
     props.insert(m.title.clone(), json!({ "title": [{ "text": { "content": truncate(&p.title, TEXT_MAX) } }] }));
     if let Some(s) = &m.status {
-        let name = if p.done { &s.done } else { &s.todo };
-        let key = if s.kind == "select" { "select" } else { "status" };
-        props.insert(s.prop.clone(), json!({ (key): { "name": name } }));
+        props.insert(s.prop.clone(), status_value(s, p.done));
     }
     if let (Some(prop), Some(start)) = (&m.due, p.due_date.as_deref().and_then(|d| date_start(d, p.due_time.as_deref()))) {
         props.insert(prop.clone(), json!({ "date": { "start": start } }));
@@ -256,6 +285,24 @@ pub async fn schema(token: &str, id: &str) -> Result<NotionSchema, ExportError> 
 pub async fn export(token: &str, cfg: &NotionConfig, p: &ExportPayload) -> Result<Exported, ExportError> {
     let v = send(req(reqwest::Method::POST, "/pages", token).json(&page_body(cfg, p))).await?;
     parse_page(&v)
+}
+
+fn page_path(page_id: &str) -> String {
+    format!("/pages/{}", path_segment(page_id))
+}
+
+#[allow(dead_code)] // called by export::status (Task 6.2)
+pub async fn page_status(token: &str, page_id: &str, map: &NotionStatusMap) -> Result<RemoteState, ExportError> {
+    let r = req(reqwest::Method::GET, &page_path(page_id), token).query(&[("filter_properties", map.prop.as_str())]);
+    Ok(parse_page_status(&send(r).await?, map))
+}
+
+#[allow(dead_code)] // called by export::status (Task 6.2)
+pub async fn set_page_status(token: &str, page_id: &str, map: &NotionStatusMap, done: bool) -> Result<RemoteState, ExportError> {
+    let r = req(reqwest::Method::PATCH, &page_path(page_id), token)
+        .query(&[("filter_properties", map.prop.as_str())])
+        .json(&status_patch_body(map, done));
+    Ok(parse_page_status(&send(r).await?, map))
 }
 
 #[cfg(test)]
@@ -410,5 +457,42 @@ mod tests {
             parse_page(&json!({ "id": "p1", "url": "https://notion.so/p1" })).unwrap(),
             Exported { external_id: "p1".into(), external_url: "https://notion.so/p1".into() }
         );
+    }
+
+    fn status_map(kind: &str) -> NotionStatusMap {
+        NotionStatusMap { prop: "Status".into(), kind: kind.into(), todo: "Not started".into(), done: "Done".into() }
+    }
+
+    #[test]
+    fn parses_page_status() {
+        let m = status_map("status");
+        let page = |name: &str| {
+            json!({ "id": "p", "in_trash": false, "is_archived": false, "last_edited_time": "2026-10-17T07:28:00.000Z",
+                "properties": { "Status": { "id": "s", "type": "status", "status": { "name": name } } } })
+        };
+        assert_eq!(parse_page_status(&page("Done"), &m), RemoteState::Status { done: true, modified_at: 1_792_222_080_000 });
+        assert_eq!(parse_page_status(&page("In progress"), &m), RemoteState::Status { done: false, modified_at: 1_792_222_080_000 });
+        let mut v = page("Done");
+        v["in_trash"] = json!(true);
+        assert_eq!(parse_page_status(&v, &m), RemoteState::Gone);
+        let mut v = page("Done");
+        v["is_archived"] = json!(true);
+        assert_eq!(parse_page_status(&v, &m), RemoteState::Gone);
+        let mut v = page("Done");
+        v["properties"] = json!({ "Name": { "type": "title", "title": [] } });
+        assert_eq!(parse_page_status(&v, &m), RemoteState::Unknown);
+        let mut v = page("Done");
+        v["last_edited_time"] = json!("yesterday");
+        assert_eq!(parse_page_status(&v, &m), RemoteState::Unknown);
+        let v = json!({ "last_edited_time": "2026-10-17T07:28:00.000Z",
+            "properties": { "Status": { "type": "select", "select": null } } });
+        assert_eq!(parse_page_status(&v, &status_map("select")), RemoteState::Status { done: false, modified_at: 1_792_222_080_000 });
+    }
+
+    #[test]
+    fn status_patch_body_by_kind() {
+        assert_eq!(status_patch_body(&status_map("status"), true), json!({ "properties": { "Status": { "status": { "name": "Done" } } } }));
+        let m = NotionStatusMap { prop: "Trạng thái".into(), kind: "select".into(), todo: "Mới".into(), done: "Xong".into() };
+        assert_eq!(status_patch_body(&m, false), json!({ "properties": { "Trạng thái": { "select": { "name": "Mới" } } } }));
     }
 }

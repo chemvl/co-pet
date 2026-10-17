@@ -81,6 +81,21 @@ pub struct Exported {
     pub external_url: String,
 }
 
+/// A task's status on the other side, as a status check reads it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RemoteState {
+    /// Trashed or archived (Notion), or 404.
+    Gone,
+    /// The response has no usable status (unmapped property, unparseable time).
+    Unknown,
+    Status { done: bool, modified_at: i64 /* epoch ms */ },
+}
+
+/// Epoch ms of an RFC 3339 timestamp.
+pub(crate) fn rfc3339_ms(s: Option<&str>) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(s?).ok().map(|d| d.timestamp_millis())
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExportError {
     /// Seconds to wait.
@@ -265,15 +280,20 @@ pub async fn export(p: Provider, target: &ExportTarget, payload: &ExportPayload)
     let access = token(p).await.map_err(token_error)?;
     match export_with(p, &access, target, payload).await {
         Err(ExportError::Unauthorized) => {
-            let t = stored(p).map_err(token_error)?;
-            if t.refresh_token.is_none() {
-                return Err(ExportError::Unauthorized);
-            }
-            let fresh = refresh(p, t).await.map_err(token_error)?;
-            export_with(p, &fresh.access_token, target, payload).await
+            let fresh = refreshed_token(p).await?;
+            export_with(p, &fresh, target, payload).await
         }
         r => r,
     }
+}
+
+/// A fresh access token through the backend refresh grant; `Unauthorized` without a refresh token.
+pub(crate) async fn refreshed_token(p: Provider) -> Result<String, ExportError> {
+    let t = stored(p).map_err(token_error)?;
+    if t.refresh_token.is_none() {
+        return Err(ExportError::Unauthorized);
+    }
+    Ok(refresh(p, t).await.map_err(token_error)?.access_token)
 }
 
 /// The source item's `url` for a `url` item, else `copet://item/<id>` with a live source item,

@@ -14,7 +14,7 @@ use crate::db::new_id;
 use crate::db::search::fold;
 use crate::error::AppResult;
 use crate::i18n::Lang;
-use crate::llm::ChatOpts;
+use crate::ai::ChatOpts;
 use crate::model::{ActionItem, TaskChange, TaskSummary};
 
 /// Estimated-token budget of one transcript chunk (llama-server runs `-c 8192`: prompt, tasks

@@ -7,7 +7,8 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
-use crate::llm::{ChatOpts, LlmServer};
+use crate::ai::ChatOpts;
+use crate::llm::LlmServer;
 use crate::model::{Category, ItemRow};
 
 const TEXT_LIMIT: usize = 4000;

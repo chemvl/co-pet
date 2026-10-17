@@ -7,10 +7,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{AppHandle, Manager};
 use tokio::process::{Child, Command};
 
+use crate::ai::{wire, ChatOpts, Provider};
 use crate::db::settings;
 use crate::error::{AppError, AppResult};
 use crate::paths::Paths;
@@ -23,14 +24,6 @@ struct Running {
     port: u16,
     key: String,
     model: PathBuf,
-}
-
-/// Per-call options for [`LlmServer::chat_json`]: the `json_schema` name, the reply token limit
-/// and the request timeout.
-pub struct ChatOpts {
-    pub name: &'static str,
-    pub max_tokens: u32,
-    pub timeout: Duration,
 }
 
 /// Managed state (`app.state::<LlmServer>()`).
@@ -199,26 +192,15 @@ impl LlmServer {
     }
 
     /// One structured-output chat completion (`opts` name the schema and bound the reply);
-    /// returns the parsed JSON content.
-    pub async fn chat_json(&self, opts: &ChatOpts, system: &str, user: &str, schema: &Value) -> AppResult<Value> {
+    /// returns the parsed JSON content. Only `ai::chat_json` calls this.
+    pub(crate) async fn chat_json(&self, opts: &ChatOpts, system: &str, user: &str, schema: &Value) -> AppResult<Value> {
         self.touch();
         let (port, key) = {
             let running = self.running.lock().await;
             let r = running.as_ref().ok_or(AppError::Code("notRunning"))?;
             (r.port, r.key.clone())
         };
-        let body = json!({
-            "messages": [
-                { "role": "system", "content": system },
-                { "role": "user", "content": user },
-            ],
-            "temperature": 0.2,
-            "max_tokens": opts.max_tokens,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": { "name": opts.name, "strict": true, "schema": schema },
-            },
-        });
+        let body = wire::chat_body(None, opts, system, user, schema);
         let resp: Value = self
             .http
             .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
@@ -231,10 +213,8 @@ impl LlmServer {
             .json()
             .await?;
         self.touch();
-        let content = resp["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| AppError::msg("llama-server reply has no content"))?;
-        Ok(serde_json::from_str(content)?)
+        let content = wire::reply_text(Provider::Local, &resp)?;
+        Ok(serde_json::from_str(&content)?)
     }
 
     /// Kills the child, if any (idle timeout, model switch, quit).

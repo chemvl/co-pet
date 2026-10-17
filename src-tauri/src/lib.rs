@@ -8,6 +8,8 @@ mod library;
 mod paths;
 mod extract;
 mod llm;
+#[allow(dead_code)] // router, commands and cloud calls land in Task 4.2
+mod ai;
 mod triage;
 mod next;
 mod platform;

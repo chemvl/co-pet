@@ -5,3 +5,8 @@ src-tauri/resources/llama/
 src-tauri/gen/
 src-tauri/binaries/
 .DS_Store
+
+# Backend config (see README › Backend configuration); templates stay tracked
+.env
+.env.*
+!.env.example

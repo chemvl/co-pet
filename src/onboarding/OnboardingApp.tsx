@@ -27,7 +27,7 @@ export function OnboardingApp() {
   const runAi = useAiAction();
   const { data: ai } = useAiStatus();
   const savedName = useSetting<string>('pet.name', 'Miso');
-  const savedLook = asLook(useSetting<string>('pet.style', 'soft'));
+  const savedLook = asLook(useSetting<string>('pet.style', 'pixel'));
   const skin = asSkin(useSetting<string>('pet.skin', 'peach'));
   const localOnly = useSetting<boolean>('privacy.localOnly', false);
   const activeModel = useSetting<string | null>('ai.modelId', null);

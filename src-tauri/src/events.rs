@@ -85,11 +85,12 @@ pub struct PetFlags {
     pub carrying: Option<bool>,
 }
 
-/// `region`: `"pet" | "panel" | "halo"` or `None`.
+/// `region`: `"pet" | "panel" | "halo" | "zone"` or `None`; `target`: the hit panel's `id`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PointerRegion {
     pub region: Option<&'static str>,
+    pub target: Option<String>,
     pub dragging: bool,
 }
 

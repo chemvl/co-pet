@@ -297,7 +297,8 @@ pub struct Rect {
     pub h: f64,
 }
 
-/// A frontend hit region in CSS px relative to the pet window. `kind`: `pet | panel`.
+/// A frontend hit region in CSS px relative to the pet window. `kind`: `pet | panel | zone`; a
+/// `zone` reports the pointer without taking the mouse. A hit panel's `id` is reported as `target`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HitRegion {
@@ -306,6 +307,8 @@ pub struct HitRegion {
     pub w: f64,
     pub h: f64,
     pub kind: String,
+    #[serde(default)]
+    pub id: Option<String>,
 }
 
 /// `edge`: `left | right | bottom`; `offset` 0..1 along the edge; `work_area` in logical px.

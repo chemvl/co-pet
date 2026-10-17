@@ -1,5 +1,5 @@
 // The tray (plan Step 7.1): search, Recent · Pinned · Unsorted, up to 50 cards.
-// Cards copy, paste into the focused field, and drag out as real OS drags.
+// Cards copy, paste into the focused field, drag out as real OS drags, and open in Home on double-click.
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
@@ -33,6 +33,8 @@ export function TrayPanel(p: {
   onClose(): void;
   onPaste(ids: string[]): void;
   onOpenHome(): void;
+  /** double-click: show the item's detail in Home */
+  onOpenItem(id: string): void;
   onDragStart(): void;
   onDragEnd(dropped: boolean): void;
 }) {
@@ -212,6 +214,11 @@ export function TrayPanel(p: {
                 labels={item.addedBy ? { ...labels, agent: addedBy(item.addedBy) } : labels}
                 className={copied.includes(item.id) ? 'pt-card is-copied' : 'pt-card'}
                 onClick={(e) => onCardClick(e, item)}
+                onDoubleClick={(e) => {
+                  // The card's own Copy / Paste buttons keep their meaning.
+                  if ((e.target as HTMLElement).closest('button')) return;
+                  p.onOpenItem(item.id);
+                }}
                 onPointerDown={(e) => {
                   const dragged = items.filter((i) => dragIds.includes(i.id));
                   // A file still on another Mac can't be dragged out.

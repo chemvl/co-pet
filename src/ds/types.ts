@@ -6,6 +6,7 @@ export type IconName =
   | 'inbox' | 'tasks' | 'search' | 'copy' | 'paste' | 'pin' | 'more' | 'close' | 'check' | 'plus' | 'chevron-down'
   | 'play' | 'pause' | 'stop' | 'snooze' | 'skip' | 'link' | 'image' | 'file' | 'text' | 'lock' | 'agent'
   | 'sync' | 'export' | 'alert' | 'settings' | 'calendar' | 'clock' | 'language' | 'grip' | 'trash' | 'undo' | 'moon'
+  | 'sun' | 'monitor'
   /** Co-pet addition */
   | 'headphones';
 export type CategoryId = 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted';
@@ -58,6 +59,8 @@ export interface PetDockProps {
   size?: number;
   arc?: number;
   focusIndex?: number;
+  /** Co-pet addition: that bubble shows its active (hover) state. */
+  activeIndex?: number;
   className?: string;
   /** Co-pet addition: renders instead of the internal PetSlot placeholder. */
   art?: React.ReactNode;

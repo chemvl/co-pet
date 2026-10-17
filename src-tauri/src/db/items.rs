@@ -927,6 +927,41 @@ mod tests {
     }
 
     #[test]
+    fn v11_moves_removed_styles_to_pixel_without_syncing() {
+        for (old, new) in [
+            ("\"soft\"", "\"pixel\""),
+            ("\"sticker\"", "\"pixel\""),
+            ("\"dog\"", "\"dog\""),
+        ] {
+            let mut c = Connection::open_in_memory().unwrap();
+            MIGRATIONS.to_version(&mut c, 10).unwrap();
+            c.execute(
+                "UPDATE settings SET value = ?1, updated_at = 42 WHERE key = 'pet.style'",
+                [old],
+            )
+            .unwrap();
+            c.execute("DELETE FROM sync_outbox", []).unwrap();
+            MIGRATIONS.to_latest(&mut c).unwrap();
+            let (value, at): (String, i64) = c
+                .query_row(
+                    "SELECT value, updated_at FROM settings WHERE key = 'pet.style'",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!((value.as_str(), at), (new, 42));
+            let queued: i64 = c
+                .query_row("SELECT count(*) FROM sync_outbox", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(queued, 0);
+            let applying: i64 = c
+                .query_row("SELECT applying FROM sync_guard", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(applying, 0);
+        }
+    }
+
+    #[test]
     fn fts_folds_vietnamese() {
         let db = db();
         let mut conn = db.conn();

@@ -409,6 +409,20 @@ BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('meetings', NEW.id, C
   ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
 "#;
 
+/// Schema v10: `ui.theme` (`system` | `light` | `dark`). Device-only: not in `SYNCED_SETTINGS`.
+const V10: &str = r#"
+INSERT INTO settings (key, value, updated_at) VALUES ('ui.theme', '"system"', 0);
+"#;
+
+/// Schema v11: the `soft` and `sticker` pet styles are gone; they become the pixel cat.
+/// Local-only rewrite: `updated_at` is kept and the outbox is bypassed, so this neither
+/// overrides a synced choice nor queues a push (old values from other devices render as pixel).
+const V11: &str = r#"
+UPDATE sync_guard SET applying = 1;
+UPDATE settings SET value = '"pixel"' WHERE key = 'pet.style' AND value IN ('"soft"', '"sticker"');
+UPDATE sync_guard SET applying = 0;
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11)])
 });

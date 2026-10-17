@@ -7,7 +7,7 @@ import { asLook, asSkin, Group, StillCat } from '../parts';
 export function AboutSection() {
   const t = useT();
   const version = useQuery({ queryKey: ['appVersion'], queryFn: getVersion, staleTime: Infinity });
-  const look = asLook(useSetting<string>('pet.style', 'soft'));
+  const look = asLook(useSetting<string>('pet.style', 'pixel'));
   const skin = asSkin(useSetting<string>('pet.skin', 'peach'));
   const licenses: [string, string][] = [
     ['Co-pet', t('settings.about.copet')],

@@ -1,9 +1,9 @@
 //! App lifecycle: quitting (never leaves `llama-server` or `copet-mcp` behind), open at login,
-//! and the run-loop events that decide whether closing the last window quits.
+//! the app appearance, and the run-loop events that decide whether closing the last window quits.
 use std::time::Duration;
 
 use serde_json::Value;
-use tauri::{AppHandle, Listener, Manager, RunEvent};
+use tauri::{AppHandle, Listener, Manager, RunEvent, Theme};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
@@ -16,6 +16,7 @@ use crate::transcribe::recorder::Recorder;
 use crate::windows;
 
 const OPEN_AT_LOGIN: &str = "general.openAtLogin";
+const THEME: &str = "ui.theme";
 /// Quit must not hang on a `llama-server` that is still starting.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -117,6 +118,29 @@ pub fn watch_autostart(app: &AppHandle) {
         }
         if settings::read::<bool>(&handle, "onboarding.completed").unwrap_or(false) {
             apply_autostart(&handle);
+        }
+    });
+}
+
+/// `ui.theme` as the app appearance: `light` / `dark` override macOS, `system` follows it. Every
+/// webview's `prefers-color-scheme` (and so `<html data-theme>`) and the native chrome follow it.
+fn apply_theme(app: &AppHandle) {
+    let theme = match settings::read::<String>(app, THEME).as_deref() {
+        Ok("light") => Some(Theme::Light),
+        Ok("dark") => Some(Theme::Dark),
+        _ => None,
+    };
+    app.set_theme(theme);
+}
+
+/// Applies `ui.theme` now (before any window opens) and whenever it changes.
+pub fn follow_theme(app: &AppHandle) {
+    apply_theme(app);
+    let handle = app.clone();
+    app.listen_any(events::SETTINGS_CHANGED, move |event| {
+        let key = serde_json::from_str::<Value>(event.payload()).ok();
+        if key.as_ref().and_then(|v| v["key"].as_str()) == Some(THEME) {
+            apply_theme(&handle);
         }
     });
 }

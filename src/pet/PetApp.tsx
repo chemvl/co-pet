@@ -26,7 +26,7 @@ import type {
 import { CatArt, LOOKS, type CatLook, type CatSkin } from './CatArt';
 import { noticeFor, type Notice } from './notices';
 import {
-  bubbleRects, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
+  bubbleRects, bubbleZone, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
   DOCK_BOX, type Box, type Point, type Size,
 } from './placement';
 import { poseFor } from './pose';
@@ -43,7 +43,7 @@ import { usePetMachine } from './usePetMachine';
 import './pet.css';
 
 type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice' | 'next' | 'consent' | 'recLang';
-type Region = 'pet' | 'panel' | 'halo' | null;
+type Region = 'pet' | 'panel' | 'halo' | 'zone' | null;
 
 const BUBBLES: { icon: IconName; label: I18nKey }[] = [
   { icon: 'whats-next', label: 'pet.bubble.whatsNext' },
@@ -102,7 +102,7 @@ export function PetApp() {
   const paused = settings?.['pet.paused'] === true;
   const wanted: Look | null = settings
     ? {
-        look: LOOKS.find((l) => l === settings['pet.style']) ?? 'soft',
+        look: LOOKS.find((l) => l === settings['pet.style']) ?? 'pixel',
         skin: SKINS.find((s) => s === settings['pet.skin']) ?? 'peach',
         size: SIZES.find((s) => s === settings['pet.size']) ?? 80,
       }
@@ -133,6 +133,8 @@ export function PetApp() {
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [hidden, setHidden] = useState(false);
   const [region, setRegion] = useState<Region>(null);
+  /** `id` of the hit region under the pointer (a bubble's icon), from the native hit test. */
+  const [hoverTarget, setHoverTarget] = useState<string | null>(null);
   const [out, setOut] = useState(false);
   const [surface, setSurface] = useState<Surface>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -436,10 +438,11 @@ export function PetApp() {
     }, HALO_FADE_MS);
   };
 
-  const onRegion = (next: Region, dragging: boolean) => {
+  const onRegion = (next: Region, dragging: boolean, target: string | null) => {
     const prev = live.current.region;
     live.current.region = next;
     setRegion(next);
+    setHoverTarget(target);
 
     // Something is being dragged over the halo (but not our own drag-out).
     if (dragging && next === 'halo' && !dragOutActive.current) {
@@ -522,7 +525,7 @@ export function PetApp() {
       on('pet-visibility', (v) => h.current.applyVisibility(v.hidden)),
       on('counts-changed', (c) => qc.setQueryData(COUNTS_KEY, c)),
       on('items-changed', () => void qc.invalidateQueries({ queryKey: TRAY_KEY })),
-      on('pointer-region', (e) => h.current.onRegion(e.region, e.dragging)),
+      on('pointer-region', (e) => h.current.onRegion(e.region, e.dragging, e.target)),
       on('hotkey', (e) => h.current.onHotkey(e.action)),
       on('capture-result', (r) => h.current.onDropResult(r)),
       on('whats-next', (e) => h.current.onWhatsNext(e)),
@@ -600,7 +603,9 @@ export function PetApp() {
     if (!hidden) {
       regions.push({ ...petHitRect(edge, point, size, dockOut), kind: 'pet' });
       if (surface === 'bubbles') {
-        for (const r of bubbleRects(edge, point, size, BUBBLES.length)) regions.push({ ...r, kind: 'panel' });
+        bubbleRects(edge, point, size, BUBBLES.length).forEach((r, i) => regions.push({ ...r, kind: 'panel', id: BUBBLES[i].icon }));
+        // The gap between the pet and the arc keeps the bubbles out without taking clicks.
+        regions.push({ ...bubbleZone(edge, point, size, BUBBLES.length), kind: 'zone' });
       }
       if (panelRect) regions.push({ ...panelRect, kind: 'panel' });
       if (hudRect) regions.push({ ...hudRect, kind: 'panel' });
@@ -699,10 +704,14 @@ export function PetApp() {
     }
   };
 
-  const onDockFocusOrHover = (target: EventTarget) => {
+  const onDockFocus = (target: EventTarget) => {
     const i = bubbleEls.current.indexOf(target as HTMLButtonElement);
     setFocusIndex(i >= 0 ? i : undefined);
   };
+
+  // WebKit's hover goes stale while the panel ignores the mouse, so the native hit test picks the bubble.
+  const hoverIndex = surface === 'bubbles' ? BUBBLES.findIndex((b) => b.icon === hoverTarget) : -1;
+  const hovered = hoverIndex >= 0 ? hoverIndex : undefined;
 
   // ---------- drop ----------
   // The native drop target in Rust takes the drop and captures it; the page only gets the result.
@@ -755,8 +764,7 @@ export function PetApp() {
         style={{ left: box.x, top: box.y, width: DOCK_BOX, height: DOCK_BOX, '--pt-off': `${size + 8}px`, visibility: moving ? 'hidden' : undefined } as CSSProperties}
         aria-hidden={hidden || undefined}
         onKeyDown={onDockKeyDown}
-        onFocus={(e) => onDockFocusOrHover(e.target)}
-        onPointerOver={(e) => onDockFocusOrHover(e.target)}
+        onFocus={(e) => onDockFocus(e.target)}
       >
         <PetDock
           ref={petRef}
@@ -767,7 +775,8 @@ export function PetApp() {
           petName={name}
           bubbles={BUBBLES.map((b) => ({ icon: b.icon, label: t(b.label) }))}
           bubblesLabel={t('pet.actions')}
-          focusIndex={focusIndex}
+          focusIndex={hovered ?? focusIndex}
+          activeIndex={hovered}
           onBubble={onBubble}
           bubbleFocusRef={(i, el) => {
             bubbleEls.current[i] = el;
@@ -802,6 +811,7 @@ export function PetApp() {
             onClose={closeSurface}
             onPaste={paste}
             onOpenHome={() => goHome()}
+            onOpenItem={(id) => goHome(`item/${encodeURIComponent(id)}`)}
             onDragStart={() => {
               dragOutActive.current = true;
               machine.fire('handOver');

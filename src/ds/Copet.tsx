@@ -167,7 +167,7 @@ export const PetDock = forwardRef<HTMLButtonElement, PetDockProps>(function PetD
     let x = Math.cos(a) * arc, y = -Math.sin(a) * arc;
     if (edge === 'bottom') { x = Math.cos(a + Math.PI) * arc; y = Math.sin(a) * arc; }
     return (
-      <Bubble key={b.icon} icon={b.icon} label={b.label} showLabel={i === (p.focusIndex == null ? -1 : p.focusIndex)}
+      <Bubble key={b.icon} icon={b.icon} label={b.label} active={i === p.activeIndex} showLabel={i === (p.focusIndex == null ? -1 : p.focusIndex)}
         labelSide={edge === 'bottom' ? 'top' : edge === 'right' ? 'left' : 'right'}
         className="cp-dock__bubble" style={{ transform: 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)', transitionDelay: (i * 30) + 'ms' }}
         onClick={p.onBubble ? () => p.onBubble!(b.icon, i) : undefined}

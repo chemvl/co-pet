@@ -95,6 +95,8 @@ pub fn run() {
             app.manage(transcribe::recorder::Recorder::default());
             transcribe::start(&handle);
             system::watch_autostart(&handle);
+            // Before any window opens, so none starts in the wrong appearance.
+            system::follow_theme(&handle);
             if settings_bool(&handle, "onboarding.completed") {
                 windows::create_pet_window(&handle)?;
                 system::apply_autostart(&handle);

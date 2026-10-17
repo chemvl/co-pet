@@ -97,6 +97,19 @@ export function bubbleRects(edge: Edge, p: Point, size: number, n: number): Box[
   });
 }
 
+/** The pet's square plus its bubble arc: the pointer still hovers anywhere in it while the bubbles are out. */
+export function bubbleZone(edge: Edge, p: Point, size: number, n: number): Box {
+  const boxes = [petBox(edge, p, size), ...bubbleRects(edge, p, size, n)];
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  return {
+    x,
+    y,
+    w: Math.max(...boxes.map((b) => b.x + b.w)) - x,
+    h: Math.max(...boxes.map((b) => b.y + b.h)) - y,
+  };
+}
+
 /** Top-left of a menu opened at the pointer: it extends away from the edge, clamped inside. */
 export function placeAtPointer(edge: Edge, pointer: Point, menu: Size, area: Size): Point {
   const x = edge === 'right' ? pointer.x - menu.w : edge === 'left' ? pointer.x : pointer.x - menu.w / 2;

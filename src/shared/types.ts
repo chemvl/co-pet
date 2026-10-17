@@ -323,7 +323,8 @@ export interface NextCard {
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }
-export interface HitRegion extends Rect { kind: 'pet' | 'panel' }
+/** `zone` reports the pointer without taking it; a hit panel's `id` comes back as the event's `target`. */
+export interface HitRegion extends Rect { kind: 'pet' | 'panel' | 'zone'; id?: string }
 export type Edge = 'left' | 'right' | 'bottom';
 
 export interface Placement {
@@ -545,7 +546,7 @@ export interface EventPayloads {
   'counts-changed': Counts;
   'pet-reaction': { input: PetInput; category?: CategoryId; variant?: number };
   'pet-flags': { thinking?: boolean; sleep?: boolean; carrying?: boolean };
-  'pointer-region': { region: 'pet' | 'panel' | 'halo' | null; dragging: boolean };
+  'pointer-region': { region: 'pet' | 'panel' | 'halo' | 'zone' | null; target: string | null; dragging: boolean };
   'pet-visibility': { hidden: boolean; reason: 'fullscreen' | 'user' | null };
   'pet-placement': Placement;
   'ai-status': AiStatus;

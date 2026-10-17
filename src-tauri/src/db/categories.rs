@@ -15,7 +15,7 @@ const ICONS: &[&str] = &[
     "code", "design", "idea", "contact", "meeting", "unsorted", "inbox", "tasks", "search", "copy",
     "paste", "pin", "more", "close", "check", "plus", "chevron-down", "play", "pause", "stop",
     "snooze", "skip", "link", "image", "file", "text", "lock", "agent", "sync", "export", "alert",
-    "settings", "calendar", "clock", "language", "grip", "trash", "undo", "moon",
+    "settings", "calendar", "clock", "language", "grip", "trash", "undo", "moon", "sun", "monitor",
 ];
 
 const NAME_MAX: usize = 40;

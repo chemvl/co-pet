@@ -88,8 +88,6 @@ export function StillCat({ look, skin, label }: { look: CatLook; skin: CatSkin; 
 }
 
 export const LOOK_LABEL: Record<CatLook, I18nKey> = {
-  soft: 'settings.appearance.styleSoft',
-  sticker: 'settings.appearance.styleSticker',
   pixel: 'settings.appearance.stylePixel',
   chicken: 'settings.appearance.styleChicken',
   dog: 'settings.appearance.styleDog',
@@ -145,7 +143,7 @@ export function SkinSwatches(props: { value: CatSkin; onChange: (skin: CatSkin) 
 }
 
 export function asLook(v: unknown): CatLook {
-  return LOOKS.find((l) => l === v) ?? 'soft';
+  return LOOKS.find((l) => l === v) ?? 'pixel';
 }
 
 export function asSkin(v: unknown): CatSkin {

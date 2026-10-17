@@ -25,6 +25,10 @@ html, body { background: transparent; }
 .pt-dock .cp-dock__bubble:nth-child(4) { animation-delay: 90ms; }
 @keyframes pt-bubble-pop { from { scale: 0.4; opacity: 0; } to { scale: 1; opacity: 1; } }
 
+/* The panel ignores the mouse between bubbles, so WebKit's :hover goes stale there;
+   the native hit test drives `is-active` instead. */
+.pt-dock .cp-bubble:hover:not(.is-active) { background: var(--bubble); color: var(--bubble-ink); }
+
 /* The pet while it is being dragged to another edge. */
 .pt-moving { position: absolute; pointer-events: none; z-index: 2; }
 

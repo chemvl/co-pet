@@ -42,7 +42,7 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
   const { data: ai } = useAiStatus();
   const { data: categories } = useCategories();
   const petName = typeof settings?.['pet.name'] === 'string' && settings['pet.name'] ? settings['pet.name'] : 'Miso';
-  const look = LOOKS.find((l) => l === settings?.['pet.style']) ?? 'soft';
+  const look = LOOKS.find((l) => l === settings?.['pet.style']) ?? 'pixel';
   const skin = SKINS.find((s) => s === settings?.['pet.skin']) ?? 'peach';
   const unsorted = c?.unsorted ?? 0;
 

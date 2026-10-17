@@ -55,7 +55,7 @@ Notes:
 
 - Dev mode uses the real app data folder `~/Library/Application Support/com.copet.app/` (database, library files, models). To start fresh use Settings › Data › Delete everything, or quit the app and remove that folder.
 - macOS asks for **Screen Recording** (screen capture) and **Accessibility** (send selection, paste back) the first time you use those features. The dev binary and the bundled app get separate grants.
-- Without a backend configured, the app runs fully local; Integrations shows "Use a token instead" for Notion/Asana and Settings › Account says sync isn't set up in this build.
+- Without a backend configured, the app runs fully local; Integrations shows "Use a token instead" for Notion/Asana and Settings › Account says sync isn't set up in this build. To build with a backend, see [Backend configuration](#backend-configuration).
 
 ### 4. Build the app bundle
 
@@ -75,37 +75,84 @@ bun run test
 bun run typecheck
 ```
 
-## Optional: run with a local backend
+## Backend configuration
 
-The backend URL and key are baked in at compile time from `COPET_SUPABASE_URL` and `COPET_SUPABASE_KEY`. To try accounts and sync against a local Supabase:
+Accounts, sync, Google sign-in and Notion/Asana OAuth go through Supabase. The app gets the backend from two variables that are **compiled in** (`option_env!` in `src-tauri/src/backend.rs`), not read when the app runs:
+
+| Variable | Value |
+| --- | --- |
+| `COPET_SUPABASE_URL` | Local: `http://127.0.0.1:54321`. Hosted: `https://<ref>.supabase.co` |
+| `COPET_SUPABASE_KEY` | The **publishable (anon)** key. It ships inside the app, so never use the service_role/secret key |
+
+If either value is missing or empty, the build is local-only. Changing them triggers a rebuild (`src-tauri/build.rs`). Debug (`tauri dev`) and release (`tauri build`) builds keep their own values.
+
+### Env files
+
+Keep one file per environment in the repo root. Copy them from [`.env.example`](.env.example):
+
+```sh
+cp .env.example .env.dev    # local Supabase
+cp .env.example .env.prod   # hosted project
+```
+
+Pass the file explicitly with `bun --env-file`. Plain `bun run` doesn't load these files, so a release build never picks up dev values by accident:
+
+```sh
+bun --env-file=.env.dev run tauri dev                    # dev app against local Supabase
+bun --env-file=.env.prod run tauri build --bundles app   # release bundle against the hosted project
+```
+
+Every `.env` and `.env.*` file is gitignored except the `.env.example` templates.
+
+| File | Used by | Contents |
+| --- | --- | --- |
+| `.env.example` | template (tracked) | `COPET_SUPABASE_URL`, `COPET_SUPABASE_KEY` |
+| `.env.dev` | `tauri dev`, or a test bundle against local Supabase | local URL and publishable key |
+| `.env.prod` | release `tauri build` | hosted URL and publishable key |
+| `supabase/functions/.env.example` | template (tracked) | Edge Function secrets |
+| `supabase/functions/.env.local` | `supabase functions serve` | `COPET_SERVICE_KEY`, Notion/Asana client ID and secret |
+
+The hosted project's function secrets go in `supabase secrets set`, not in a file. See [`supabase/README.md`](supabase/README.md).
+
+### Local backend
 
 ```sh
 supabase start        # applies supabase/migrations; prints the API URL and keys
-supabase status       # API URL (default http://127.0.0.1:54321), publishable/anon key, service_role key
+supabase status       # API URL (default http://127.0.0.1:54321), publishable key, secret (service_role) key
 ```
 
-Serve the Edge Functions with an env file (dummy Notion/Asana values are fine unless you test OAuth):
+Put the API URL and publishable key in `.env.dev`. Then serve the Edge Functions. Dummy Notion/Asana values are fine unless you test OAuth:
 
 ```sh
-cat > /tmp/copet-functions.env <<'EOF'
-COPET_SERVICE_KEY=<service_role key from supabase status>
-NOTION_CLIENT_ID=dummy
-NOTION_CLIENT_SECRET=dummy
-ASANA_CLIENT_ID=dummy
-ASANA_CLIENT_SECRET=dummy
-EOF
-supabase functions serve --env-file /tmp/copet-functions.env
+cp supabase/functions/.env.example supabase/functions/.env.local   # then fill in COPET_SERVICE_KEY
+supabase functions serve --env-file supabase/functions/.env.local
 ```
 
-Then, in another terminal, start the app with the backend configured:
+In another terminal:
 
 ```sh
-export COPET_SUPABASE_URL=http://127.0.0.1:54321
-export COPET_SUPABASE_KEY=<publishable/anon key from supabase status>
-bun run tauri dev
+bun --env-file=.env.dev run tauri dev
 ```
 
-Sign in from Settings › Account and sync with any email; the 6-digit code arrives in the local mail catcher at http://127.0.0.1:54324. Google sign-in and Notion/Asana OAuth need a hosted project and the bundled app — see [`supabase/README.md`](supabase/README.md) for deploying the hosted backend.
+Sign in from Settings › Account and sync with any email. The 6-digit code arrives in the local mail catcher at http://127.0.0.1:54324.
+
+### Hosted backend and Google sign-in
+
+1. Deploy the backend and set up the Google provider by following [`supabase/README.md`](supabase/README.md):
+   - Google Cloud OAuth client of type Web application, with redirect URI `https://<ref>.supabase.co/auth/v1/callback`.
+   - Dashboard › Authentication › Providers › Google enabled with that client ID and secret.
+   - `copet://auth/callback` added under Redirect URLs.
+
+   The Google client ID and secret stay in Supabase and are never part of the app.
+2. Put `https://<ref>.supabase.co` and the project's publishable key in `.env.prod`.
+3. Build and open the bundle:
+
+   ```sh
+   bun --env-file=.env.prod run tauri build --bundles app
+   open src-tauri/target/release/bundle/macos/Co-pet.app
+   ```
+
+Google sign-in and Notion/Asana OAuth return through `copet://` deep links. macOS delivers those only to the bundled app, so these flows can't finish in `tauri dev`. Use the hosted project to test them. `supabase/config.toml` has no Google provider and doesn't allow `copet://auth/callback`, and the local `oauth` function's redirect URI isn't reachable from Notion or Asana.
 
 ## Connecting an AI agent
 

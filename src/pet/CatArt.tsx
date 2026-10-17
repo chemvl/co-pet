@@ -4,12 +4,12 @@ import { useSyncExternalStore, type CSSProperties, type ReactElement } from 'rea
 import { Icon, type IconName } from '../ds';
 import type { BuiltinCategoryId, Edge } from '../shared/types';
 import type { CatMotion, CatParts } from './pose';
-import { isPixelSpecies, PixelPet, PIXEL_SPECIES, type PixelSpecies } from './PixelPets';
+import { PixelPet, PIXEL_SPECIES, type PixelSpecies } from './PixelPets';
 import './cat.css';
 
-/** The cat's three looks, then the pixel pets (fixed palettes: skins don't apply). */
-export type CatLook = 'soft' | 'sticker' | 'pixel' | PixelSpecies;
-export const LOOKS: readonly CatLook[] = ['soft', 'sticker', 'pixel', ...PIXEL_SPECIES];
+/** The pixel cat (skinnable), then the pixel pets (fixed palettes: skins don't apply). */
+export type CatLook = 'pixel' | PixelSpecies;
+export const LOOKS: readonly CatLook[] = ['pixel', ...PIXEL_SPECIES];
 export type CatSkin = 'peach' | 'tabby' | 'midnight';
 export type CatFx =
   | null
@@ -17,12 +17,12 @@ export type CatFx =
   | { kind: 'question' }
   | { kind: 'agent' };
 
-interface SkinColors { body: string; belly: string; ear: string; blush: string; eye: string; glint: string }
+interface SkinColors { body: string; belly: string; eye: string }
 
 export const SKINS: Readonly<Record<CatSkin, SkinColors>> = {
-  peach: { body: '#f4a27c', belly: '#fde8dc', ear: '#f9c9b0', blush: '#ec8a66', eye: '#2a211c', glint: '#ffffff' },
-  tabby: { body: '#9a8f86', belly: '#efe9e2', ear: '#c9bfb6', blush: '#d98f7a', eye: '#2a211c', glint: '#ffffff' },
-  midnight: { body: '#3b3330', belly: '#6b5d52', ear: '#5a4d47', blush: '#c97a66', eye: '#f3ece3', glint: '#3b3330' },
+  peach: { body: '#f4a27c', belly: '#fde8dc', eye: '#2a211c' },
+  tabby: { body: '#9a8f86', belly: '#efe9e2', eye: '#2a211c' },
+  midnight: { body: '#3b3330', belly: '#6b5d52', eye: '#f3ece3' },
 };
 
 const OUTLINE = '#2a211c';
@@ -94,16 +94,8 @@ export function CatArt(props: CatArtProps): ReactElement {
           <g transform={mirrored ? 'translate(160 0) scale(-1 1)' : undefined}>
             {look === 'pixel' ? (
               <PixelCat colors={SKINS[skin]} parts={parts} lowered={lowered} blink={blink} />
-            ) : isPixelSpecies(look) ? (
-              <PixelPet species={look} parts={parts} lowered={lowered} blink={blink} />
             ) : (
-              <VectorCat
-                sticker={look === 'sticker'}
-                skin={skin}
-                parts={parts}
-                lowered={lowered}
-                blink={blink}
-              />
+              <PixelPet species={look} parts={parts} lowered={lowered} blink={blink} />
             )}
           </g>
           {parts.dots && <ThoughtDots left={fxLeft} />}
@@ -142,111 +134,6 @@ export function CatArt(props: CatArtProps): ReactElement {
 function subscribeVisibility(onChange: () => void): () => void {
   document.addEventListener('visibilitychange', onChange);
   return () => document.removeEventListener('visibilitychange', onChange);
-}
-
-const TAIL = 'M96 98 C120 96 120 66 104 62';
-
-function VectorCat(p: { sticker: boolean; skin: CatSkin; parts: CatParts; lowered: boolean; blink: boolean }) {
-  const s = SKINS[p.skin];
-  // The sticker canvas palette lightens belly and inner ear on the peach skin.
-  const belly = p.sticker && p.skin === 'peach' ? '#fff7ee' : s.belly;
-  const ear = p.sticker && p.skin === 'peach' ? '#fde8dc' : s.ear;
-  const line = p.sticker ? OUTLINE : 'none';
-  const sw = p.sticker ? 3.5 : 0;
-  const eyeR = p.sticker ? 5.5 : 4.5;
-  const { eyes, mouth } = p.parts;
-  const openEyes = (
-    <g className={p.blink ? 'cp-cat__eyes' : undefined}>
-      <circle cx="47" cy="50" r={eyeR} fill={s.eye} />
-      <circle cx="73" cy="50" r={eyeR} fill={s.eye} />
-      <circle cx="48.6" cy="48.4" r="1.6" fill={s.glint} />
-      <circle cx="74.6" cy="48.4" r="1.6" fill={s.glint} />
-    </g>
-  );
-  const arc = (d: string, className?: string) => (
-    <path className={className} d={d} fill="none" stroke={s.eye} strokeWidth="3" strokeLinecap="round" />
-  );
-
-  return (
-    <g transform={p.lowered ? 'translate(20 44)' : 'translate(20 40)'}>
-      {p.sticker && (
-        <g fill="#ffffff" stroke="#ffffff" strokeWidth="14" strokeLinejoin="round" strokeLinecap="round">
-          <path d={TAIL} fill="none" />
-          <polygon points="30,32 28,4 54,20" />
-          <polygon points="90,32 92,4 66,20" />
-          <ellipse cx="60" cy="88" rx="38" ry="29" />
-          <circle cx="60" cy="50" r="34" />
-          <ellipse cx="44" cy="114" rx="10" ry="6" />
-          <ellipse cx="76" cy="114" rx="10" ry="6" />
-        </g>
-      )}
-      <g className="cp-cat__tail">
-        {p.sticker && <path d={TAIL} fill="none" stroke={OUTLINE} strokeWidth="16" strokeLinecap="round" />}
-        <path d={TAIL} fill="none" stroke={s.body} strokeWidth="9" strokeLinecap="round" />
-      </g>
-      <polygon points="30,32 28,4 54,20" fill={s.body} stroke={line} strokeWidth={sw} strokeLinejoin="round" />
-      <polygon points="34,25 33,11 46,19" fill={ear} />
-      <g className="cp-cat__ear">
-        <polygon points="90,32 92,4 66,20" fill={s.body} stroke={line} strokeWidth={sw} strokeLinejoin="round" />
-        <polygon points="86,25 87,11 74,19" fill={ear} />
-      </g>
-      <ellipse cx="60" cy="88" rx="38" ry="29" fill={s.body} stroke={line} strokeWidth={sw} />
-      <ellipse cx="60" cy="94" rx="21" ry="17" fill={belly} />
-      <ellipse cx="44" cy="114" rx="10" ry="6" fill={s.body} stroke={line} strokeWidth={sw} />
-      <ellipse cx="76" cy="114" rx="10" ry="6" fill={s.body} stroke={line} strokeWidth={sw} />
-      <circle cx="60" cy="50" r="34" fill={s.body} stroke={line} strokeWidth={sw} />
-      {p.sticker && (
-        <>
-          <path d="M34 74 Q60 88 86 74" fill="none" stroke="#1d6b57" strokeWidth="7" strokeLinecap="round" />
-          <circle cx="60" cy="86" r="5" fill="#ffffff" stroke={OUTLINE} strokeWidth="2" />
-        </>
-      )}
-      <circle cx="38" cy="60" r="5" fill={s.blush} opacity="0.55" />
-      <circle cx="82" cy="60" r="5" fill={s.blush} opacity="0.55" />
-
-      {eyes === 'open' && openEyes}
-      {eyes === 'open' && p.blink && arc('M41 51 Q47 56 53 51 M67 51 Q73 56 79 51', 'cp-cat__lids')}
-      {eyes === 'wide' && (
-        <>
-          <circle cx="47" cy="49" r="6.5" fill={s.eye} />
-          <circle cx="73" cy="49" r="6.5" fill={s.eye} />
-          <circle cx="49" cy="47" r="2.2" fill={s.glint} />
-          <circle cx="75" cy="47" r="2.2" fill={s.glint} />
-        </>
-      )}
-      {eyes === 'up' && (
-        <>
-          <circle cx="49" cy="45" r={eyeR} fill={s.eye} />
-          <circle cx="75" cy="45" r={eyeR} fill={s.eye} />
-        </>
-      )}
-      {eyes === 'closed' && arc('M41 51 Q47 56 53 51 M67 51 Q73 56 79 51')}
-      {eyes === 'happy' && arc('M41 52 Q47 45 53 52 M67 52 Q73 45 79 52')}
-      {eyes === 'wink' && (
-        <>
-          <circle cx="47" cy="50" r={eyeR} fill={s.eye} />
-          <circle cx="48.6" cy="48.4" r="1.6" fill={s.glint} />
-          {arc('M67 51 Q73 56 79 51')}
-        </>
-      )}
-
-      <polygon points="56.5,58 63.5,58 60,62" fill={NOSE} />
-      {mouth === 'open' ? (
-        <ellipse cx="60" cy="67" rx="5" ry="4.5" fill={s.eye} />
-      ) : (
-        <path d="M60 62 Q57 66 53 64 M60 62 Q63 66 67 64" fill="none" stroke={s.eye} strokeWidth="2" strokeLinecap="round" />
-      )}
-
-      {p.parts.item && (
-        <>
-          <rect x="47" y="72" width="26" height="28" rx="3" fill="#ffffff" stroke={OUTLINE} strokeWidth="2.5" />
-          <path d="M52 81 H68 M52 87 H66 M52 93 H62" stroke={PAPER_LINE} strokeWidth="2" strokeLinecap="round" />
-          <ellipse cx="45" cy="84" rx="8" ry="7" fill={s.body} stroke={line} strokeWidth={sw} />
-          <ellipse cx="75" cy="84" rx="8" ry="7" fill={s.body} stroke={line} strokeWidth={sw} />
-        </>
-      )}
-    </g>
-  );
 }
 
 const PIXEL_MAP = [

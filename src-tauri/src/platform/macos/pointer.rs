@@ -1,8 +1,10 @@
 //! Click-through for the pet panel. The panel covers the whole work area but only its hit regions
 //! take the mouse: a 50 ms loop hit-tests the cursor against the regions the frontend reports and
-//! flips `ignoresMouseEvents` on transitions. It also detects OS drags (left button down while the
-//! drag pasteboard changed since the last button-up) so the pet region grows into the drop halo,
-//! and keeps the native drop target's catcher panel over the pet and its halo.
+//! flips `ignoresMouseEvents` on transitions. `zone` regions are reported without taking the mouse,
+//! and a hit panel's `id` is reported as `target` (WebKit's own hover goes stale when the mouse is
+//! ignored in between). It also detects OS drags (left button down while the drag pasteboard
+//! changed since the last button-up) so the pet region grows into the drop halo, and keeps the
+//! native drop target's catcher panel over the pet and its halo.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -129,7 +131,7 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
             window.setIgnoresMouseEvents(true);
             s.passthrough = true;
         }
-        emit_if_changed(app, &mut s, PointerRegion { region: None, dragging: false });
+        emit_if_changed(app, &mut s, None, None, false);
         s.parked = true;
         drop(s);
         drop_target::place_catcher(mtm, window, None);
@@ -153,7 +155,7 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
     let (mx, my) = screens::mouse_location(mtm);
     let frame = screens::window_frame(mtm, window);
     let local = screens::contains(&frame, mx, my).then(|| (mx - frame.x, my - frame.y));
-    let region = local.and_then(|(x, y)| hit(&s.regions, x, y, dragging));
+    let (region, target) = local.map_or((None, None), |(x, y)| hit(&s.regions, x, y, dragging));
 
     if s.moving {
         drop(s);
@@ -161,12 +163,12 @@ fn tick(app: &AppHandle, mtm: MainThreadMarker) {
         s = state.lock();
     }
 
-    let inside = region.is_some() || s.moving;
+    let inside = takes_mouse(region) || s.moving;
     if s.passthrough == inside {
         window.setIgnoresMouseEvents(!inside);
         s.passthrough = !inside;
     }
-    emit_if_changed(app, &mut s, PointerRegion { region, dragging });
+    emit_if_changed(app, &mut s, region, target, dragging);
     // The catcher covers pet + halo in global points; it steps aside while the pet is moved.
     let catcher = if s.moving { None } else { pet_bounds(&s.regions, HALO) };
     drop(s);
@@ -209,21 +211,60 @@ fn inside(r: &HitRegion, x: f64, y: f64, pad: f64) -> bool {
     x >= r.x - pad && x < r.x + r.w + pad && y >= r.y - pad && y < r.y + r.h + pad
 }
 
-fn emit_if_changed(app: &AppHandle, s: &mut Inner, next: PointerRegion) {
-    if s.last.as_ref() == Some(&next) {
+/// Emits `pointer-region` when the region, the hit panel's `id` or dragging changed. `target`
+/// indexes `s.regions`.
+fn emit_if_changed(app: &AppHandle, s: &mut Inner, region: Option<&'static str>, target: Option<usize>, dragging: bool) {
+    let id = target.and_then(|i| s.regions.get(i)).and_then(|r| r.id.as_deref());
+    if s.last.as_ref().is_some_and(|l| l.region == region && l.target.as_deref() == id && l.dragging == dragging) {
         return;
     }
+    let next = PointerRegion { region, target: id.map(str::to_owned), dragging };
     #[cfg(debug_assertions)]
-    eprintln!("[pointer] region={:?} dragging={}", next.region, next.dragging);
+    eprintln!("[pointer] region={:?} target={:?} dragging={}", next.region, next.target, next.dragging);
     events::emit(app, events::POINTER_REGION, next.clone());
     s.last = Some(next);
 }
 
-/// Panels win over the pet; while dragging the pet grows by the halo and reports `halo`.
-fn hit(regions: &[HitRegion], x: f64, y: f64, dragging: bool) -> Option<&'static str> {
-    if regions.iter().any(|r| r.kind == "panel" && inside(r, x, y, 0.0)) {
-        return Some("panel");
+/// Panels win over the pet, the pet over a zone; while dragging the pet grows by the halo and
+/// reports `halo`. A panel hit also returns that region's index.
+fn hit(regions: &[HitRegion], x: f64, y: f64, dragging: bool) -> (Option<&'static str>, Option<usize>) {
+    if let Some(i) = regions.iter().position(|r| r.kind == "panel" && inside(r, x, y, 0.0)) {
+        return (Some("panel"), Some(i));
     }
     let (pad, name) = if dragging { (HALO, "halo") } else { (0.0, "pet") };
-    near_pet(regions, x, y, pad).then_some(name)
+    if near_pet(regions, x, y, pad) {
+        return (Some(name), None);
+    }
+    let zone = regions.iter().any(|r| r.kind == "zone" && inside(r, x, y, 0.0));
+    (zone.then_some("zone"), None)
+}
+
+/// Every region but a zone takes the mouse.
+fn takes_mouse(region: Option<&str>) -> bool {
+    region.is_some_and(|r| r != "zone")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn region(x: f64, y: f64, w: f64, h: f64, kind: &str, id: Option<&str>) -> HitRegion {
+        HitRegion { x, y, w, h, kind: kind.into(), id: id.map(Into::into) }
+    }
+
+    #[test]
+    fn bubbles_report_their_index_and_the_zone_never_takes_the_mouse() {
+        let regions = [
+            region(0.0, 0.0, 200.0, 200.0, "zone", None),
+            region(120.0, 80.0, 80.0, 80.0, "pet", None),
+            region(20.0, 20.0, 40.0, 40.0, "panel", Some("home")),
+        ];
+        assert_eq!(hit(&regions, 30.0, 30.0, false), (Some("panel"), Some(2)));
+        assert_eq!(hit(&regions, 150.0, 100.0, false), (Some("pet"), None));
+        // Between the pet and a bubble: still hovering, but clicks fall through.
+        assert_eq!(hit(&regions, 90.0, 90.0, false), (Some("zone"), None));
+        assert!(!takes_mouse(Some("zone")));
+        assert!(takes_mouse(Some("panel")) && takes_mouse(Some("pet")));
+        assert_eq!(hit(&regions, 300.0, 300.0, false), (None, None));
+    }
 }

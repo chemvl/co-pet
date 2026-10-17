@@ -11,9 +11,10 @@ export function AppearanceSection() {
   const t = useT();
   const set = useSetSetting();
   const savedName = useSetting<string>('pet.name', 'Miso');
-  const look = asLook(useSetting<string>('pet.style', 'soft'));
+  const look = asLook(useSetting<string>('pet.style', 'pixel'));
   const skin = asSkin(useSetting<string>('pet.skin', 'peach'));
   const size = useSetting<number>('pet.size', 80);
+  const theme = useSetting<string>('ui.theme', 'system');
   const [name, setName] = useState(savedName);
   useEffect(() => {
     setName(savedName);
@@ -66,8 +67,19 @@ export function AppearanceSection() {
           />
         </SettingRow>
       </Group>
-      <Group title={t('settings.appearance.theme')}>
-        <p className="st-body">{t('settings.appearance.themeDesc')}</p>
+      <Group>
+        <SettingRow label={t('settings.appearance.theme')} desc={t('settings.appearance.themeDesc')}>
+          <SegmentedControl
+            label={t('settings.appearance.theme')}
+            value={theme === 'light' || theme === 'dark' ? theme : 'system'}
+            onChange={(v) => void set('ui.theme', v)}
+            options={[
+              { value: 'system', label: t('common.system'), icon: 'monitor' },
+              { value: 'light', label: t('settings.appearance.themeLight'), icon: 'sun' },
+              { value: 'dark', label: t('settings.appearance.themeDark'), icon: 'moon' },
+            ]}
+          />
+        </SettingRow>
       </Group>
     </>
   );

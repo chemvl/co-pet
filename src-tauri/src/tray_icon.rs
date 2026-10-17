@@ -40,7 +40,7 @@ pub fn create(app: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-fn refresh(app: &AppHandle) -> AppResult<()> {
+pub(crate) fn refresh(app: &AppHandle) -> AppResult<()> {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         tray.set_menu(Some(build_menu(app)?))?;
     }

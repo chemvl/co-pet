@@ -68,6 +68,7 @@ whisper-rs = { version = "0.16", features = ["metal", "raw-api"] }
 sherpa-onnx = "1.13"
 symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "flac", "wav", "pcm", "ogg", "vorbis", "aiff"] }
 objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "bitflags", "EKEventStore", "EKEvent", "EKCalendar", "EKCalendarItem", "EKObject", "EKParticipant", "EKSource", "EKTypes"] }
+tauri-plugin-updater = "2"
 
 # whisper.cpp built as Debug is unusably slow in `tauri dev`.
 [profile.dev.package.whisper-rs-sys]

@@ -1002,3 +1002,22 @@ pub fn diary_week(db: State<'_, Db>, offset: Option<i64>) -> AppResult<crate::mo
         None => crate::db::diary::latest(&conn, &chrono::Local, now),
     }
 }
+
+// ---------- Phase 4 M7: updates ----------
+
+#[tauri::command]
+pub fn update_status(app: AppHandle) -> crate::model::UpdateStatus {
+    app.state::<crate::updater::Updates>().status()
+}
+
+/// Checks the feed now and downloads a found update. Rejects with `localOnly`.
+#[tauri::command]
+pub async fn update_check(app: AppHandle) -> AppResult<crate::model::UpdateStatus> {
+    crate::updater::check(&app).await
+}
+
+/// Installs the ready update and restarts. Rejects with `recording`, `noUpdate`, `updateFailed`.
+#[tauri::command]
+pub async fn update_install(app: AppHandle) -> AppResult<()> {
+    crate::updater::install(&app).await
+}

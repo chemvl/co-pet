@@ -26,6 +26,7 @@ mod export;
 mod agent;
 mod account;
 mod sync;
+mod updater;
 pub mod transcribe;
 
 use tauri::Manager;
@@ -54,6 +55,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(hotkeys::Hotkeys::default())
         .manage(platform::macos::fullscreen::Visibility::default())
         .manage(platform::macos::idle::Sleep::default())
@@ -83,6 +85,8 @@ pub fn run() {
             // After Paths, Db, Downloader and LlmServer: the worker uses all of them.
             app.manage(triage::start(&handle));
             tray_icon::create(&handle)?;
+            app.manage(updater::Updates::default());
+            updater::start(&handle);
             hotkeys::init(&handle);
             platform::macos::fullscreen::start(&handle);
             platform::macos::idle::start(&handle);
@@ -248,6 +252,9 @@ pub fn run() {
             commands::sync_status,
             commands::sync_now,
             commands::diary_week,
+            commands::update_status,
+            commands::update_check,
+            commands::update_install,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

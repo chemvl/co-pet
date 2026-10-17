@@ -107,7 +107,7 @@ impl McpHttp {
 
     /// Runs the server on `mcp.httpPort` when `mcp.paused` is false (unless it already runs on
     /// that port), stops it otherwise. State changes send `agents-changed`.
-    async fn reconcile(&self, app: &AppHandle) {
+    pub(crate) async fn reconcile(&self, app: &AppHandle) {
         let mut sup = self.supervisor.lock().await;
         let (paused, port) = match (settings::read::<bool>(app, PAUSED), settings::read::<u16>(app, PORT)) {
             (Ok(paused), Ok(port)) => (paused, port),

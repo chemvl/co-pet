@@ -20,9 +20,9 @@ const THEME: &str = "ui.theme";
 /// Quit must not hang on a `llama-server` that is still starting.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// The exit path: stops a running recording (it is queued and transcribed next launch), the
-/// model server and the MCP HTTP server, then exits. Signals call it directly, without asking.
-pub async fn quit(app: &AppHandle) {
+/// Stops a running recording (it is queued and transcribed next launch), the model server and
+/// the MCP HTTP server. Used by `quit` and before an update installs.
+pub async fn shutdown(app: &AppHandle) {
     if let Some(rec) = app.try_state::<Recorder>() {
         if rec.is_active() {
             if let Err(e) = rec.stop(app).await {
@@ -36,6 +36,11 @@ pub async fn quit(app: &AppHandle) {
     if let Some(http) = app.try_state::<McpHttp>() {
         http.stop().await;
     }
+}
+
+/// The exit path: `shutdown`, then exit. Signals call it directly, without asking.
+pub async fn quit(app: &AppHandle) {
+    shutdown(app).await;
     app.exit(0);
 }
 

@@ -522,6 +522,29 @@ pub struct SyncStatus {
     pub blobs_pending: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateState {
+    Idle,
+    Checking,
+    Downloading,
+    Ready,
+    UpToDate,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatus {
+    pub state: UpdateState,
+    pub version: Option<String>,
+    pub notes: Option<String>,
+    /// 0–1 while downloading.
+    pub progress: Option<f64>,
+    /// `updateFailed` | `localOnly` when `state` is `failed`.
+    pub error: Option<String>,
+}
+
 /// Who made an item or task change; maps to the `actor` / `client_id` columns of
 /// `item_events` and `task_events`. Not serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]

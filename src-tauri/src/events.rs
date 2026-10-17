@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, RecordingStatus, SpeechStatus, SyncStatus};
+use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, RecordingStatus, SpeechStatus, SyncStatus, UpdateStatus};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -40,6 +40,8 @@ pub const AGENTS_CHANGED: &str = "agents-changed";
 pub const ACCOUNT_CHANGED: &str = "account-changed";
 /// The sync engine's state changed or a sync finished; payload `SyncStatus`.
 pub const SYNC_STATUS: &str = "sync-status";
+/// The updater's state changed; payload UpdateStatus.
+pub const UPDATE_STATUS: &str = "update-status";
 /// Meetings were created, changed or deleted.
 pub const MEETINGS_CHANGED: &str = "meetings-changed";
 /// The recorder's state changed; payload `RecordingStatus`.
@@ -233,6 +235,10 @@ pub fn account_changed(app: &AppHandle, error: Option<&str>) {
 
 pub fn sync_status(app: &AppHandle, s: SyncStatus) {
     emit(app, SYNC_STATUS, s);
+}
+
+pub fn update_status(app: &AppHandle, s: UpdateStatus) {
+    emit(app, UPDATE_STATUS, s);
 }
 
 /// When `agents-changed` goes out after a call or log write.

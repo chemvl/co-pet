@@ -1,4 +1,4 @@
-//! Meeting summaries: the summary job (privacy gates, notes from the local model, action items
+//! Meeting summaries: the summary job (privacy gates, notes from the selected AI provider, action items
 //! to Tasks, proposed task changes) and the meeting commands acting on its results.
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -17,7 +17,6 @@ use crate::error::{AppError, AppResult};
 use crate::events::{self, PetReaction};
 use crate::i18n::{self, short_date, tr, Lang};
 use crate::ai::ChatOpts;
-use crate::llm::{self, LlmServer};
 use crate::model::{ActionItem, Actor, NewTask, TaskChange, TaskPatch, TaskSummary};
 use crate::platform::macos::pasteboard::{self, TYPE_PLAIN};
 use crate::triage::secrets;
@@ -48,8 +47,9 @@ pub(crate) enum Summarized {
 
 /// The first gate that stops a summary, in order: AI off or local-only, a sensitive meeting item
 /// or a secret in the transcript (the meeting item then becomes sensitive), the item's category
-/// excluded from AI, no local model.
-fn gate(conn: &mut Connection, m: &MeetingRow, lang: Lang, has_model: bool) -> AppResult<Option<&'static str>> {
+/// excluded from AI, no usable model: `noModel`, `notSetUp`, `cloudMeetingsOff` (`blocked`, from
+/// `ai::route`).
+fn gate(conn: &mut Connection, m: &MeetingRow, lang: Lang, blocked: Option<&'static str>) -> AppResult<Option<&'static str>> {
     if !settings::get::<bool>(conn, "ai.enabled")? || settings::get::<bool>(conn, "privacy.localOnly")? {
         return Ok(Some("aiOff"));
     }
@@ -71,7 +71,7 @@ fn gate(conn: &mut Connection, m: &MeetingRow, lang: Lang, has_model: bool) -> A
     if private {
         return Ok(Some("private"));
     }
-    Ok((!has_model).then_some("noModel"))
+    Ok(blocked)
 }
 
 /// The task for an action item: its text (at most 300 characters), a note naming the meeting
@@ -149,7 +149,7 @@ pub(crate) async fn summarize_with<F, Fut>(
     lang: Lang,
     id: &str,
     mode: Mode,
-    has_model: bool,
+    blocked: Option<&'static str>,
     started: &(dyn Fn() + Sync),
     llm: F,
 ) -> AppResult<Summarized>
@@ -160,7 +160,7 @@ where
     let (m, tasks, code) = {
         let mut conn = db.conn();
         let m = meetings::get(&conn, id)?;
-        if let Some(code) = gate(&mut conn, &m, lang, has_model)? {
+        if let Some(code) = gate(&mut conn, &m, lang, blocked)? {
             meetings::set_summary_state(&conn, id, "skipped", Some(code))?;
             return Ok(Summarized::Skipped(code));
         }
@@ -202,17 +202,15 @@ fn pending_mode(m: &MeetingRow) -> Mode {
     }
 }
 
-/// [`summarize_with`] with the local model, then the notifications. `Err` only when the
+/// [`summarize_with`] with the selected AI provider, then the notifications. `Err` only when the
 /// meeting's summary state could not be recorded.
 async fn summarize(app: &AppHandle, id: &str, mode: Mode) -> AppResult<()> {
     let first = mode == Mode::First;
     let lang = i18n::lang(app);
-    let has_model = llm::active_model_path(app).is_some();
+    let blocked = crate::ai::route(app, crate::ai::Purpose::Meeting).err();
     let notify_running = || meetings::notify_changed(app, vec![id.to_string()]);
-    let result = summarize_with(app.state::<Db>().inner(), lang, id, mode, has_model, &notify_running, |opts, sys, user, schema| async move {
-        let llm = app.state::<LlmServer>();
-        llm.ensure_running(app).await?;
-        llm.chat_json(opts, &sys, &user, &schema).await
+    let result = summarize_with(app.state::<Db>().inner(), lang, id, mode, blocked, &notify_running, |opts, sys, user, schema| async move {
+        crate::ai::chat_json(app, crate::ai::Purpose::Meeting, opts, &sys, &user, &schema).await
     })
     .await?;
     meetings::notify_changed(app, vec![id.to_string()]);
@@ -459,13 +457,13 @@ mod tests {
         Box::new(|_, _, _, _| panic!("the model must not be called"))
     }
 
-    fn run(db: &Db, id: &str, mode: Mode, has_model: bool, llm: Fake) -> Summarized {
-        tauri::async_runtime::block_on(summarize_with(db, Lang::En, id, mode, has_model, &|| {}, llm)).unwrap()
+    fn run(db: &Db, id: &str, mode: Mode, blocked: Option<&'static str>, llm: Fake) -> Summarized {
+        tauri::async_runtime::block_on(summarize_with(db, Lang::En, id, mode, blocked, &|| {}, llm)).unwrap()
     }
 
     fn pending(db: &Db, id: &str) -> Summarized {
         let m = meetings::get(&db.conn(), id).unwrap();
-        run(db, id, pending_mode(&m), true, fake(notes(&["Add the Slack fallback", "Write docs"]), Schemas::default()))
+        run(db, id, pending_mode(&m), None, fake(notes(&["Add the Slack fallback", "Write docs"]), Schemas::default()))
     }
 
     fn task_count(db: &Db) -> i64 {
@@ -499,7 +497,7 @@ mod tests {
         let m = meetings::get(&db.conn(), &id).unwrap();
         assert_eq!(pending_mode(&m), Mode::Retranscribe);
         let answer = notes(&["add the SLACK fallback ", "Write docs", "Book a room"]);
-        let Summarized::Done { created: again, .. } = run(&db, &id, pending_mode(&m), true, fake(answer, Schemas::default())) else {
+        let Summarized::Done { created: again, .. } = run(&db, &id, pending_mode(&m), None, fake(answer, Schemas::default())) else {
             panic!()
         };
         assert!(again.is_empty());
@@ -524,7 +522,7 @@ mod tests {
 
         let secret = format!("deploy with sk-ant-api03-{}", "a".repeat(40));
         let id = meeting(&db, &["Hello.", &secret]);
-        assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("sensitive"));
+        assert_eq!(run(&db, &id, Mode::First, Some("notSetUp"), no_llm()), Summarized::Skipped("sensitive"));
         assert_eq!(state(&id), skipped("sensitive"));
         assert!(item_sensitive(&id));
 
@@ -532,7 +530,7 @@ mod tests {
         settings::put(&db.conn(), "privacy.secretDetection", &json!(false)).unwrap();
         for mode in [Mode::First, Mode::Retranscribe, Mode::NotesOnly { lang: "en".into() }] {
             meetings::set_summary_state(&db.conn(), &id, "pending", None).unwrap();
-            assert_eq!(run(&db, &id, mode, true, no_llm()), Summarized::Skipped("sensitive"));
+            assert_eq!(run(&db, &id, mode, Some("notSetUp"), no_llm()), Summarized::Skipped("sensitive"));
             assert_eq!(state(&id), skipped("sensitive"));
         }
         settings::put(&db.conn(), "privacy.secretDetection", &json!(true)).unwrap();
@@ -545,21 +543,31 @@ mod tests {
                 [&item],
             )
             .unwrap();
-        assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("private"));
+        assert_eq!(run(&db, &id, Mode::First, Some("notSetUp"), no_llm()), Summarized::Skipped("private"));
         assert_eq!(state(&id), skipped("private"));
         db.conn().execute("UPDATE categories SET exclude_from_ai = 0", []).unwrap();
 
-        assert_eq!(run(&db, &id, Mode::First, false, no_llm()), Summarized::Skipped("noModel"));
+        assert_eq!(run(&db, &id, Mode::First, Some("noModel"), no_llm()), Summarized::Skipped("noModel"));
         settings::put(&db.conn(), "privacy.localOnly", &json!(true)).unwrap();
-        assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("aiOff"));
+        assert_eq!(run(&db, &id, Mode::First, None, no_llm()), Summarized::Skipped("aiOff"));
         assert_eq!(state(&id), skipped("aiOff"));
         assert_eq!(task_count(&db), 0);
 
         // AI off comes first: a secret transcript doesn't mark the item sensitive then.
         let id = meeting(&db, &[&secret]);
-        assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("aiOff"));
+        assert_eq!(run(&db, &id, Mode::First, None, no_llm()), Summarized::Skipped("aiOff"));
         assert_eq!(state(&id), skipped("aiOff"));
         assert!(!item_sensitive(&id));
+    }
+
+    #[test]
+    fn cloud_meetings_off_skips_without_calling() {
+        let db = db();
+        let id = meeting(&db, &["Plain talk."]);
+        assert_eq!(run(&db, &id, Mode::First, Some("cloudMeetingsOff"), no_llm()), Summarized::Skipped("cloudMeetingsOff"));
+        let m = meetings::get(&db.conn(), &id).unwrap();
+        assert_eq!((m.summary_state.as_str(), m.summary_error.as_deref()), ("skipped", Some("cloudMeetingsOff")));
+        assert_eq!(task_count(&db), 0);
     }
 
     #[test]
@@ -619,7 +627,7 @@ mod tests {
         let schemas = Schemas::default();
         let answer = json!({ "title": "Dự phòng Slack", "summary": ["Một."], "decisions": [], "questions": [] });
         let lang = Mode::NotesOnly { lang: "vi".into() };
-        assert!(matches!(run(&db, &id, lang, true, fake(answer, schemas.clone())), Summarized::Done { ref created, .. } if created.is_empty()));
+        assert!(matches!(run(&db, &id, lang, None, fake(answer, schemas.clone())), Summarized::Done { ref created, .. } if created.is_empty()));
         assert!(schemas.borrow()[0]["properties"].get("actions").is_none());
         let after = meetings::get(&db.conn(), &id).unwrap();
         assert_eq!(after.actions, before.actions);

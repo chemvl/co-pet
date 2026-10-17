@@ -14,7 +14,6 @@ use crate::db::{items, settings, Db};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, PetFlags, PetReaction};
 use crate::extract::{self, ExtractOut};
-use crate::llm;
 use crate::model::{ItemRow, Rule, TriageUpdate};
 use crate::paths::Paths;
 use ai::TriageOut;
@@ -89,8 +88,10 @@ pub(crate) struct Policy {
     pub secret_detection: bool,
     pub ai_enabled: bool,
     pub local_only: bool,
-    /// A verified model file for `ai.modelId` exists.
-    pub model_ready: bool,
+    /// Why the model can't be asked (`noModel` | `notSetUp`), from `ai::route`; `None` when it can.
+    pub blocked: Option<&'static str>,
+    /// `local` or the cloud provider id, for the triage reason.
+    pub provider: &'static str,
     pub threshold: f64,
 }
 
@@ -100,7 +101,8 @@ impl Policy {
             secret_detection: settings::get(conn, "privacy.secretDetection")?,
             ai_enabled: settings::get(conn, "ai.enabled")?,
             local_only: settings::get(conn, "privacy.localOnly")?,
-            model_ready: false,
+            blocked: None,
+            provider: "local",
             threshold: settings::get(conn, "triage.confidenceThreshold")?,
         })
     }
@@ -121,7 +123,7 @@ pub(crate) struct Decision {
 }
 
 impl Decision {
-    fn unsorted(reason: &'static str, sensitive: bool) -> Self {
+    fn unsorted(reason: impl Into<String>, sensitive: bool) -> Self {
         Decision {
             category_id: "unsorted".into(),
             source: "none",
@@ -150,8 +152,8 @@ fn merge_extract(item: &mut ItemRow, ex: ExtractOut) -> &'static str {
     ex.status
 }
 
-/// Plan Step 9.5, per item: secrets guard, then rules, then the local model when it is allowed,
-/// enabled and downloaded. `classify` is called at most once, and never for sensitive items.
+/// Plan Step 9.5, per item: secrets guard, then rules, then the model when it is allowed,
+/// enabled and set up. `classify` is called at most once, and never for sensitive items.
 pub(crate) async fn decide<F, Fut>(item: &ItemRow, rules: &[Rule], p: &Policy, classify: F) -> Decision
 where
     F: FnOnce() -> Fut,
@@ -175,8 +177,10 @@ where
     if !p.ai_enabled || p.local_only {
         return Decision::unsorted("none:ai-off", false);
     }
-    if !p.model_ready {
-        return Decision::unsorted("none:no-model", false);
+    match p.blocked {
+        Some("notSetUp") => return Decision::unsorted("none:not-set-up", false),
+        Some(_) => return Decision::unsorted("none:no-model", false),
+        None => {}
     }
     match classify().await {
         Ok(out) => {
@@ -195,15 +199,16 @@ where
                 category_id,
                 source: "ai",
                 confidence: Some(out.confidence),
-                reason: "ai".into(),
+                reason: if p.provider == "local" { "ai".into() } else { format!("ai:{}", p.provider) },
                 suggestions,
                 sensitive: false,
                 ai: Some(out),
             }
         }
         Err(e) => {
-            eprintln!("[triage] {}: local model failed: {e}", item.id);
-            Decision::unsorted("none:ai-error", false)
+            eprintln!("[triage] {}: model failed: {e}", item.id);
+            let reason = if p.provider == "local" { "none:ai-error".into() } else { format!("none:ai-error:{}", p.provider) };
+            Decision::unsorted(reason, false)
         }
     }
 }
@@ -252,7 +257,9 @@ async fn triage_item(app: &AppHandle, id: &str) -> AppResult<()> {
         (item, crate::db::rules::list_active(&conn)?, Policy::read(&conn)?)
     };
     let categories = crate::db::categories::list(&db.conn())?;
-    policy.model_ready = llm::active_model_path(app).is_some();
+    let route = crate::ai::route(app, crate::ai::Purpose::Triage);
+    policy.blocked = route.as_ref().err().copied();
+    policy.provider = route.as_ref().map_or("local", |r| r.provider().as_str());
     let paths = app.state::<Paths>().inner().clone();
     let ex = extract::extract(&paths, &item, policy.local_only).await;
     let extract_status = merge_extract(&mut item, ex);
@@ -305,7 +312,7 @@ mod tests {
     }
 
     fn policy() -> Policy {
-        Policy { secret_detection: true, ai_enabled: true, local_only: false, model_ready: true, threshold: 0.6 }
+        Policy { secret_detection: true, ai_enabled: true, local_only: false, blocked: None, provider: "local", threshold: 0.6 }
     }
 
     fn text_item(text: &str) -> ItemRow {
@@ -402,6 +409,8 @@ mod tests {
     fn sensitive_item_never_reaches_the_model() {
         let secret = format!("deploy with sk-ant-api03-{}", "a".repeat(40));
         let item = text_item(&secret);
+        let (d, calls) = run(&item, &Policy { provider: "anthropic", ..policy() }, Ok(out("code", "todo", 0.9)));
+        assert_eq!((calls, d.sensitive, d.reason.as_str()), (0, true, "none:sensitive"));
         let (d, calls) = run(&item, &policy(), Ok(out("code", "todo", 0.9)));
         assert_eq!(calls, 0);
         assert!(d.sensitive);
@@ -425,12 +434,30 @@ mod tests {
     #[test]
     fn skip_reasons_without_the_model() {
         let item = text_item("Fix the login bug before Friday's release");
-        let no_model = Policy { model_ready: false, ..policy() };
+        let no_model = Policy { blocked: Some("noModel"), ..policy() };
         let (d, calls) = run(&item, &no_model, Ok(out("todo", "code", 0.9)));
         assert_eq!((calls, d.reason.as_str()), (0, "none:no-model"));
         let local = Policy { local_only: true, ..no_model };
         let (d, calls) = run(&item, &local, Ok(out("todo", "code", 0.9)));
         assert_eq!((calls, d.reason.as_str()), (0, "none:ai-off"));
+    }
+
+    #[test]
+    fn not_set_up_never_asks_the_model() {
+        let item = text_item("Fix the login bug before Friday's release");
+        let p = Policy { blocked: Some("notSetUp"), provider: "anthropic", ..policy() };
+        let (d, calls) = run(&item, &p, Ok(out("todo", "code", 0.9)));
+        assert_eq!((calls, d.category_id.as_str(), d.reason.as_str()), (0, "unsorted", "none:not-set-up"));
+    }
+
+    #[test]
+    fn cloud_reasons_name_the_provider() {
+        let item = text_item("Fix the login bug before Friday's release");
+        let cloud = Policy { provider: "anthropic", ..policy() };
+        let (d, calls) = run(&item, &cloud, Ok(out("todo", "code", 0.9)));
+        assert_eq!((calls, d.source, d.reason.as_str()), (1, "ai", "ai:anthropic"));
+        let (d, calls) = run(&item, &cloud, Err(AppError::msg("bad json")));
+        assert_eq!((calls, d.reason.as_str()), (1, "none:ai-error:anthropic"));
     }
 
     #[test]

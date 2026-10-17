@@ -16,7 +16,6 @@ use crate::db::{items, new_id, now_ms, settings, tasks, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::ai::ChatOpts;
-use crate::llm::{self, LlmServer};
 use crate::model::{Actor, ItemRow, NextCard, TaskSummary};
 use crate::paths::Paths;
 use crate::windows;
@@ -26,7 +25,7 @@ pub use proactive::{after_done, after_meeting, start};
 
 /// Candidates returned by [`rank`].
 const MAX_CANDIDATES: usize = 8;
-/// Covers `ensure_running` + `chat_json`.
+/// Covers the whole `ai::chat_json` call.
 const AI_TIMEOUT: Duration = Duration::from_secs(8);
 const CHAT: ChatOpts = ChatOpts { name: "next", max_tokens: 400, timeout: Duration::from_secs(120) };
 const NOTES_LIMIT: usize = 300;
@@ -282,8 +281,8 @@ fn ai_allowed(conn: &Connection, trigger: &str) -> AppResult<bool> {
 }
 
 /// The What's Next card for `trigger`, or `None` when nothing is eligible. `home` always uses
-/// the ranking; other triggers ask the local model when AI is on, local-only mode is off and a
-/// model is downloaded. `agent` ranks only tasks agents may see.
+/// the ranking; other triggers ask the selected AI provider when AI is on, local-only mode is
+/// off and the provider is ready. `agent` ranks only tasks agents may see.
 pub async fn pick(app: &AppHandle, trigger: &str) -> AppResult<Option<NextCard>> {
     let now = Local::now();
     let db = app.state::<Db>().inner();
@@ -291,12 +290,10 @@ pub async fn pick(app: &AppHandle, trigger: &str) -> AppResult<Option<NextCard>>
         let conn = db.conn();
         (rank(&conn, now, trigger == "agent")?, ai_allowed(&conn, trigger)?)
     };
-    let use_ai = ai_allowed && llm::active_model_path(app).is_some();
+    let use_ai = ai_allowed && crate::ai::ready(app, crate::ai::Purpose::Next);
     Ok(pick_with(cands, use_ai, |tasks| async move {
         let msg = user_message(&db.conn(), &tasks, now)?;
-        let llm = app.state::<LlmServer>();
-        llm.ensure_running(app).await?;
-        llm.chat_json(&CHAT, NEXT_PROMPT, &msg, &schema(&tasks)).await
+        crate::ai::chat_json(app, crate::ai::Purpose::Next, &CHAT, NEXT_PROMPT, &msg, &schema(&tasks)).await
     })
     .await)
 }

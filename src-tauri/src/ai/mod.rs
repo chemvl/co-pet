@@ -107,7 +107,6 @@ fn curated(p: Provider, id: &str) -> Option<&'static CloudModel> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
     Triage,
-    #[allow(dead_code)] // What's Next moves onto `ai::chat_json` in Task 4.3
     Next,
     Meeting,
 }
@@ -162,7 +161,6 @@ pub enum Route {
 }
 
 impl Route {
-    #[allow(dead_code)] // triage's Why provider reads it from Task 4.3
     pub fn provider(&self) -> Provider {
         match self {
             Route::Local => Provider::Local,
@@ -260,14 +258,12 @@ pub fn route(app: &AppHandle, purpose: Purpose) -> Result<Route, &'static str> {
 }
 
 /// Whether a model call for `purpose` would go out now (see [`route`]).
-#[allow(dead_code)] // triage, What's Next and meeting summaries call it from Task 4.3
 pub fn ready(app: &AppHandle, purpose: Purpose) -> bool {
     route(app, purpose).is_ok()
 }
 
 /// The single entry point for every model call: the local `llama-server` or the routed cloud
 /// provider. Errors: the [`resolve`] codes, then those of the call itself.
-#[allow(dead_code)] // triage, What's Next and meeting summaries call it from Task 4.3
 pub async fn chat_json(
     app: &AppHandle,
     purpose: Purpose,

@@ -1,14 +1,13 @@
-//! Local-model triage: one structured-output call returning category, alternative, title,
+//! Model triage: one structured-output call returning category, alternative, title,
 //! summary, tags and confidence.
 use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::error::{AppError, AppResult};
 use crate::ai::ChatOpts;
-use crate::llm::LlmServer;
 use crate::model::{Category, ItemRow};
 
 const TEXT_LIMIT: usize = 4000;
@@ -149,31 +148,25 @@ pub fn parse(v: Value, categories: &[Category]) -> AppResult<TriageOut> {
     Ok(out)
 }
 
-/// Classifies with an already running server (see [`classify`]).
-pub async fn classify_with(
-    llm: &LlmServer,
-    item: &ItemRow,
-    examples: &[(String, String)],
-    categories: &[Category],
-) -> AppResult<TriageOut> {
-    let v = llm
-        .chat_json(&CHAT, &system_prompt(categories), &user_message(item, examples), &schema(categories))
-        .await?;
-    parse(v, categories)
-}
-
-/// Starts the local model if needed and classifies `item`. `examples` are recent user
-/// corrections `(title, category)`, already filtered for `exclude_from_ai`; `categories` are the
-/// live rows in position order.
+/// Classifies `item` with the selected AI provider. `examples` are recent user corrections
+/// `(title, category)`, already filtered for `exclude_from_ai`; `categories` are the live rows
+/// in position order.
 pub async fn classify(
     app: &AppHandle,
     item: &ItemRow,
     examples: &[(String, String)],
     categories: &[Category],
 ) -> AppResult<TriageOut> {
-    let llm = app.state::<LlmServer>();
-    llm.ensure_running(app).await?;
-    classify_with(&llm, item, examples, categories).await
+    let v = crate::ai::chat_json(
+        app,
+        crate::ai::Purpose::Triage,
+        &CHAT,
+        &system_prompt(categories),
+        &user_message(item, examples),
+        &schema(categories),
+    )
+    .await?;
+    parse(v, categories)
 }
 
 #[cfg(test)]

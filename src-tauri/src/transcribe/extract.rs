@@ -1,6 +1,6 @@
-//! Meeting notes from a transcript with the local model: prompt lines, chunking, prompts,
+//! Meeting notes from a transcript with the selected AI provider: prompt lines, chunking, prompts,
 //! structured-output schemas, parsing/validation and the chunk → merge combine. Pure: the model
-//! call is injected (`summary` passes `LlmServer::chat_json`).
+//! call is injected (`summary` passes `ai::chat_json`).
 
 use std::future::Future;
 use std::time::Duration;

@@ -1,6 +1,6 @@
 // `COPET_SITE_REPO=<path> bun run publish:site`: copies site/copet/ over $COPET_SITE_REPO/copet/.
 // Never runs git. Every failure exits 1 with a one-line reason.
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
@@ -26,6 +26,5 @@ for (const e of readdirSync(SITE_DIR, { recursive: true, withFileTypes: true }))
   if (e.isFile()) guardFile(join(e.parentPath, e.name));
 
 const dest = join(repo, "copet");
-rmSync(dest, { recursive: true, force: true });
 cpSync(SITE_DIR, dest, { recursive: true });
 console.log(`Copied. Commit and push in ${repo}.`);

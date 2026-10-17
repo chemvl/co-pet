@@ -70,13 +70,17 @@ pub fn active_model_path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 /// Makes `model_id` the active model (`ai.modelId`). A server running another model is stopped
-/// so the next request starts the selected one. Error `unknownModel`.
+/// so the next request starts the selected one; an already downloaded model re-queues the
+/// summaries that waited for one. Error `unknownModel`.
 pub async fn select_model(app: &AppHandle, model_id: &str) -> AppResult<()> {
     let spec = models::find(model_id).ok_or(AppError::Code("unknownModel"))?;
     let current = settings::read::<Option<String>>(app, "ai.modelId")?;
     if current.as_deref() != Some(spec.id) {
         settings::set(app, "ai.modelId", &Value::String(spec.id.into()))?;
         app.state::<LlmServer>().stop().await;
+    }
+    if active_model_path(app).is_some() {
+        crate::transcribe::worker::llm_model_ready(app);
     }
     crate::events::ai_status(app, app.state::<download::Downloader>().status(app));
     Ok(())

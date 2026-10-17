@@ -723,11 +723,13 @@ impl Recorder {
             events::recording_status(app, idle(Some("tooShort")));
             return Err(AppError::Code("tooShort"));
         }
-        let saved = {
-            let conn = app.state::<Db>().inner().conn();
-            meetings::set_duration(&conn, &id, duration_ms, has_mic, has_system)
-                .and_then(|()| meetings::set_state(&conn, &id, "queued", None))
-        };
+        let saved = (|| -> AppResult<()> {
+            let mut conn = app.state::<Db>().inner().conn();
+            let tx = conn.transaction()?;
+            meetings::set_duration(&tx, &id, duration_ms, has_mic, has_system)?;
+            meetings::set_state(&tx, &id, "queued", None)?;
+            Ok(tx.commit()?)
+        })();
         events::recording_status(app, idle(ended_reason));
         saved?;
         meetings::notify_changed(app, vec![id.clone()]);
@@ -750,18 +752,17 @@ impl Recorder {
         lock(&self.session).is_some()
     }
 
-    /// Delete everything: stops capture and deletes the recording's folder. The meeting row is
-    /// left to the caller, which deletes the database.
-    pub async fn abort(&self) {
+    /// Delete everything: stops capture, deletes the recording's folder and meeting row, and
+    /// lets transcriptions run again.
+    pub async fn abort(&self, app: &AppHandle) {
         let _op = self.op.lock().await;
         let session = lock(&self.session).take();
         let Some(session) = session else { return };
-        let dir = session.dir.clone();
+        let (id, dir) = (session.meeting_id.clone(), session.dir.clone());
         if let Err(e) = tauri::async_runtime::spawn_blocking(move || session.finish()).await {
             eprintln!("[recorder] abort: {e}");
         }
-        if let Err(e) = std::fs::remove_dir_all(&dir) {
-            eprintln!("[recorder] abort: deleting {}: {e}", dir.display());
-        }
+        discard(app, &id, &dir);
+        release(&app.state::<TranscribeQueue>());
     }
 }

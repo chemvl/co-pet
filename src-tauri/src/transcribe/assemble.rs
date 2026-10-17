@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use unicode_normalization::UnicodeNormalization;
 
 use super::diarize::Turn;
+use super::extract::is_cjk;
 use super::stt::RawSeg;
 use crate::db::search::fold;
 use crate::model::{Speaker, TranscriptSeg};
@@ -105,10 +106,6 @@ pub fn assemble(
         });
     }
     (segs, speakers)
-}
-
-fn is_cjk(c: char) -> bool {
-    matches!(c, '\u{4E00}'..='\u{9FFF}' | '\u{3400}'..='\u{4DBF}' | '\u{F900}'..='\u{FAFF}' | '\u{20000}'..='\u{2FA1F}')
 }
 
 fn is_vietnamese(text: &str) -> bool {

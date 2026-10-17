@@ -15,6 +15,7 @@ use super::assemble::{assemble, langs_of};
 use super::audio::{self, Afconvert, Convert, TrackWriter};
 use super::diarize::{Diarizer, SherpaDiarizer};
 use super::models::{self, Pack, SPEAKER, SPEECH};
+use super::recorder::Recorder;
 use super::stt::{RawSeg, SpeechToText, WhisperStt};
 use super::summary;
 use crate::db::items::{self, MeetingItem};
@@ -216,6 +217,12 @@ pub(crate) fn run_job(env: &Env, id: &str, engines: &dyn Engines, started: &dyn 
     let (state, error, outcome) = match result {
         Ok(item_id) => return Outcome::Done { item_id },
         Err(AppError::Code("cancelled")) => ("queued", None, Outcome::Cancelled),
+        // Deleted mid-job: nothing left to update.
+        Err(AppError::Code("notFound"))
+            if matches!(meetings::get(&env.db.conn(), id), Err(AppError::Code("notFound"))) =>
+        {
+            return Outcome::Cancelled
+        }
         Err(e) => {
             eprintln!("[transcribe] {id} failed: {e}");
             let code = match e {
@@ -356,12 +363,16 @@ fn transcribe(env: &Env, id: &str, engines: &dyn Engines) -> AppResult<String> {
         write_item(&mut conn, &m, env.lang, None, sensitive)?
     };
 
-    let conn = env.db.conn();
-    meetings::set_state(&conn, id, "done", None)?;
+    let mut conn = env.db.conn();
+    let tx = conn.transaction()?;
+    meetings::set_state(&tx, id, "done", None)?;
     if segs.is_empty() {
-        meetings::set_summary_state(&conn, id, "skipped", Some("noSpeech"))?;
+        meetings::set_summary_state(&tx, id, "skipped", Some("noSpeech"))?;
     } else {
-        meetings::set_summary_state(&conn, id, "pending", None)?;
+        meetings::set_summary_state(&tx, id, "pending", None)?;
+    }
+    tx.commit()?;
+    if !segs.is_empty() {
         env.queue.poke();
     }
     Ok(item_id)
@@ -850,12 +861,16 @@ pub fn rename_speaker(app: &AppHandle, id: &str, key: &str, name: Option<&str>) 
     Ok(())
 }
 
-/// Queues a failed meeting again. Other states are `invalid`.
+/// Queues a failed meeting again. Other states are `invalid`; without its audio `audioGone`.
 pub fn retry(app: &AppHandle, id: &str) -> AppResult<()> {
     {
         let conn = app.state::<Db>().inner().conn();
-        if meetings::get(&conn, id)?.state != "failed" {
+        let m = meetings::get(&conn, id)?;
+        if m.state != "failed" {
             return Err(AppError::Code("invalid"));
+        }
+        if m.audio_deleted_at.is_some() {
+            return Err(AppError::Code("audioGone"));
         }
         meetings::set_state(&conn, id, "queued", None)?;
     }
@@ -913,8 +928,11 @@ pub async fn retranscribe(app: &AppHandle, id: &str, language: &str) -> AppResul
 }
 
 /// Deletes a meeting: cancels its transcription, removes its audio, soft-deletes the row and
-/// trashes its item.
+/// trashes its item. `busy` while it is being recorded.
 pub fn delete(app: &AppHandle, id: &str) -> AppResult<()> {
+    if app.state::<Recorder>().status().meeting_id.as_deref() == Some(id) {
+        return Err(AppError::Code("busy"));
+    }
     app.state::<TranscribeQueue>().cancel_if(id);
     let item = {
         let mut conn = app.state::<Db>().inner().conn();
@@ -1105,6 +1123,18 @@ mod tests {
         assert!(!queue.begin(&id), "held until the recording ends");
         queue.resume_after_recording();
         assert!(queue.begin(&id));
+    }
+
+    #[test]
+    fn meeting_deleted_mid_job_is_not_a_failure() {
+        let s = setup();
+        install(&s.paths, &SPEECH);
+        let id = queued(&s, "recording", &["mic-raw.wav"]);
+        let queue = TranscribeQueue::default();
+        let outcome = run_job(&env(&s, &queue), &id, &Fakes::default(), &|| {
+            meetings::soft_delete(&s.db.conn(), &id).unwrap();
+        });
+        assert_eq!(outcome, Outcome::Cancelled);
     }
 
     #[test]

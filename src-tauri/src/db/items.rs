@@ -210,19 +210,22 @@ pub struct MeetingItem {
 }
 
 /// Updates the meeting's live item, or inserts it (category `meeting`, else `unsorted`; already
-/// triaged, so never queued for triage). Returns the item id.
+/// triaged, so never queued for triage). A trashed item stays trashed and untouched: no new one
+/// is inserted. Returns the item id.
 pub fn upsert_meeting_item(conn: &mut Connection, m: &MeetingItem) -> AppResult<String> {
     let tx = conn.transaction()?;
     let now = now_ms();
-    let existing: Option<String> = tx
+    let existing: Option<(String, bool)> = tx
         .query_row(
-            "SELECT id FROM items WHERE meeting_id = ?1 AND deleted_at IS NULL ORDER BY captured_at LIMIT 1",
+            "SELECT id, deleted_at IS NOT NULL FROM items WHERE meeting_id = ?1
+             ORDER BY deleted_at IS NOT NULL, captured_at LIMIT 1",
             [&m.meeting_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
     let id = match existing {
-        Some(id) => {
+        Some((id, true)) => return Ok(id),
+        Some((id, false)) => {
             tx.execute(
                 "UPDATE items SET title = ?2, summary = ?3, payload_text = ?4, sensitive = ?5, updated_at = ?6
                  WHERE id = ?1",

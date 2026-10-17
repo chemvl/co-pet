@@ -345,17 +345,30 @@ pub fn item_id(conn: &Connection, meeting_id: &str) -> AppResult<Option<String>>
         .optional()?)
 }
 
-fn to_summary(
-    conn: &Connection,
-    m: &MeetingRow,
+/// The list columns: no transcript/notes JSON leaves SQLite; the counts and the item id are
+/// computed there (`speakers` that appear in the transcript, action items, those with a task).
+const SUMMARY_COLS: &str = "id, title, source, device_id, started_at, duration_ms, language, langs, state, error, \
+    summary_state, audio_deleted_at, \
+    (SELECT COUNT(*) FROM json_each(meetings.speakers) sp WHERE json_extract(sp.value, '$.key') IN \
+        (SELECT json_extract(seg.value, '$.speaker') FROM json_each(meetings.transcript) seg)), \
+    json_array_length(actions), \
+    (SELECT COUNT(*) FROM json_each(meetings.actions) a WHERE json_extract(a.value, '$.taskId') IS NOT NULL), \
+    (SELECT i.id FROM items i WHERE i.meeting_id = meetings.id AND i.deleted_at IS NULL \
+        ORDER BY i.captured_at LIMIT 1)";
+
+fn map_summary(
+    r: &Row<'_>,
     device_id: &str,
     paths: &Paths,
     progress: Option<(&str, f64)>,
-) -> AppResult<(MeetingSummary, Option<String>)> {
-    let mix = paths.recording_dir(&m.id).join("mix.m4a");
-    let audio = if m.audio_deleted_at.is_some() {
+) -> rusqlite::Result<(MeetingSummary, Option<String>)> {
+    let id: String = r.get(0)?;
+    let row_device: String = r.get(3)?;
+    let audio_deleted_at: Option<i64> = r.get(11)?;
+    let mix = paths.recording_dir(&id).join("mix.m4a");
+    let audio = if audio_deleted_at.is_some() {
         "deleted"
-    } else if m.device_id != device_id {
+    } else if row_device != device_id {
         "elsewhere"
     } else if mix.exists() {
         "available"
@@ -363,28 +376,44 @@ fn to_summary(
         "processing"
     };
     let audio_path = (audio == "available").then(|| mix.to_string_lossy().into_owned());
-    let speaker_count =
-        m.speakers.iter().filter(|s| m.transcript.iter().any(|seg| seg.speaker == s.key)).count() as i64;
     let summary = MeetingSummary {
-        id: m.id.clone(),
-        title: m.title.clone(),
-        source: m.source.clone(),
-        started_at: m.started_at,
-        duration_ms: m.duration_ms,
-        language: m.language.clone(),
-        langs: m.langs.clone(),
-        state: m.state.clone(),
-        progress: progress.filter(|(id, _)| *id == m.id).map(|(_, p)| p),
-        error: m.error.clone(),
-        summary_state: m.summary_state.clone(),
-        speaker_count,
-        action_count: m.actions.len() as i64,
-        tasks_added: m.actions.iter().filter(|a| a.task_id.is_some()).count() as i64,
-        item_id: item_id(conn, &m.id)?,
-        on_this_device: m.device_id == device_id,
+        progress: progress.filter(|(p, _)| *p == id).map(|(_, p)| p),
+        id,
+        title: r.get(1)?,
+        source: r.get(2)?,
+        started_at: r.get(4)?,
+        duration_ms: r.get(5)?,
+        language: r.get(6)?,
+        langs: json_col(r, 7)?,
+        state: r.get(8)?,
+        error: r.get(9)?,
+        summary_state: r.get(10)?,
+        speaker_count: r.get(12)?,
+        action_count: r.get(13)?,
+        tasks_added: r.get(14)?,
+        item_id: r.get(15)?,
+        on_this_device: row_device == device_id,
         audio: audio.into(),
     };
     Ok((summary, audio_path))
+}
+
+/// Live meetings matching `filter` (SQL after `AND`), newest first, at most 500, with their
+/// audio paths.
+fn summary_rows(
+    conn: &Connection,
+    filter: &str,
+    values: &[&dyn ToSql],
+    device_id: &str,
+    paths: &Paths,
+    progress: Option<(&str, f64)>,
+) -> AppResult<Vec<(MeetingSummary, Option<String>)>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SUMMARY_COLS} FROM meetings WHERE deleted_at IS NULL AND {filter}
+         ORDER BY started_at DESC, id DESC LIMIT {LIST_LIMIT}"
+    ))?;
+    let rows = stmt.query_map(values, |r| map_summary(r, device_id, paths, progress))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
 /// Live meetings, newest first, at most 500. `progress`: the transcribing meeting's id and
@@ -395,11 +424,8 @@ pub fn summaries(
     paths: &Paths,
     progress: Option<(&str, f64)>,
 ) -> AppResult<Vec<MeetingSummary>> {
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {COLS} FROM meetings WHERE deleted_at IS NULL ORDER BY started_at DESC, id DESC LIMIT ?1"
-    ))?;
-    let rows = stmt.query_map([LIST_LIMIT], map_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
-    rows.iter().map(|m| Ok(to_summary(conn, m, device_id, paths, progress)?.0)).collect()
+    let rows = summary_rows(conn, "1", &[], device_id, paths, progress)?;
+    Ok(rows.into_iter().map(|(s, _)| s).collect())
 }
 
 pub fn detail(
@@ -410,7 +436,8 @@ pub fn detail(
     progress: Option<(&str, f64)>,
 ) -> AppResult<MeetingDetail> {
     let m = get(conn, id)?;
-    let (meeting, audio_path) = to_summary(conn, &m, device_id, paths, progress)?;
+    let (meeting, audio_path) =
+        summary_rows(conn, "id = ?1", &[&id], device_id, paths, progress)?.pop().ok_or(AppError::Code("notFound"))?;
     Ok(MeetingDetail {
         meeting,
         speakers: m.speakers,
@@ -451,13 +478,18 @@ pub(crate) fn speaker_name(m: &MeetingRow, key: &str, lang: Lang) -> String {
     }
 }
 
+/// Rounded minutes, at least 1.
+pub fn duration_min(ms: i64) -> i64 {
+    ((ms + 30_000) / 60_000).max(1)
+}
+
 /// `45 min`, `1 h 5 min` / `45 phút`, `1 giờ 5 phút` (at least 1 minute).
 fn duration_label(ms: i64, lang: Lang) -> String {
     let (min_unit, hour_unit) = match lang {
         Lang::En => ("min", "h"),
         Lang::Vi => ("phút", "giờ"),
     };
-    let total = ((ms + 30_000) / 60_000).max(1);
+    let total = duration_min(ms);
     let (h, m) = (total / 60, total % 60);
     match (h, m) {
         (0, m) => format!("{m} {min_unit}"),
@@ -466,14 +498,18 @@ fn duration_label(ms: i64, lang: Lang) -> String {
     }
 }
 
-/// `English + Vietnamese`: the detected languages, else the chosen one (empty for `auto`).
-fn language_names(m: &MeetingRow, lang: Lang) -> String {
-    let codes: Vec<&str> = if m.langs.is_empty() {
+/// The detected language codes, else the chosen ones (none for `auto`).
+pub fn language_codes(m: &MeetingRow) -> Vec<&str> {
+    if m.langs.is_empty() {
         m.language.split('+').filter(|c| *c != "auto").collect()
     } else {
         m.langs.iter().map(String::as_str).collect()
-    };
-    codes
+    }
+}
+
+/// `English + Vietnamese`: the detected languages, else the chosen one (empty for `auto`).
+fn language_names(m: &MeetingRow, lang: Lang) -> String {
+    language_codes(m)
         .into_iter()
         .filter_map(|c| match c {
             "en" => Some(tr(lang, "lang.en")),
@@ -667,6 +703,23 @@ mod tests {
     }
 
     #[test]
+    fn trashed_meeting_item_is_not_resurrected() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.conn();
+        let id = meeting(&conn, "d1");
+        let first = upsert_meeting_item(&mut conn, &item(&id, "alpha")).unwrap();
+        conn.execute("UPDATE items SET deleted_at = 5 WHERE id = ?1", [&first]).unwrap();
+        assert_eq!(upsert_meeting_item(&mut conn, &item(&id, "zebrafish")).unwrap(), first);
+        let (rows, summary): (i64, String) = conn
+            .query_row("SELECT COUNT(*), MAX(summary) FROM items WHERE meeting_id = ?1", [&id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!((rows, summary.as_str()), (1, "alpha"));
+        assert_eq!(item_id(&conn, &id).unwrap(), None);
+    }
+
+    #[test]
     fn meeting_item_falls_back_to_unsorted_when_meeting_category_deleted() {
         let db = Db::open_in_memory().unwrap();
         let mut conn = db.conn();
@@ -714,5 +767,44 @@ mod tests {
         let p = list.iter().find(|m| m.id == processing).unwrap();
         assert_eq!(p.progress, Some(0.5));
         assert!(list.iter().filter(|m| m.id != processing).all(|m| m.progress.is_none()));
+    }
+
+    #[test]
+    fn summary_counts_and_item_come_from_sql() {
+        let db = Db::open_in_memory().unwrap();
+        let mut conn = db.conn();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::new(dir.path().to_path_buf());
+        let id = meeting(&conn, "d1");
+        save_transcript(
+            &conn,
+            &id,
+            &[seg("me", 0, "a"), seg("s2", 1_000, "b"), seg("s2", 2_000, "c")],
+            &[sp("me", None), sp("s1", None), sp("s2", Some("Lan"))],
+            &[],
+            true,
+        )
+        .unwrap();
+        let action = |task_id: Option<&str>| ActionItem {
+            id: new_id(),
+            text: "x".into(),
+            owner: None,
+            owner_key: None,
+            due: None,
+            at_ms: None,
+            task_id: task_id.map(String::from),
+        };
+        save_actions(&conn, &id, &[action(Some("t1")), action(None), action(Some("t2"))]).unwrap();
+        let empty = meeting(&conn, "d1");
+        let it = upsert_meeting_item(&mut conn, &item(&id, "alpha")).unwrap();
+
+        let list = summaries(&conn, "d1", &paths, None).unwrap();
+        let m = list.iter().find(|m| m.id == id).unwrap();
+        assert_eq!((m.speaker_count, m.action_count, m.tasks_added), (2, 3, 2));
+        assert_eq!(m.item_id.as_deref(), Some(it.as_str()));
+        let e = list.iter().find(|m| m.id == empty).unwrap();
+        assert_eq!((e.speaker_count, e.action_count, e.tasks_added, e.item_id.clone()), (0, 0, 0, None));
+        assert_eq!(detail(&conn, &id, "d1", &paths, None).unwrap().meeting, *m);
+        assert!(matches!(detail(&conn, "nope", "d1", &paths, None), Err(AppError::Code("notFound"))));
     }
 }

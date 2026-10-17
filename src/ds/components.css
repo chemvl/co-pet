@@ -2,7 +2,7 @@
 /* Co-pet components — every value comes from tokens.css; nothing here re-declares a token. */
 body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 22px; background: var(--surface); color: var(--ink); -webkit-font-smoothing: antialiased; }
 .cp-icon { flex: none; display: block; }
-:where(.cp-btn, .cp-bubble, .cp-pet, .cp-seg__opt, .cp-switch__track, .cp-task__check, .cp-card, .cp-seg-line__time, .cp-search):focus-visible,
+:where(.cp-btn, .cp-bubble, .cp-pet, .cp-seg__opt, .cp-switch__track, .cp-task__check, .cp-card, .cp-seg-line__time, .cp-search, button.cp-speaker):focus-visible,
 .cp-search:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .cp-search input:focus-visible { outline: none; }
 
@@ -199,6 +199,8 @@ body { margin: 0; font-family: var(--font-sans); font-size: 14px; line-height: 2
 .cp-speaker { font: 600 13px/20px var(--font-sans); }
 .cp-speaker--me { color: var(--clover); }
 .cp-speaker--n1 { color: var(--cat-read); } .cp-speaker--n2 { color: var(--cat-design); } .cp-speaker--n3 { color: var(--cat-reference); } .cp-speaker--n0 { color: var(--cat-meeting); }
+/* Co-pet addition: the speaker chip as a button (`onSpeaker`); `:where` keeps the .cp-speaker font and colours winning. */
+:where(button.cp-speaker) { border: 0; padding: 0; background: none; cursor: pointer; font: inherit; color: inherit; }
 .cp-seg-line__lang { font: 500 11px/16px var(--font-sans); color: var(--ink-muted); padding: 0 6px; border-radius: var(--radius-pill); background: var(--surface-sunken); }
 .cp-seg-line__text { margin: 2px 0 0; font: 400 14px/22px var(--font-sans); color: var(--ink); }
 .cp-seg-line__change { display: inline-flex; align-items: center; gap: var(--space-1); margin-top: var(--space-1); padding: 2px 8px 2px 6px; border-radius: var(--radius-pill); background: var(--warning-soft); color: var(--warning); font: 500 12px/18px var(--font-sans); }

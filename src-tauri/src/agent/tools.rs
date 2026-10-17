@@ -517,20 +517,6 @@ fn visible_meeting(conn: &Connection, id: &str) -> Result<meetings::MeetingRow, 
     Ok(meetings::get(conn, id)?)
 }
 
-/// Rounded minutes, at least 1.
-fn duration_min(ms: i64) -> i64 {
-    ((ms + 30_000) / 60_000).max(1)
-}
-
-/// The detected language codes, else the chosen ones (none for `auto`).
-fn meeting_languages(m: &meetings::MeetingRow) -> Vec<String> {
-    if m.langs.is_empty() {
-        m.language.split('+').filter(|c| *c != "auto").map(String::from).collect()
-    } else {
-        m.langs.clone()
-    }
-}
-
 fn speaker_names(m: &meetings::MeetingRow, lang: Lang) -> Vec<String> {
     m.speakers.iter().map(|s| meetings::display_name(s, lang)).collect()
 }
@@ -577,8 +563,8 @@ fn list_meetings(host: &impl Host, a: ListMeetingsArgs, log: &mut Entry) -> Tool
             "id": m.id,
             "title": m.title,
             "startedAt": iso(m.started_at),
-            "durationMin": duration_min(m.duration_ms),
-            "languages": meeting_languages(&m),
+            "durationMin": meetings::duration_min(m.duration_ms),
+            "languages": meetings::language_codes(&m),
             "speakers": speaker_names(&m, lang),
             "summary": m.summary,
             "actionItems": m.actions.len(),
@@ -625,8 +611,8 @@ fn get_meeting(host: &impl Host, a: GetMeetingArgs, log: &mut Entry) -> ToolResu
                 "id": m.id,
                 "title": m.title,
                 "startedAt": iso(m.started_at),
-                "durationMin": duration_min(m.duration_ms),
-                "languages": meeting_languages(&m),
+                "durationMin": meetings::duration_min(m.duration_ms),
+                "languages": meetings::language_codes(&m),
                 "speakers": speaker_names(&m, lang),
                 "summary": m.summary,
                 "decisions": m.decisions,

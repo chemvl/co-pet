@@ -177,7 +177,7 @@ export const ACTIONS: readonly PaletteAction[] = [
   },
 ];
 
-export const MAX_ACTIONS = 6;
+export const MAX_ACTIONS = 9;
 
 export interface ActionMatch {
   action: PaletteAction;

@@ -60,7 +60,8 @@ fn clock(ms: i64) -> String {
     }
 }
 
-fn is_cjk(c: char) -> bool {
+/// CJK script (Han, kana, hangul, full-width forms).
+pub(super) fn is_cjk(c: char) -> bool {
     matches!(c,
         '\u{3040}'..='\u{30FF}' // kana
         | '\u{3400}'..='\u{4DBF}' // CJK extension A

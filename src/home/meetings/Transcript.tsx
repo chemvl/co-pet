@@ -87,7 +87,13 @@ export function Transcript({ meeting: m, onBack }: { meeting: MeetingDetail; onB
       disabled: !itemId,
       onSelect: () => itemId && navigate(`item/${encodeURIComponent(itemId)}`),
     },
-    { key: 'delete', label: t('meetings.delete'), danger: true, onSelect: () => setOpen({ kind: 'delete' }) },
+    {
+      key: 'delete',
+      label: t('meetings.delete'),
+      danger: true,
+      disabled: m.state === 'recording' && m.onThisDevice,
+      onSelect: () => setOpen({ kind: 'delete' }),
+    },
   ];
 
   const caption = joinMeta([

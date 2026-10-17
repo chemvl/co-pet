@@ -363,8 +363,6 @@ export function TaskRow(p: TaskRowProps): ReactElement {
 }
 
 /* ---------- TranscriptSegment ---------- */
-/** Co-pet addition: resets the button look when the speaker chip is a button (`onSpeaker`). */
-const SPEAKER_BUTTON: CSSProperties = { border: 0, padding: 0, background: 'none', cursor: 'pointer' };
 export function TranscriptSegment(p: TranscriptSegmentProps): ReactElement {
   const speakerClass = cx('cp-speaker', p.isMe ? 'cp-speaker--me' : 'cp-speaker--n' + ((p.speakerIndex || 1) % 4));
   return (
@@ -373,7 +371,7 @@ export function TranscriptSegment(p: TranscriptSegmentProps): ReactElement {
       <div className="cp-seg-line__body">
         <div className="cp-seg-line__head">
           {p.onSpeaker ? (
-            <button type="button" className={speakerClass} style={SPEAKER_BUTTON} aria-label={p.speakerLabel}
+            <button type="button" className={speakerClass} aria-label={p.speakerLabel}
               onClick={(e) => p.onSpeaker!(e.currentTarget)}>{p.speaker}</button>
           ) : (
             <span className={speakerClass}>{p.speaker}</span>

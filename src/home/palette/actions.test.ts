@@ -17,7 +17,10 @@ const ids = (c: PaletteContext) => matchActions(c).map((m) => m.action.id);
 
 describe('matchActions', () => {
   it('lists the first actions whose `when` passes for an empty query', () => {
-    expect(ids(ctx(''))).toEqual(['go.inbox', 'go.tasks', 'go.meetings', 'meeting.record', 'meeting.import', 'go.agents']);
+    expect(ids(ctx(''))).toEqual([
+      'go.inbox', 'go.tasks', 'go.meetings', 'meeting.record', 'meeting.import', 'go.agents',
+      'go.integrations', 'go.categories', 'go.settings',
+    ]);
     expect(ids(ctx('')).length).toBe(MAX_ACTIONS);
   });
 

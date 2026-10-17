@@ -247,7 +247,7 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     app.state::<LlmServer>().stop().await;
     // Before the database and the recordings go: no capture thread may still write into them.
     if let Some(recorder) = app.try_state::<Recorder>() {
-        recorder.abort().await;
+        recorder.abort(app).await;
     }
     if let Some(queue) = app.try_state::<TranscribeQueue>() {
         queue.cancel_current();

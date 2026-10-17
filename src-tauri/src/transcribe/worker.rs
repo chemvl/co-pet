@@ -691,8 +691,7 @@ pub fn llm_model_ready(app: &AppHandle) {
 // ---------- imports ----------
 
 /// Imports an audio or video file as a meeting (`source = import`, the `transcribe.language`
-/// setting) and queues it. The file is decoded before the meeting exists, so the worker never
-/// sees a half-written track. Errors: `unsupportedAudio`.
+/// setting) and queues it. Errors: `unsupportedAudio`.
 pub async fn import(
     app: &AppHandle,
     path: &Path,
@@ -705,33 +704,56 @@ pub async fn import(
     let duration_ms = tauri::async_runtime::spawn_blocking(move || audio::decode_to_wav(&input, &out))
         .await
         .map_err(|e| AppError::msg(e.to_string()))??;
-    let id = {
-        let conn = app.state::<Db>().inner().conn();
-        let language: String = settings::get(&conn, "transcribe.language")?;
-        let device = export::device_id(&conn)?;
-        meetings::create(&conn, "import", &language, &device, started_at, title, source_item_id)?
-    };
-    let dir = app.state::<Paths>().recording_dir(&id);
-    let placed = std::fs::create_dir_all(&dir)
-        .and_then(|()| std::fs::rename(&tmp, dir.join("system-raw.wav")))
-        .map_err(AppError::from)
-        .and_then(|()| {
-            meetings::set_duration(&app.state::<Db>().conn(), &id, duration_ms as i64, false, true)
-        });
-    if let Err(e) = placed {
-        let _ = std::fs::remove_file(&tmp);
-        if let Err(e) = remove_dir(&dir) {
-            eprintln!("[transcribe] deleting {}: {e}", dir.display());
-        }
-        if let Err(e) = meetings::soft_delete(&app.state::<Db>().conn(), &id) {
-            eprintln!("[transcribe] deleting meeting {id}: {e}");
-        }
-        meetings::notify_changed(app, vec![id]);
-        return Err(e);
-    }
+    let id = place_import(
+        app.state::<Db>().inner(),
+        app.state::<Paths>().inner(),
+        &tmp,
+        title,
+        source_item_id,
+        started_at,
+        duration_ms as i64,
+    )?;
     meetings::notify_changed(app, vec![id.clone()]);
     poke(app);
     Ok(id)
+}
+
+/// Creates the import's meeting and moves the decoded track `tmp` into its folder as
+/// `system-raw.wav`, in one transaction under the connection lock: the worker can't see the
+/// queued row before its audio is in place, and on any error neither the row nor the folder
+/// (nor `tmp`) is left.
+fn place_import(
+    db: &Db,
+    paths: &Paths,
+    tmp: &Path,
+    title: &str,
+    source_item_id: Option<&str>,
+    started_at: i64,
+    duration_ms: i64,
+) -> AppResult<String> {
+    let conn = db.conn();
+    let mut dir = None;
+    let placed = (|| -> AppResult<String> {
+        let tx = conn.unchecked_transaction()?;
+        let language: String = settings::get(&tx, "transcribe.language")?;
+        let device = export::device_id(&tx)?;
+        let id = meetings::create(&tx, "import", &language, &device, started_at, title, source_item_id)?;
+        let d = dir.insert(paths.recording_dir(&id));
+        std::fs::create_dir_all(&*d)?;
+        std::fs::rename(tmp, d.join("system-raw.wav"))?;
+        meetings::set_duration(&tx, &id, duration_ms, false, true)?;
+        tx.commit()?;
+        Ok(id)
+    })();
+    if placed.is_err() {
+        let _ = std::fs::remove_file(tmp);
+        if let Some(dir) = dir {
+            if let Err(e) = remove_dir(&dir) {
+                eprintln!("[transcribe] deleting {}: {e}", dir.display());
+            }
+        }
+    }
+    placed
 }
 
 /// `import` of a file the user picked: titled after the file, started at its modification time.
@@ -1217,5 +1239,28 @@ mod tests {
         assert_eq!(meetings::get(&conn, &elsewhere).unwrap().state, "recording", "another Mac's recording");
         assert_eq!(meetings::get(&conn, &summarizing).unwrap().summary_state, "pending");
         assert_eq!(meetings::get(&conn, &interrupted).unwrap().state, "queued");
+    }
+
+    #[test]
+    fn import_places_audio_before_queueing() {
+        let s = setup();
+        let tmp = s.paths.tmp.join("import.wav");
+        wav(&tmp, 44_100, &tone(1, 44_100));
+        let id = place_import(&s.db, &s.paths, &tmp, "Call", None, 5_000, 1_000).unwrap();
+        assert!(!tmp.exists());
+        assert_eq!(files(&s.paths.recording_dir(&id)), ["system-raw.wav"]);
+        let m = meetings::get(&s.db.conn(), &id).unwrap();
+        assert_eq!(
+            (m.state.as_str(), m.source.as_str(), m.duration_ms, m.has_mic, m.has_system),
+            ("queued", "import", 1_000, false, true)
+        );
+        assert_eq!(meetings::queued_for(&s.db.conn(), &s.device).unwrap(), [id]);
+
+        // The decoded track is gone: no row (not even a deleted one) and no folder are left.
+        let err = place_import(&s.db, &s.paths, &tmp, "Call", None, 5_000, 1_000);
+        assert!(matches!(err, Err(AppError::Io(_))), "{err:?}");
+        let rows: i64 = s.db.conn().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 1);
+        assert_eq!(std::fs::read_dir(&s.paths.recordings).unwrap().count(), 1);
     }
 }

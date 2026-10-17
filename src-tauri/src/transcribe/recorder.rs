@@ -3,7 +3,7 @@
 //! (ScreenCaptureKit) at 16 kHz — both aligned to one clock that excludes pauses.
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::mpsc::{self, RecvTimeoutError, TryRecvError};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -117,28 +117,39 @@ impl TrackState {
 type Owner = fn(AppHandle, mpsc::Sender<Chunk>, mpsc::Receiver<()>, Arc<TrackState>, oneshot::Sender<Result<u32, String>>);
 
 /// One running track: the thread owning the capture stream and the thread writing its file.
+/// Dropping it without `finish` still ends both threads (the file is finalized, not joined).
 struct Track {
     rate: u32,
     state: Arc<TrackState>,
     stop: mpsc::Sender<()>,
-    owner: JoinHandle<()>,
+    owner: Option<JoinHandle<()>>,
     chunks: mpsc::Sender<Chunk>,
-    writer: JoinHandle<u64>,
+    writer: Option<JoinHandle<u64>>,
 }
 
 impl Track {
     /// Stops capture and finishes the file (blocking); returns its length in ms.
-    fn finish(self) -> i64 {
+    fn finish(mut self) -> i64 {
         let _ = self.stop.send(());
-        if self.owner.join().is_err() {
+        if self.owner.take().is_some_and(|h| h.join().is_err()) {
             eprintln!("[recorder] capture thread panicked");
         }
         let _ = self.chunks.send(Chunk::End);
-        let samples = self.writer.join().unwrap_or_else(|_| {
-            eprintln!("[recorder] writer thread panicked");
-            0
+        let samples = self.writer.take().map_or(0, |h| {
+            h.join().unwrap_or_else(|_| {
+                eprintln!("[recorder] writer thread panicked");
+                0
+            })
         });
         (samples * 1000 / u64::from(self.rate)) as i64
+    }
+}
+
+impl Drop for Track {
+    /// Non-blocking: the writer holds a `stop` sender, so the threads only end when told to.
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+        let _ = self.chunks.send(Chunk::End);
     }
 }
 
@@ -175,7 +186,7 @@ async fn start_track(
     // From here an early return drops `stop`, which ends the capture thread.
     let writer = TrackWriter::create(&path, rate)?;
     let writer = spawn_writer(app.clone(), name, writer, chunks_rx, clock.clone(), state.clone(), stop.clone())?;
-    Ok(Some(Track { rate, state, stop, owner, chunks, writer }))
+    Ok(Some(Track { rate, state, stop, owner: Some(owner), chunks, writer: Some(writer) }))
 }
 
 /// Writes chunks until `End`, dropping them while paused, and publishes the level (0 after
@@ -203,9 +214,10 @@ fn spawn_writer(
                     };
                     if let Err(e) = writer.push(&samples, active) {
                         eprintln!("[recorder] {name}: write failed: {e}");
+                        // `stop` first: the mic thread checks it before turning the track on.
+                        let _ = stop.send(());
                         state.on.store(false, Relaxed);
                         state.level.store(0f32.to_bits(), Relaxed);
-                        let _ = stop.send(());
                         emit_status(&app);
                         break;
                     }
@@ -330,6 +342,10 @@ fn mic_owner(
                 None
             }
         };
+        // Stopped meanwhile (e.g. the writer failed): never turn the track back on.
+        if !matches!(stop.try_recv(), Err(TryRecvError::Empty)) {
+            break;
+        }
         let on = current.is_some();
         if state.on.swap(on, Relaxed) != on {
             emit_status(&app);

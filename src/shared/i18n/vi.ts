@@ -106,7 +106,6 @@ export const vi: Record<keyof typeof en, string> = {
   'error.signedOut': 'Bạn đã bị đăng xuất. Đăng nhập lại để tiếp tục đồng bộ.',
   'error.decrypt': 'Co-pet không giải mã được dữ liệu này.',
   'error.fileElsewhere': 'File này đang ở máy Mac khác. File sẽ tải về khi đồng bộ xong, hoặc ở lại máy đó nếu vượt giới hạn dung lượng.',
-  'error.checksum': 'Tệp tải về bị hỏng. Hãy thử lại.',
 
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',

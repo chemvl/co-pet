@@ -8,6 +8,7 @@ import { speechDownload, speechPause } from '../../shared/ipc';
 import { SETTINGS_KEY, SPEECH_STATUS_KEY, useSetting, useSpeechStatus } from '../../shared/queries';
 import { useToast } from '../../shared/Toast';
 import type { PackStatus, SpeechPackId } from '../../shared/types';
+import { aiErrorReason } from './ModelCards';
 import { ProgressBar } from './parts';
 
 const PACK_COPY: Record<SpeechPackId, { name: I18nKey; desc: I18nKey }> = {
@@ -57,7 +58,7 @@ function PackTransfer({ pack }: { pack: PackStatus }) {
       line = t('settings.triage.verifying');
       break;
     default:
-      line = t('settings.triage.failed', { reason: errorMessage(t, pack.error ?? '') });
+      line = t('settings.triage.failed', { reason: aiErrorReason(t, pack.error) });
       action = { label: t('common.retry'), fn: () => speechDownload(pack.id) };
   }
   const act = action;

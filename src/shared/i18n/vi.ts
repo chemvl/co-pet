@@ -454,6 +454,10 @@ export const vi: Record<keyof typeof en, string> = {
 
   'tasks.title': 'Công việc',
   'tasks.new': 'Thêm công việc',
+  'tasks.saveAs': 'Lưu thành file',
+  'tasks.saveAs.markdown': 'Markdown (.md)',
+  'tasks.saveAs.csv': 'CSV cho bảng tính (.csv)',
+  'tasks.saved': 'Đã lưu {file}.',
   'tasks.show': 'Hiển thị',
   'tasks.openCount': 'Đang mở ({n})',
   'tasks.done': 'Đã xong',

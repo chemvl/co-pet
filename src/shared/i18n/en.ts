@@ -453,6 +453,10 @@ export const en = {
 
   'tasks.title': 'Tasks',
   'tasks.new': 'New task',
+  'tasks.saveAs': 'Save as file',
+  'tasks.saveAs.markdown': 'Markdown (.md)',
+  'tasks.saveAs.csv': 'CSV for spreadsheets (.csv)',
+  'tasks.saved': 'Saved {file}.',
   'tasks.show': 'Show',
   'tasks.openCount': 'Open ({n})',
   'tasks.done': 'Done',

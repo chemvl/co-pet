@@ -9,14 +9,15 @@ import { Button, Icon, SegmentedControl, StatusPill, TaskRow } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { formatEstimate } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
-import { exportTask, nextAction } from '../../shared/ipc';
+import { exportTask, nextAction, saveTasksFile } from '../../shared/ipc';
 import { useAddedBy, useIntegrations } from '../../shared/queries';
+import { useToast } from '../../shared/Toast';
 import type { TaskSummary } from '../../shared/types';
 import { isTypingTarget, useDelayed, useMediaQuery } from '../hooks';
 import { EmptyState, Skeleton } from '../InboxPage';
 import { exportPill, isReady, isRetrying, PROVIDER_NAME, PROVIDERS, retryInSeconds } from '../integrations/model';
 import { QueueLine } from '../integrations/parts';
-import { Menu, type MenuItem } from '../Menu';
+import { Menu, MenuButton, type MenuItem } from '../Menu';
 import { countsQuery, nextQuery, tasksQuery } from '../queries';
 import { navigate, type Route } from '../router';
 import { dueText, GROUP_KEYS, groupTasks, isDueSoon, type GroupKey } from './groups';
@@ -41,6 +42,7 @@ export function TasksPage({ route }: TasksPageProps): ReactElement {
   const t = useT();
   const lang = useLang();
   const actions = useTaskActions();
+  const toast = useToast();
   useSetSelection(route.new ? undefined : route.id, []);
   const wide = useMediaQuery('(min-width: 1100px)');
   const { data: c } = useQuery(countsQuery);
@@ -85,6 +87,14 @@ export function TasksPage({ route }: TasksPageProps): ReactElement {
   const listPath = view === 'open' ? 'tasks' : 'tasks/done';
   const close = useCallback(() => navigate(listPath), [listPath]);
   const open = (task: TaskSummary) => navigate(`tasks/${view}/${encodeURIComponent(task.id)}`);
+  const saveFile = async (format: 'markdown' | 'csv') => {
+    try {
+      const file = await saveTasksFile(view, format);
+      if (file) toast.show({ message: t('tasks.saved', { file }) });
+    } catch (e) {
+      actions.fail(e);
+    }
+  };
   const editing = !!route.new || route.id != null;
 
   const [menu, setMenu] = useState<{ task: TaskSummary; anchor: HTMLButtonElement } | null>(null);
@@ -211,6 +221,14 @@ export function TasksPage({ route }: TasksPageProps): ReactElement {
         onChange={(v) => navigate(v === 'open' ? 'tasks' : 'tasks/done')}
       />
       <div className="hm-grow" />
+      <MenuButton variant="quiet" size="sm" icon="export" align="end" menuLabel={t('tasks.saveAs')}
+        disabled={!list.isSuccess || ordered.length === 0}
+        items={[
+          { key: 'md', label: t('tasks.saveAs.markdown'), onSelect: () => void saveFile('markdown') },
+          { key: 'csv', label: t('tasks.saveAs.csv'), onSelect: () => void saveFile('csv') },
+        ]}>
+        {t('tasks.saveAs')}
+      </MenuButton>
       <Button variant="primary" size="sm" icon="plus" onClick={() => navigate('tasks/new')}>
         {t('tasks.new')}
       </Button>

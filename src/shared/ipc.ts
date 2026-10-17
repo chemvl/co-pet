@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
-  PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
+  PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskStatus, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
   MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider,
 } from './types';
@@ -214,6 +214,8 @@ export const exportTask = (taskId: string, provider: ExportProvider) =>
   invoke<TaskExportState>('export_task', { taskId, provider });
 /** Requeues this device's failed and queued jobs (of `provider`, or all). */
 export const retryExports = (provider?: ExportProvider) => invoke<void>('retry_exports', { provider: provider ?? null });
+/** Saves the open or done list through the save panel; the file name, or null when cancelled. */
+export const saveTasksFile = (view: TaskStatus, format: 'markdown' | 'csv') => invoke<string | null>('save_tasks_file', { view, format });
 
 // Phase 2 M5 — agents
 export const mcpStatus = () => invoke<McpStatus>('mcp_status');

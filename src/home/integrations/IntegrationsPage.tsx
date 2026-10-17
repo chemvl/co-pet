@@ -11,7 +11,7 @@ import { NotionCard } from './NotionCard';
 import './integrations.css';
 
 /** Exporters planned for later releases (product names, not translated). */
-const LATER = ['Linear', 'Todoist', 'Jira', 'GitHub Issues', 'Google Tasks', 'Markdown / CSV'] as const;
+const LATER = ['Linear', 'Todoist', 'Jira', 'GitHub Issues', 'Google Tasks'] as const;
 
 export function IntegrationsPage(): ReactElement {
   const t = useT();

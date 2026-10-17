@@ -515,7 +515,7 @@ function WhyBox({ item, variant }: { item: Item; variant: 'box' | 'line' }): Rea
             <div className="hm-meter" role="img" aria-label={t('item.why.confidenceA11y', { n: pct })}>
               <i style={{ width: `${pct}%` }} />
             </div>
-            <span className="caption hm-muted">{t('item.why.confidence', { n: pct })}</span>
+            <span className="caption hm-muted">{why.provider ? t('item.why.confidenceCloud', { n: pct, provider: why.provider }) : t('item.why.confidence', { n: pct })}</span>
           </>
         ) : null}
       </div>

@@ -2,6 +2,7 @@ import { Icon, SegmentedControl, Switch } from '../../../ds';
 import { formatSize } from '../../../shared/format';
 import { useLang, useT } from '../../../shared/i18n';
 import { useAiStatus, useSetSetting, useSetting } from '../../../shared/queries';
+import { activeCloud, providerName } from '../../integrations/cloudModel';
 import { ModelCards } from '../ModelCards';
 import { Group, SettingRow } from '../parts';
 
@@ -21,11 +22,15 @@ export function TriageSection() {
   const ready = !!status?.models.some((m) => m.id === activeId && m.downloaded);
   // Size of the model being fetched, else the recommended one.
   const pending = status?.models.find((m) => m.id === (status.modelId ?? status.recommendedId));
+  const cloud = activeCloud(status);
+  const providerLabel = cloud
+    ? `${providerName(cloud.id)}${cloud.ready ? '' : ` · ${t('integrations.ai.notSetUp')}`}`
+    : t('integrations.ai.local');
 
   return (
     <>
       <Group title={t('settings.triage.model')} desc={t('settings.triage.modelDesc')}>
-        {!ready ? (
+        {!ready && status?.cloud.provider === 'local' ? (
           <p className="st-info">
             <Icon name="idea" size={20} />
             <span>
@@ -38,6 +43,9 @@ export function TriageSection() {
         <ModelCards />
       </Group>
       <Group title={t('settings.triage')}>
+        <SettingRow label={t('settings.triage.provider')} desc={providerLabel}>
+          <a className="hm-link" href="#/integrations">{t('settings.triage.changeProvider')}</a>
+        </SettingRow>
         <Switch
           id="st-ai-enabled"
           label={t('settings.triage.aiEnabled')}

@@ -9,8 +9,10 @@ import {
   addActionToTasks, applyMeetingChange, copyMeetingMarkdown, ignoreMeetingChange, resummarizeMeeting, summarizeMeeting,
   undoMeetingChange,
 } from '../../shared/ipc';
+import { useAiStatus, useSetting } from '../../shared/queries';
 import { useToast } from '../../shared/Toast';
 import type { ActionItem, MeetingDetail, TaskChange } from '../../shared/types';
+import { activeCloud, providerName } from '../integrations/cloudModel';
 import { MenuButton } from '../Menu';
 import { taskQuery } from '../queries';
 import { formatDay, speakerName } from './segments';
@@ -54,6 +56,10 @@ export function SummaryPane({ meeting: m }: { meeting: MeetingDetail }): ReactEl
   const { show } = useToast();
   const fail = (e: unknown) => show({ message: errorMessage(t, e) });
   const [busy, setBusy] = useState<string | null>(null);
+  const { data: ai } = useAiStatus();
+  const cloudMeetings = useSetting<boolean>('ai.cloudMeetings', false);
+  const cloud = activeCloud(ai);
+  const provider = providerName(cloud?.id ?? ai?.cloud.provider ?? '');
   // Task titles for the change cards.
   const tasks = useQueries({ queries: m.changes.map((c) => ({ ...taskQuery(c.taskId), retry: false })) });
 
@@ -111,13 +117,24 @@ export function SummaryPane({ meeting: m }: { meeting: MeetingDetail }): ReactEl
           <span style={{ width: '70%' }} />
           <span style={{ width: '80%' }} />
         </span>
-        <p className="caption hm-muted">{t('meetings.summarizing')}</p>
+        <p className="caption hm-muted">
+          {cloud && cloudMeetings ? t('meetings.summarizingCloud', { provider }) : t('meetings.summarizing')}
+        </p>
       </div>
     );
-  } else if (m.summaryState === 'skipped' && m.summaryError === 'noModel') {
+  } else if (
+    m.summaryState === 'skipped' &&
+    (m.summaryError === 'noModel' || m.summaryError === 'notSetUp' || m.summaryError === 'cloudMeetingsOff')
+  ) {
     body = (
       <div className="mt-sp__msg">
-        <p className="caption hm-muted">{t('meetings.summary.noModel')}</p>
+        <p className="caption hm-muted">
+          {m.summaryError === 'notSetUp'
+            ? t('meetings.summary.notSetUp')
+            : m.summaryError === 'cloudMeetingsOff'
+              ? t('meetings.summary.cloudMeetingsOff', { provider })
+              : t('meetings.summary.noModel')}
+        </p>
         <a className="hm-link" href="#/integrations">{t('integrations.title')}</a>
       </div>
     );

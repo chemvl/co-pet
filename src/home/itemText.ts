@@ -2,6 +2,7 @@
 import { categoryLabelOf } from '../shared/categories';
 import type { Lang, TFunction } from '../shared/i18n';
 import { formatDate, formatSize, formatTime, joinMeta } from '../shared/format';
+import { providerName } from './integrations/cloudModel';
 import type { Category, ItemDetail, ItemEvent, ItemKind, ItemSummary, Json, SourceKind } from '../shared/types';
 
 const FILE_KINDS: readonly ItemKind[] = ['file', 'image', 'screenshot'];
@@ -74,6 +75,8 @@ export interface WhyText {
   text: string;
   /** 0..1, for the AI confidence bar */
   confidence?: number;
+  /** Cloud provider name when a cloud provider sorted the item */
+  provider?: string;
 }
 
 /** Renders the language-neutral `triage_reason` code. `modelSize` fills `none:no-model`. */
@@ -101,6 +104,17 @@ export function whyText(item: ItemSummary, t: TFunction, modelSize: string): Why
         return { text: t('item.why.rule') };
     }
   }
+  if (reason.startsWith('ai:')) {
+    const provider = providerName(reason.slice(3));
+    return {
+      text: t(item.categoryId === 'unsorted' ? 'item.why.aiCloudUnsure' : 'item.why.aiCloud', { provider }),
+      confidence: item.triageConfidence ?? undefined,
+      provider,
+    };
+  }
+  if (reason.startsWith('none:ai-error:')) {
+    return { text: t('item.why.aiCloudError', { provider: providerName(reason.slice('none:ai-error:'.length)) }) };
+  }
   if (reason === 'ai' || item.triageSource === 'ai') {
     return {
       text: item.categoryId === 'unsorted' ? t('item.why.aiUnsure') : t('item.why.ai'),
@@ -116,6 +130,8 @@ export function whyText(item: ItemSummary, t: TFunction, modelSize: string): Why
       return { text: t('item.why.aiOff') };
     case 'none:ai-error':
       return { text: t('item.why.aiError') };
+    case 'none:not-set-up':
+      return { text: t('item.why.notSetUp') };
   }
   return null;
 }
@@ -150,7 +166,11 @@ export function historyText(ev: ItemEvent, item: ItemDetail, t: TFunction, categ
       if (ev.actor === 'agent') return t('item.history.movedAgent', { category });
       const src = jsonField(ev.afterJson, 'triage_source');
       if (src === 'rule') return t('item.history.sortedRule', { category });
-      if (src === 'ai') return t('item.history.sortedAi', { category });
+      if (src === 'ai') {
+        const reason = jsonField(ev.afterJson, 'triage_reason');
+        if (reason?.startsWith('ai:')) return t('item.history.sortedCloud', { category, provider: providerName(reason.slice(3)) });
+        return t('item.history.sortedAi', { category });
+      }
       return t('item.history.sorted', { category });
     }
     default:

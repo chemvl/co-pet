@@ -10,6 +10,7 @@ import { categoryColor, categoryIcon, categoryLabel } from '../shared/categories
 import { useT, type TFunction } from '../shared/i18n';
 import { useAiStatus, useCategories, useSettings } from '../shared/queries';
 import type { AiStatus } from '../shared/types';
+import { activeCloud, providerName } from './integrations/cloudModel';
 import { countsQuery } from './queries';
 
 /** `inbox`, `tasks`, `meetings`, `agents`, `pet`, `integrations`, `settings` or a category id; empty for none. */
@@ -18,6 +19,8 @@ export type NavKey = string;
 const IDLE_PARTS = poseFor('idle').parts;
 
 function modelStatus(ai: AiStatus | undefined, t: TFunction): string {
+  const cloud = activeCloud(ai);
+  if (cloud) return cloud.ready ? t('ai.cloudReady', { provider: providerName(cloud.id) }) : t('ai.rulesOnly');
   if (ai?.state === 'ready') return t('ai.ready');
   if ((ai?.state === 'downloading' || ai?.state === 'verifying') && ai.bytesTotal > 0) {
     return t('ai.downloading', { percent: Math.floor((ai.bytesDone / ai.bytesTotal) * 100) });

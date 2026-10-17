@@ -1,6 +1,7 @@
 import { useT, type I18nKey } from '../../../shared/i18n';
-import { useSetSetting, useSetting } from '../../../shared/queries';
+import { useAiStatus, useSetSetting, useSetting } from '../../../shared/queries';
 import type { MeetingLanguage } from '../../../shared/types';
+import { activeCloud, providerName } from '../../integrations/cloudModel';
 import { Group, SettingRow } from '../parts';
 import { SpeechModelCards } from '../SpeechModelCards';
 
@@ -22,6 +23,9 @@ const SUMMARY_LANGUAGES: readonly { value: 'meeting' | 'en' | 'vi' | 'zh'; label
 
 export function TranscribeSection() {
   const t = useT();
+  const { data: ai } = useAiStatus();
+  const cloud = activeCloud(ai);
+  const cloudMeetings = useSetting<boolean>('ai.cloudMeetings', false);
   const set = useSetSetting();
   const language = useSetting<MeetingLanguage>('transcribe.language', 'auto');
   const summaryLanguage = useSetting<string>('transcribe.summaryLanguage', 'meeting');
@@ -59,7 +63,11 @@ export function TranscribeSection() {
           </select>
         </SettingRow>
       </Group>
-      <p className="st-body">{t('settings.transcribe.caption')}</p>
+      <p className="st-body">
+        {cloud && cloudMeetings
+          ? t('settings.transcribe.captionCloud', { provider: providerName(cloud.id) })
+          : t('settings.transcribe.caption')}
+      </p>
     </>
   );
 }

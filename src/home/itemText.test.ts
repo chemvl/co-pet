@@ -78,3 +78,22 @@ describe('meeting items', () => {
     expect(rowMeta({ ...note, meetingId: 'm1' }, t, 'en')).toBe('Meeting recording · Thu 15 Oct');
   });
 });
+
+describe('cloud providers', () => {
+  it('cloud reasons name the provider', () => {
+    const cloud = { ...item, triageReason: 'ai:anthropic' };
+    expect(whyText(cloud, t, '1 GB')).toEqual({ text: 'Sorted by Anthropic', confidence: 0.9, provider: 'Anthropic' });
+    expect(whyText({ ...cloud, categoryId: 'unsorted' }, t, '1 GB')?.text).toBe("Anthropic wasn't sure. Pick one of its suggestions.");
+    expect(whyText({ ...item, triageSource: 'none', triageReason: 'none:ai-error:lmstudio' }, t, '1 GB')).toEqual({
+      text: "LM Studio couldn't sort this one. Pick a category.",
+    });
+    const ev = event({ actor: 'triage', afterJson: { category_id: 'read', triage_source: 'ai', triage_reason: 'ai:ollama' } });
+    expect(historyText(ev, item, t, undefined)).toBe('Sorted into Read later by Ollama');
+  });
+
+  it('not set up text', () => {
+    expect(whyText({ ...item, triageSource: 'none', triageReason: 'none:not-set-up' }, t, '1 GB')).toEqual({
+      text: 'Sorting with rules until the AI provider is set up in Integrations.',
+    });
+  });
+});

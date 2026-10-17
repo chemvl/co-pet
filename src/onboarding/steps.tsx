@@ -199,6 +199,7 @@ export function AiStep(props: { look: Species; skin: SkinId; status: AiStatus | 
               : t('ai.rulesUntilDownload', { size: selectedModel ? formatSize(selectedModel.bytes, lang) : '' })}
         </span>
       </p>
+      <p className="caption ob-caption">{t('onboarding.ai.cloudLater')}</p>
     </SideLayout>
   );
 }

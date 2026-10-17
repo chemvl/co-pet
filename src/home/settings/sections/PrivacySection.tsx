@@ -1,6 +1,7 @@
 import { Switch } from '../../../ds';
 import { useT } from '../../../shared/i18n';
-import { useSetSetting, useSetting } from '../../../shared/queries';
+import { useAiStatus, useSetSetting, useSetting } from '../../../shared/queries';
+import { activeCloud, providerName } from '../../integrations/cloudModel';
 import { Group, SettingRow } from '../parts';
 
 const RETENTION_DAYS = [7, 30, 90];
@@ -10,6 +11,9 @@ export function PrivacySection({ onNavigate }: { onNavigate: (route: string) => 
   const set = useSetSetting();
   const secrets = useSetting<boolean>('privacy.secretDetection', true);
   const localOnly = useSetting<boolean>('privacy.localOnly', false);
+  const cloudMeetings = useSetting<boolean>('ai.cloudMeetings', false);
+  const { data: ai } = useAiStatus();
+  const cloud = activeCloud(ai);
   const retention = useSetting<number | null>('transcribe.audioRetentionDays', 30);
   return (
     <>
@@ -28,6 +32,12 @@ export function PrivacySection({ onNavigate }: { onNavigate: (route: string) => 
           checked={localOnly}
           onChange={(v) => void set('privacy.localOnly', v)}
         />
+        {cloud ? (
+          <p className="st-body">
+            {t('settings.privacy.cloudNote', { provider: providerName(cloud.id) })}{' '}
+            {t(cloudMeetings ? 'settings.privacy.cloudMeetingsOn' : 'settings.privacy.cloudMeetingsOff')}
+          </p>
+        ) : null}
         <SettingRow label={t('settings.privacy.keepAudio')} desc={t('settings.privacy.keepAudioDesc')} htmlFor="st-keep-audio">
           <select
             id="st-keep-audio"

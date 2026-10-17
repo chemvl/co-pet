@@ -95,10 +95,11 @@ fn map_event(r: &Row<'_>) -> rusqlite::Result<ItemEvent> {
         item_id: r.get(1)?,
         at: r.get(2)?,
         actor: r.get(3)?,
-        action: r.get(4)?,
-        before_json: parse(r.get(5)?),
-        after_json: parse(r.get(6)?),
-        undone_at: r.get(7)?,
+        client_id: r.get(4)?,
+        action: r.get(5)?,
+        before_json: parse(r.get(6)?),
+        after_json: parse(r.get(7)?),
+        undone_at: r.get(8)?,
     })
 }
 
@@ -260,7 +261,8 @@ pub fn recategorize(
 }
 
 /// `recategorize` inside the caller's transaction. A `user` move marks the source/reason
-/// `user`; `teach` also records a `category_examples` row per non-sensitive item.
+/// `user`; an agent move marks the reason `agent`; `teach` also records a
+/// `category_examples` row per non-sensitive item.
 pub fn recategorize_in(
     tx: &Transaction,
     ids: &[String],
@@ -282,8 +284,9 @@ pub fn recategorize_in(
                 params![id, category_id, now],
             )?;
         } else {
+            // The old reason would claim the model or a rule chose this category.
             tx.execute(
-                "UPDATE items SET category_id = ?2, updated_at = ?3 WHERE id = ?1",
+                "UPDATE items SET category_id = ?2, triage_reason = 'agent', updated_at = ?3 WHERE id = ?1",
                 params![id, category_id, now],
             )?;
         }
@@ -414,7 +417,7 @@ pub fn undo_event(conn: &mut Connection, event_id: &str) -> AppResult<String> {
     let tx = conn.transaction()?;
     let ev = tx
         .query_row(
-            "SELECT id, item_id, at, actor, action, before_json, after_json, undone_at
+            "SELECT id, item_id, at, actor, client_id, action, before_json, after_json, undone_at
              FROM item_events WHERE id = ?1",
             [event_id],
             map_event,
@@ -634,7 +637,7 @@ pub fn list_items(conn: &Connection, q: &ItemQuery, paths: &Paths) -> AppResult<
 pub fn get_item_detail(conn: &Connection, id: &str, paths: &Paths) -> AppResult<ItemDetail> {
     let mut row = get_row(conn, id)?;
     let mut stmt = conn.prepare(
-        "SELECT id, item_id, at, actor, action, before_json, after_json, undone_at
+        "SELECT id, item_id, at, actor, client_id, action, before_json, after_json, undone_at
          FROM item_events WHERE item_id = ?1 ORDER BY at DESC, id DESC",
     )?;
     let events = stmt
@@ -1019,5 +1022,18 @@ mod tests {
         undo_event(&mut conn, &ev).unwrap();
         assert!(get_row(&conn, &id).unwrap().tags.is_empty());
         assert!(matches!(archive(&mut conn, &[id], &Actor::Next), Err(AppError::Code("invalid"))));
+    }
+
+    #[test]
+    fn agent_recategorize_marks_reason_agent() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = triaged(&mut conn, "Note", "h1");
+        let ev = recategorize(&mut conn, &[id.clone()], "read", &Actor::Agent("client-1".into())).unwrap();
+        let row = get_row(&conn, &id).unwrap();
+        assert_eq!((row.category_id.as_str(), row.triage_reason.as_deref()), ("read", Some("agent")));
+        let detail = get_item_detail(&conn, &id, &Paths::new("/tmp/copet-test".into())).unwrap();
+        let event = detail.events.iter().find(|e| e.id == ev[0]).unwrap();
+        assert_eq!(event.client_id.as_deref(), Some("client-1"));
     }
 }

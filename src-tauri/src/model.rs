@@ -202,6 +202,7 @@ pub struct ItemEvent {
     pub item_id: String,
     pub at: i64,
     pub actor: String,
+    pub client_id: Option<String>,
     pub action: String,
     pub before_json: Option<Value>,
     pub after_json: Option<Value>,

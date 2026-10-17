@@ -81,6 +81,7 @@ export function whyText(item: ItemSummary, t: TFunction, modelSize: string): Why
   const reason = item.triageReason;
   if (!reason) return null;
   if (reason === 'user') return { text: t('item.why.user') };
+  if (reason === 'agent') return { text: t('item.why.agent') };
   if (reason.startsWith('rule:')) {
     const [, kind, ...rest] = reason.split(':');
     const value = rest.join(':');
@@ -145,6 +146,7 @@ export function historyText(ev: ItemEvent, item: ItemDetail, t: TFunction, categ
       const cat = jsonField(ev.afterJson, 'category_id');
       const category = cat ? categoryLabelOf(categories, cat, t) : '';
       if (ev.actor === 'user') return t('item.history.moved', { category });
+      if (ev.actor === 'agent') return t('item.history.movedAgent', { category });
       const src = jsonField(ev.afterJson, 'triage_source');
       if (src === 'rule') return t('item.history.sortedRule', { category });
       if (src === 'ai') return t('item.history.sortedAi', { category });

@@ -79,13 +79,14 @@ export interface ItemSummary {
 }
 
 export type EventAction =
-  | 'captured' | 'recategorize' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'restore';
+  | 'captured' | 'recategorize' | 'tag' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'restore';
 
 export interface ItemEvent {
   id: string;
   itemId: string;
   at: number;
-  actor: 'user' | 'triage';
+  actor: 'user' | 'triage' | 'agent';
+  clientId: string | null;
   action: EventAction;
   beforeJson: Json | null;
   afterJson: Json | null;

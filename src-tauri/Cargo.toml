@@ -59,6 +59,11 @@ toml_edit = "0.25.17"
 hkdf = "0.13"
 hmac = "0.13"
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
+cpal = "0.18.2"
+hound = "3.5.1"
+block2 = "0.6"
+screencapturekit = { version = "8", features = ["macos_13_0"] }
+objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
 
 [profile.release]
 codegen-units = 1

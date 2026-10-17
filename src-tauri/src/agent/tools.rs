@@ -14,7 +14,7 @@ use serde_json::{json, Map, Value};
 use crate::agent::activity::{self, Entry};
 use crate::agent::clients::{self, Client, ClientRef};
 use crate::capture::{char_prefix, CaptureInput, CaptureSource};
-use crate::db::{categories, items, now_ms, settings, tasks, Db};
+use crate::db::{categories, items, meetings, now_ms, search, settings, tasks, Db};
 use crate::error::AppError;
 use crate::export::{self, Provider};
 use crate::i18n::Lang;
@@ -30,11 +30,13 @@ const TAG_MAX_CHARS: usize = 50;
 const TITLE_MAX_CHARS: usize = 300;
 
 /// Every tool and whether it writes.
-const TOOLS: [(&str, bool); 10] = [
+const TOOLS: [(&str, bool); 12] = [
     ("search_items", false),
     ("get_item", false),
     ("list_tasks", false),
     ("whats_next", false),
+    ("list_meetings", false),
+    ("get_meeting", false),
     ("add_item", true),
     ("update_item", true),
     ("create_task", true),
@@ -184,6 +186,8 @@ fn run(host: &impl Host, who: &Client, tool: &str, args: Value, log: &mut Entry,
         "get_item" => get_item(host, parse(args)?, log),
         "list_tasks" => list_tasks(host, parse(args)?, log),
         "whats_next" => whats_next(host, parse(args)?, log),
+        "list_meetings" => list_meetings(host, parse(args)?, log),
+        "get_meeting" => get_meeting(host, parse(args)?, log),
         "add_item" => add_item(host, who, parse(args)?, log),
         "update_item" => update_item(host, who, parse(args)?, log, fx),
         "create_task" => create_task(host, who, parse(args)?, log, fx),
@@ -235,6 +239,15 @@ fn visible_task(conn: &Connection, id: &str) -> Result<(), ToolError> {
     }
 }
 
+/// `YYYY-MM-DD` → local midnight in ms.
+fn parse_since(d: &str) -> Result<i64, ToolError> {
+    NaiveDate::parse_from_str(d, "%Y-%m-%d")
+        .ok()
+        .and_then(|d| Local.from_local_datetime(&d.and_time(NaiveTime::MIN)).earliest())
+        .map(|d| d.timestamp_millis())
+        .ok_or_else(|| ToolError::invalid("since must look like 2026-10-17."))
+}
+
 /// `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM` → normalized `(due_date, due_time)`.
 fn parse_due(due: &str) -> Result<(String, Option<String>), ToolError> {
     let bad = || ToolError::invalid("due must look like 2026-10-17 or 2026-10-17T14:30.");
@@ -275,6 +288,7 @@ fn task_json(conn: &Connection, t: &TaskSummary) -> Result<Value, ToolError> {
         "estimateMin": t.estimate_min,
         "notes": notes,
         "sourceItemId": t.source_item_id,
+        "sourceMeetingId": t.source_meeting_id,
         "export": t.export.as_ref().map(|e| json!({
             "provider": e.provider,
             "state": e.state,
@@ -299,17 +313,7 @@ fn search_items(host: &impl Host, a: SearchArgs, log: &mut Entry) -> ToolResult 
     if !(1..=50).contains(&limit) {
         return Err(ToolError::invalid("limit must be 1 to 50."));
     }
-    let since = a
-        .since
-        .as_deref()
-        .map(|d| {
-            NaiveDate::parse_from_str(d, "%Y-%m-%d")
-                .ok()
-                .and_then(|d| Local.from_local_datetime(&d.and_time(NaiveTime::MIN)).earliest())
-                .map(|d| d.timestamp_millis())
-                .ok_or_else(|| ToolError::invalid("since must look like 2026-10-17."))
-        })
-        .transpose()?;
+    let since = a.since.as_deref().map(parse_since).transpose()?;
     let lang = host.lang();
     let conn = host.db().conn();
     if let Some(cat) = &a.category {
@@ -489,6 +493,171 @@ fn whats_next(host: &impl Host, _: NoArgs, log: &mut Entry) -> ToolResult {
         None => json!({ "count": 0 }),
     };
     Ok(serde_json::to_value(card).map_err(AppError::from)?)
+}
+
+/// The meetings agents may see: live, done, with an agent-visible item. Columns are qualified
+/// with `meetings.`.
+fn meeting_visible_sql() -> String {
+    format!(
+        "meetings.deleted_at IS NULL AND meetings.state = 'done' AND EXISTS \
+         (SELECT 1 FROM items WHERE items.meeting_id = meetings.id AND {})",
+        items::AGENT_VISIBLE
+    )
+}
+
+fn visible_meeting(conn: &Connection, id: &str) -> Result<meetings::MeetingRow, ToolError> {
+    let visible: bool = conn.query_row(
+        &format!("SELECT EXISTS (SELECT 1 FROM meetings WHERE meetings.id = ?1 AND {})", meeting_visible_sql()),
+        [id],
+        |r| r.get(0),
+    )?;
+    if !visible {
+        return Err(ToolError::not_found("meeting"));
+    }
+    Ok(meetings::get(conn, id)?)
+}
+
+/// Rounded minutes, at least 1.
+fn duration_min(ms: i64) -> i64 {
+    ((ms + 30_000) / 60_000).max(1)
+}
+
+/// The detected language codes, else the chosen ones (none for `auto`).
+fn meeting_languages(m: &meetings::MeetingRow) -> Vec<String> {
+    if m.langs.is_empty() {
+        m.language.split('+').filter(|c| *c != "auto").map(String::from).collect()
+    } else {
+        m.langs.clone()
+    }
+}
+
+fn speaker_names(m: &meetings::MeetingRow, lang: Lang) -> Vec<String> {
+    m.speakers.iter().map(|s| meetings::display_name(s, lang)).collect()
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ListMeetingsArgs {
+    query: Option<String>,
+    since: Option<String>,
+    limit: Option<i64>,
+}
+
+fn list_meetings(host: &impl Host, a: ListMeetingsArgs, log: &mut Entry) -> ToolResult {
+    let limit = a.limit.unwrap_or(20);
+    if !(1..=50).contains(&limit) {
+        return Err(ToolError::invalid("limit must be 1 to 50."));
+    }
+    let since = a.since.as_deref().map(parse_since).transpose()?.unwrap_or(i64::MIN);
+    let tokens: Vec<String> =
+        a.query.as_deref().map(|q| search::fold(q).split_whitespace().map(String::from).collect()).unwrap_or_default();
+    let lang = host.lang();
+    let conn = host.db().conn();
+    let ids: Vec<String> = conn
+        .prepare(&format!(
+            "SELECT meetings.id FROM meetings WHERE {} AND meetings.started_at >= ?1 \
+             ORDER BY meetings.started_at DESC, meetings.id DESC",
+            meeting_visible_sql()
+        ))?
+        .query_map([since], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut out = Vec::new();
+    for id in ids {
+        if out.len() as i64 >= limit {
+            break;
+        }
+        let m = meetings::get(&conn, &id)?;
+        if !tokens.is_empty() {
+            let hay = search::fold(&format!("{}\n{}", m.title, m.summary.join("\n")));
+            if !tokens.iter().all(|t| hay.contains(t.as_str())) {
+                continue;
+            }
+        }
+        out.push(json!({
+            "id": m.id,
+            "title": m.title,
+            "startedAt": iso(m.started_at),
+            "durationMin": duration_min(m.duration_ms),
+            "languages": meeting_languages(&m),
+            "speakers": speaker_names(&m, lang),
+            "summary": m.summary,
+            "actionItems": m.actions.len(),
+        }));
+    }
+    let mut detail = Map::new();
+    if let Some(query) = a.query {
+        detail.insert("query".into(), Value::String(query));
+    }
+    detail.insert("count".into(), Value::from(out.len()));
+    log.detail = Value::Object(detail);
+    Ok(Value::Array(out))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+enum MeetingFormat {
+    #[default]
+    Markdown,
+    Json,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GetMeetingArgs {
+    id: String,
+    #[serde(default)]
+    format: MeetingFormat,
+    transcript: Option<bool>,
+}
+
+fn get_meeting(host: &impl Host, a: GetMeetingArgs, log: &mut Entry) -> ToolResult {
+    let lang = host.lang();
+    let conn = host.db().conn();
+    let m = visible_meeting(&conn, &a.id)?;
+    let transcript = a.transcript.unwrap_or(true);
+    log.detail = json!({ "id": m.id, "title": m.title });
+    Ok(match a.format {
+        MeetingFormat::Markdown => {
+            Value::String(char_prefix(&meetings::markdown(&m, lang, transcript), CONTENT_MAX).to_owned())
+        }
+        MeetingFormat::Json => {
+            let mut out = json!({
+                "id": m.id,
+                "title": m.title,
+                "startedAt": iso(m.started_at),
+                "durationMin": duration_min(m.duration_ms),
+                "languages": meeting_languages(&m),
+                "speakers": speaker_names(&m, lang),
+                "summary": m.summary,
+                "decisions": m.decisions,
+                "actionItems": m.actions.iter().map(|ai| json!({
+                    "text": ai.text,
+                    "owner": match &ai.owner_key {
+                        Some(key) => Some(meetings::speaker_name(&m, key, lang)),
+                        None => ai.owner.clone(),
+                    },
+                    "due": ai.due,
+                    "taskId": ai.task_id,
+                })).collect::<Vec<_>>(),
+                "questions": m.questions,
+            });
+            if transcript {
+                out["transcript"] = m
+                    .transcript
+                    .iter()
+                    .map(|s| {
+                        let secs = s.start_ms.max(0) / 1000;
+                        json!({
+                            "start": format!("{:02}:{:02}", secs / 60, secs % 60),
+                            "speaker": meetings::speaker_name(&m, &s.speaker, lang),
+                            "text": s.text,
+                        })
+                    })
+                    .collect();
+            }
+            out
+        }
+    })
 }
 
 // ---------- writes ----------
@@ -873,6 +1042,77 @@ pub(crate) mod tests {
 
     fn ids(v: &Value) -> Vec<&str> {
         v.as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap()).collect()
+    }
+
+    /// A done meeting with a transcript, notes and its Inbox item (category `meeting`).
+    fn done_meeting(h: &TestHost, title: &str, sensitive: bool) -> String {
+        use crate::model::{Speaker, TranscriptSeg};
+        let mut conn = h.db.conn();
+        let id = meetings::create(&conn, "recording", "en", "d1", 1_000, title, None).unwrap();
+        let seg = TranscriptSeg {
+            start_ms: 65_000,
+            end_ms: 66_000,
+            speaker: "me".into(),
+            text: "Let's ship Friday".into(),
+            lang: "en".into(),
+        };
+        let me = Speaker { key: "me".into(), name: None };
+        meetings::save_transcript(&conn, &id, &[seg], &[me], &["en".into()], false).unwrap();
+        meetings::save_notes(&conn, &id, None, &["Release plan agreed".into()], &[], &[], "en").unwrap();
+        meetings::set_state(&conn, &id, "done", None).unwrap();
+        let item = items::MeetingItem {
+            meeting_id: id.clone(),
+            title: title.into(),
+            summary: Some("Release plan agreed".into()),
+            payload: format!("# {title}"),
+            sensitive,
+            captured_at: 1_000,
+        };
+        items::upsert_meeting_item(&mut conn, &item).unwrap();
+        id
+    }
+
+    #[test]
+    fn meeting_in_hidden_category_is_not_found() {
+        let h = TestHost::new();
+        let id = done_meeting(&h, "Standup", false);
+        assert!(call(&h, "cursor", "get_meeting", json!({ "id": id })).is_ok());
+        h.db.conn().execute("UPDATE categories SET exclude_from_mcp = 1 WHERE id = 'meeting'", []).unwrap();
+        let missing = call(&h, "cursor", "get_meeting", json!({ "id": "no-such-id" })).unwrap_err();
+        let err = call(&h, "cursor", "get_meeting", json!({ "id": id })).unwrap_err();
+        assert_eq!(err, missing);
+        assert_eq!(err.code, "notFound");
+        let listed = call(&h, "cursor", "list_meetings", json!({})).unwrap();
+        assert!(ids(&listed).is_empty());
+    }
+
+    #[test]
+    fn sensitive_meeting_not_listed() {
+        let h = TestHost::new();
+        let plain = done_meeting(&h, "Standup", false);
+        let secret = done_meeting(&h, "Salary review", true);
+        let listed = call(&h, "cursor", "list_meetings", json!({})).unwrap();
+        assert_eq!(ids(&listed), [plain.as_str()]);
+        assert_eq!(listed[0]["summary"], json!(["Release plan agreed"]));
+        assert_eq!(listed[0]["speakers"], json!(["Me"]));
+        let found = call(&h, "cursor", "list_meetings", json!({ "query": "RELEASE standup" })).unwrap();
+        assert_eq!(ids(&found), [plain.as_str()]);
+        let none = call(&h, "cursor", "list_meetings", json!({ "query": "salary" })).unwrap();
+        assert!(ids(&none).is_empty());
+        assert_eq!(call(&h, "cursor", "get_meeting", json!({ "id": secret })).unwrap_err().code, "notFound");
+    }
+
+    #[test]
+    fn get_meeting_markdown_has_transcript_by_default() {
+        let h = TestHost::new();
+        let id = done_meeting(&h, "Standup", false);
+        let md = call(&h, "cursor", "get_meeting", json!({ "id": id })).unwrap();
+        assert!(md.as_str().unwrap().contains("[01:05] Me: Let's ship Friday"), "{md}");
+        let short = call(&h, "cursor", "get_meeting", json!({ "id": id, "transcript": false })).unwrap();
+        assert!(!short.as_str().unwrap().contains("Let's ship Friday"));
+        let js = call(&h, "cursor", "get_meeting", json!({ "id": id, "format": "json" })).unwrap();
+        assert_eq!(js["transcript"], json!([{ "start": "01:05", "speaker": "Me", "text": "Let's ship Friday" }]));
+        assert_eq!(call(&h, "cursor", "get_meeting", json!({ "id": id, "format": "html" })).unwrap_err().code, "invalid");
     }
 
     #[test]

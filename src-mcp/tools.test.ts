@@ -16,6 +16,16 @@ describe('tool argument schemas', () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data).toEqual({ id: 't1', due: null });
   });
+
+  it('list_meetings rejects limit: 51', () => {
+    expect(argSchemas.list_meetings.safeParse({ limit: 51 }).success).toBe(false);
+    expect(argSchemas.list_meetings.safeParse({ limit: 50 }).success).toBe(true);
+  });
+
+  it("get_meeting rejects format: 'html'", () => {
+    expect(argSchemas.get_meeting.safeParse({ id: 'm1', format: 'html' }).success).toBe(false);
+    expect(argSchemas.get_meeting.safeParse({ id: 'm1', format: 'json' }).success).toBe(true);
+  });
 });
 
 describe('stdioClient', () => {

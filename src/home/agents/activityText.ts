@@ -42,6 +42,15 @@ export function activityText(row: ActivityRow, t: TFunction, categories?: readon
       return t('agents.act.read', { title });
     case 'list_tasks':
       return t('agents.act.tasks', { results: results(d.count, t) });
+    case 'list_meetings': {
+      const query = str(d.query);
+      const count = results(d.count, t);
+      return query
+        ? t('agents.act.searchMeetings', { query, results: count })
+        : t('agents.act.meetings', { results: count });
+    }
+    case 'get_meeting':
+      return t('agents.act.readMeeting', { title });
     case 'whats_next':
       return title ? t('agents.act.next', { title }) : t('agents.act.nextNone');
     case 'add_item':

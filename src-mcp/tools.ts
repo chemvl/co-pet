@@ -1,5 +1,5 @@
-// The ten Co-pet tools and the `item://{id}` resources. Every call goes to Co-pet, which checks
-// permissions and visibility, does the work and logs it.
+// The twelve Co-pet tools and the `item://{id}` and `meeting://{id}` resources. Every call goes
+// to Co-pet, which checks permissions and visibility, does the work and logs it.
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ const id = z.string().min(1);
 const due = z.string().describe('2026-10-17, or 2026-10-17T14:30 for a time.');
 const priority = z.number().int().min(0).max(3).describe('0 none to 3 high.');
 const estimateMin = z.number().int().min(1).max(1440).describe('Estimate in minutes.');
+const date = z.string().describe('A date like 2026-10-17.');
 
 /// Argument shapes, as Co-pet's socket API takes them.
 export const shapes = {
@@ -34,6 +35,16 @@ export const shapes = {
     limit: z.number().int().min(1).max(100).optional().describe('1 to 100, default 50.'),
   },
   whats_next: {},
+  list_meetings: {
+    query: z.string().optional().describe('Words that must all appear in the title or summary.'),
+    since: date.optional().describe('Only meetings started on or after this date, like 2026-10-17.'),
+    limit: z.number().int().min(1).max(50).optional().describe('1 to 50, default 20.'),
+  },
+  get_meeting: {
+    id,
+    format: z.enum(['markdown', 'json']).optional().describe('Default markdown.'),
+    transcript: z.boolean().optional().describe('Default true'),
+  },
   add_item: {
     text: z.string().optional(),
     url: z.string().optional(),
@@ -75,6 +86,8 @@ export const argSchemas = {
   get_item: z.object(shapes.get_item),
   list_tasks: z.object(shapes.list_tasks),
   whats_next: z.object(shapes.whats_next),
+  list_meetings: z.object(shapes.list_meetings),
+  get_meeting: z.object(shapes.get_meeting),
   add_item: z
     .object(shapes.add_item)
     .refine((a) => [a.text, a.url, a.filePath].filter((v) => v !== undefined).length === 1, ONE_SOURCE),
@@ -90,6 +103,8 @@ const descriptions: Record<ToolName, string> = {
   get_item: "Returns one item's full content.",
   list_tasks: "Lists Co-pet's tasks, filtered by status and due date.",
   whats_next: 'Returns the task Co-pet suggests doing next, or null.',
+  list_meetings: 'Lists recorded meetings with their summary, newest first.',
+  get_meeting: "Returns one meeting's summary, decisions, action items, open questions and transcript.",
   add_item: `Saves text, a URL or a file to Co-pet as a new item. ${UNDO}`,
   update_item: `Moves an item to a category, replaces its tags or archives it. ${UNDO}`,
   create_task: `Creates a task in Co-pet. ${UNDO}`,
@@ -98,7 +113,7 @@ const descriptions: Record<ToolName, string> = {
   export_task: `Sends a task to Notion or Asana. ${UNDO}`,
 };
 
-/// Registers the tools and the `item://{id}` resource template on `server`.
+/// Registers the tools and the `item://{id}` and `meeting://{id}` resource templates on `server`.
 export function registerTools(server: McpServer, call: Call) {
   for (const name of Object.keys(shapes) as ToolName[]) {
     server.tool(name, descriptions[name], shapes[name], async (args: unknown): Promise<CallToolResult> => {
@@ -127,6 +142,23 @@ export function registerTools(server: McpServer, call: Call) {
     async (uri, { id }) => {
       const item = (await call('get_item', { id: String(id), format: 'markdown' })) as { content: string };
       return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: item.content }] };
+    },
+  );
+
+  server.registerResource(
+    'meeting',
+    new ResourceTemplate('meeting://{id}', {
+      list: async () => {
+        const meetings = (await call('list_meetings', { limit: 50 })) as { id: string; title: string }[];
+        return {
+          resources: meetings.map((m) => ({ uri: `meeting://${m.id}`, name: m.title, mimeType: 'text/markdown' })),
+        };
+      },
+    }),
+    { description: 'A Co-pet meeting as markdown.', mimeType: 'text/markdown' },
+    async (uri, { id }) => {
+      const text = (await call('get_meeting', { id: String(id), format: 'markdown' })) as string;
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text }] };
     },
   );
 }

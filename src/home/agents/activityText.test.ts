@@ -45,6 +45,19 @@ describe('activityText', () => {
     expect(activityText(row('whats_next', { count: 0 }), en)).toBe('Asked what’s next · nothing to suggest');
   });
 
+  it('formats meeting reads', () => {
+    expect(activityText(row('list_meetings', { count: 4 }), en)).toBe('Listed meetings · 4 results');
+    expect(activityText(row('list_meetings', { count: 4 }), vi)).toBe('Liệt kê cuộc họp · 4 kết quả');
+    expect(activityText(row('list_meetings', { query: 'release', count: 1 }), en)).toBe(
+      'Searched meetings for “release” · 1 result',
+    );
+    expect(activityText(row('list_meetings', { query: 'release', count: 2 }), vi)).toBe(
+      'Tìm cuộc họp “release” · 2 kết quả',
+    );
+    expect(activityText(row('get_meeting', { id: 'm1', title: 'Standup' }), en)).toBe('Read meeting “Standup”');
+    expect(activityText(row('get_meeting', { id: 'm1', title: 'Standup' }), vi)).toBe('Đọc cuộc họp “Standup”');
+  });
+
   it('formats writes', () => {
     expect(activityText(row('add_item', { title: 'Test plan' }), en)).toBe('Added “Test plan”');
     expect(activityText(row('create_task', { title: 'Review PR 212' }), en)).toBe('Created task “Review PR 212”');

@@ -497,8 +497,8 @@ fn job_state(conn: &Connection, id: &str) -> AppResult<Option<(TaskExportState, 
 }
 
 /// Queues live task `task_id` for `p` on this device (`<task_id>:<provider>`). A live exported
-/// job is `alreadyExported`; a queued/exporting one is returned as is; a failed or deleted one
-/// is reset to `queued`. `activity_id`: the `agent_activity` row of the agent that asked.
+/// job is `alreadyExported`; an exporting one, or one queued on this device, is returned as is;
+/// a failed or deleted one, or one queued on another Mac, is reset to `queued` on this device. `activity_id`: the `agent_activity` row of the agent that asked.
 pub fn enqueue(
     conn: &Connection,
     task_id: &str,
@@ -515,10 +515,18 @@ pub fn enqueue(
         return Err(AppError::Code("notFound"));
     }
     let id = format!("{task_id}:{}", p.as_str());
+    let device = device_id(conn)?;
     if let Some((s, None)) = job_state(conn, &id)? {
         match s.state.as_str() {
             "exported" => return Err(AppError::Code("alreadyExported")),
-            "queued" | "exporting" => return Ok(s),
+            "exporting" => return Ok(s),
+            "queued" => {
+                let owner: Option<String> =
+                    conn.query_row("SELECT device_id FROM task_exports WHERE id = ?1", [&id], |r| r.get(0))?;
+                if owner.as_deref() == Some(device.as_str()) {
+                    return Ok(s);
+                }
+            }
             _ => {}
         }
     }
@@ -528,7 +536,7 @@ pub fn enqueue(
          ON CONFLICT(id) DO UPDATE SET device_id = excluded.device_id, state = 'queued', attempts = 0,
            next_attempt_at = NULL, error = NULL, external_id = NULL, external_url = NULL,
            activity_id = excluded.activity_id, updated_at = excluded.updated_at, deleted_at = NULL",
-        params![id, task_id, p.as_str(), device_id(conn)?, activity_id, now],
+        params![id, task_id, p.as_str(), device, activity_id, now],
     )?;
     Ok(job_state(conn, &id)?.ok_or(AppError::Code("notFound"))?.0)
 }
@@ -647,6 +655,29 @@ pub(crate) mod tests {
         assert!(matches!(enqueue(&conn, &id, Provider::Notion, None, 3), Err(AppError::Code("alreadyExported"))));
         let summary = tasks::get(&conn, &id).unwrap().task.export.unwrap();
         assert_eq!((summary.state.as_str(), summary.external_url.as_deref()), ("exported", Some("https://n/1")));
+    }
+
+    #[test]
+    fn queued_job_of_another_mac_is_taken_over() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let id = task(&conn, "A");
+        enqueue(&conn, &id, Provider::Notion, None, 1).unwrap();
+        conn.execute(
+            "UPDATE task_exports SET device_id = 'other-mac', attempts = 3, next_attempt_at = 99, error = 'network'",
+            [],
+        )
+        .unwrap();
+        let s = enqueue(&conn, &id, Provider::Notion, None, 2).unwrap();
+        assert_eq!((s.state.as_str(), s.error, s.next_attempt_at), ("queued", None, None));
+        let (device, attempts): (String, i64) = conn
+            .query_row("SELECT device_id, attempts FROM task_exports", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!((device, attempts), (device_id(&conn).unwrap(), 0));
+        conn.execute("UPDATE task_exports SET device_id = 'other-mac', state = 'exporting'", []).unwrap();
+        assert_eq!(enqueue(&conn, &id, Provider::Notion, None, 3).unwrap().state, "exporting");
+        let device: String = conn.query_row("SELECT device_id FROM task_exports", [], |r| r.get(0)).unwrap();
+        assert_eq!(device, "other-mac");
     }
 
     #[test]

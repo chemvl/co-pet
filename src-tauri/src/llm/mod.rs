@@ -25,6 +25,14 @@ struct Running {
     model: PathBuf,
 }
 
+/// Per-call options for [`LlmServer::chat_json`]: the `json_schema` name, the reply token limit
+/// and the request timeout.
+pub struct ChatOpts {
+    pub name: &'static str,
+    pub max_tokens: u32,
+    pub timeout: Duration,
+}
+
 /// Managed state (`app.state::<LlmServer>()`).
 pub struct LlmServer {
     running: tokio::sync::Mutex<Option<Running>>,
@@ -186,8 +194,9 @@ impl LlmServer {
         *self.last_used.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
-    /// One structured-output chat completion; returns the parsed JSON content.
-    pub async fn chat_json(&self, system: &str, user: &str, schema: &Value) -> AppResult<Value> {
+    /// One structured-output chat completion (`opts` name the schema and bound the reply);
+    /// returns the parsed JSON content.
+    pub async fn chat_json(&self, opts: &ChatOpts, system: &str, user: &str, schema: &Value) -> AppResult<Value> {
         self.touch();
         let (port, key) = {
             let running = self.running.lock().await;
@@ -200,10 +209,10 @@ impl LlmServer {
                 { "role": "user", "content": user },
             ],
             "temperature": 0.2,
-            "max_tokens": 400,
+            "max_tokens": opts.max_tokens,
             "response_format": {
                 "type": "json_schema",
-                "json_schema": { "name": "triage", "strict": true, "schema": schema },
+                "json_schema": { "name": opts.name, "strict": true, "schema": schema },
             },
         });
         let resp: Value = self
@@ -211,7 +220,7 @@ impl LlmServer {
             .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
             .bearer_auth(key)
             .json(&body)
-            .timeout(Duration::from_secs(120))
+            .timeout(opts.timeout)
             .send()
             .await?
             .error_for_status()?

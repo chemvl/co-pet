@@ -1,15 +1,18 @@
 //! Local-model triage: one structured-output call returning category, alternative, title,
 //! summary, tags and confidence.
+use std::time::Duration;
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
-use crate::llm::LlmServer;
+use crate::llm::{ChatOpts, LlmServer};
 use crate::model::{Category, ItemRow};
 
 const TEXT_LIMIT: usize = 4000;
 const MAX_EXAMPLES: usize = 8;
+const CHAT: ChatOpts = ChatOpts { name: "triage", max_tokens: 400, timeout: Duration::from_secs(120) };
 
 const BUILTIN_DEFS: [(&str, &str); 9] = [
     ("todo", "something the person has to do: a task, request, bug to fix, deadline or reminder."),
@@ -153,7 +156,7 @@ pub async fn classify_with(
     categories: &[Category],
 ) -> AppResult<TriageOut> {
     let v = llm
-        .chat_json(&system_prompt(categories), &user_message(item, examples), &schema(categories))
+        .chat_json(&CHAT, &system_prompt(categories), &user_message(item, examples), &schema(categories))
         .await?;
     parse(v, categories)
 }

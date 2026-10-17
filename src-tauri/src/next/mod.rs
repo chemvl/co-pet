@@ -15,7 +15,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::db::{items, new_id, now_ms, settings, tasks, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
-use crate::llm::{self, LlmServer};
+use crate::llm::{self, ChatOpts, LlmServer};
 use crate::model::{Actor, ItemRow, NextCard, TaskSummary};
 use crate::paths::Paths;
 use crate::windows;
@@ -27,6 +27,7 @@ pub use proactive::{after_done, start};
 const MAX_CANDIDATES: usize = 8;
 /// Covers `ensure_running` + `chat_json`.
 const AI_TIMEOUT: Duration = Duration::from_secs(8);
+const CHAT: ChatOpts = ChatOpts { name: "next", max_tokens: 400, timeout: Duration::from_secs(120) };
 const NOTES_LIMIT: usize = 300;
 const DAY_MS: i64 = 86_400_000;
 /// The card's Snooze: one hour.
@@ -294,7 +295,7 @@ pub async fn pick(app: &AppHandle, trigger: &str) -> AppResult<Option<NextCard>>
         let msg = user_message(&db.conn(), &tasks, now)?;
         let llm = app.state::<LlmServer>();
         llm.ensure_running(app).await?;
-        llm.chat_json(NEXT_PROMPT, &msg, &schema(&tasks)).await
+        llm.chat_json(&CHAT, NEXT_PROMPT, &msg, &schema(&tasks)).await
     })
     .await)
 }

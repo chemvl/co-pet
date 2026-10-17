@@ -830,6 +830,20 @@ pub fn retry_exports(app: AppHandle, db: State<'_, Db>, provider: Option<String>
     Ok(())
 }
 
+/// Saves the open or done task list as Markdown or CSV through the save panel. The file name, or
+/// `None` when cancelled. Rejects with `invalid`.
+#[tauri::command]
+pub async fn save_tasks_file(app: AppHandle, view: String, format: String) -> AppResult<Option<String>> {
+    let format: crate::export::file::FileFormat = format.parse()?;
+    let lang = crate::i18n::lang(&app); // before the connection: reads a setting through the same mutex
+    let (name, text) = {
+        let db = app.state::<Db>();
+        let conn = db.conn();
+        crate::export::file::build(&conn, &view, format, lang, chrono::Local::now().naive_local())?
+    };
+    crate::data::save_text_file(&app, &name, &text).await
+}
+
 // ---------- M5: agents ----------
 
 #[tauri::command]

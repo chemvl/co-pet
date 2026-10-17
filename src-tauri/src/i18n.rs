@@ -71,6 +71,23 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "lang.en" => ("English", "Tiếng Anh"),
         "lang.vi" => ("Vietnamese", "Tiếng Việt"),
         "lang.zh" => ("Chinese", "Tiếng Trung"),
+        "tasksFile.open" => ("Open tasks", "Công việc đang mở"),
+        "tasksFile.done" => ("Done tasks", "Công việc đã xong"),
+        "tasksFile.saved" => ("Saved from Co-pet · {date}", "Lưu từ Co-pet · {date}"),
+        "tasksFile.due" => ("Due", "Hạn"),
+        "tasksFile.doneOn" => ("Done", "Xong"),
+        "tasksFile.priority" => ("Priority", "Độ ưu tiên"),
+        "tasksFile.priority.low" => ("Low", "Thấp"),
+        "tasksFile.priority.medium" => ("Medium", "Trung bình"),
+        "tasksFile.priority.high" => ("High", "Cao"),
+        "tasksFile.estimate" => ("Estimate", "Ước tính"),
+        "tasksFile.minutes" => ("{n} min", "{n} phút"),
+        "tasksFile.category" => ("Category", "Danh mục"),
+        "tasksFile.firstStep" => ("First step", "Bước đầu tiên"),
+        "tasksFile.source" => ("Source", "Nguồn"),
+        "tasksFile.link" => ("Link", "Liên kết"),
+        "tasksFile.nameOpen" => ("Co-pet open tasks", "Co-pet việc đang mở"),
+        "tasksFile.nameDone" => ("Co-pet done tasks", "Co-pet việc đã xong"),
         _ => {
             debug_assert!(false, "unknown i18n key {key}");
             ("", "")

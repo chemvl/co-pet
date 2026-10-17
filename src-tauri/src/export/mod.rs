@@ -4,6 +4,7 @@
 //!
 //! A new exporter = one module + one `Provider` variant + the match arms below.
 pub mod asana;
+pub mod file;
 pub mod notion;
 pub mod oauth;
 pub mod queue;

@@ -223,6 +223,7 @@ pub fn run() {
             commands::set_export_target,
             commands::export_task,
             commands::retry_exports,
+            commands::save_tasks_file,
             commands::mcp_status,
             commands::set_mcp_paused,
             commands::list_mcp_clients,

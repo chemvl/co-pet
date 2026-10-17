@@ -328,6 +328,7 @@ export const vi: Record<keyof typeof en, string> = {
   'next.reason.dueThisWeek': 'Đến hạn {day}',
   'next.reason.highPriority': 'Ưu tiên cao',
   'next.reason.waiting': 'Đang chờ từ {date}',
+  'next.reason.fitsBeforeMeeting': 'Kịp xong trước cuộc họp lúc {time}',
   'next.step.openSource': 'Mở “{title}”',
 
   'tray.label': 'Khay',

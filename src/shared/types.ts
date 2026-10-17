@@ -303,7 +303,8 @@ export interface TaskCreated {
 export type NextTrigger = 'bubble' | 'return' | 'afterDone' | 'afterMeeting' | 'agent' | 'home';
 export type NextAction = 'shown' | 'start' | 'done' | 'snooze' | 'skip';
 export type NextReasonKey =
-  | 'overdue' | 'dueSoon' | 'dueToday' | 'dueTomorrow' | 'dueThisWeek' | 'highPriority' | 'waiting';
+  | 'overdue' | 'dueSoon' | 'dueToday' | 'dueTomorrow' | 'dueThisWeek' | 'highPriority' | 'waiting'
+  | 'fitsBeforeMeeting';
 
 /** The What's Next card. `reason` is the model's sentence; `reasonKey` the ranking reason. */
 export interface NextCard {
@@ -319,6 +320,8 @@ export interface NextCard {
   sourceTitle: string | null;
   /** epoch ms: the `waiting` reason's date */
   createdAt: number;
+  /** epoch ms: the next calendar event, with `fitsBeforeMeeting` */
+  nextEventAt: number | null;
   pickedBy: 'ai' | 'rank';
 }
 

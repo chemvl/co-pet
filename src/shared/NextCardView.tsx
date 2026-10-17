@@ -2,7 +2,7 @@
 // panel and the Tasks page right column.
 import { WhatsNextCard } from '../ds';
 import { categoryColor, categoryIcon, categoryLabel, useCategory } from './categories';
-import { formatDate, formatEstimate } from './format';
+import { formatDate, formatEstimate, formatTime } from './format';
 import { useLang, useT, type Lang, type TFunction } from './i18n';
 import type { NextAction, NextCard } from './types';
 import { dueAt, dueText, isDueSoon } from '../home/tasks/groups';
@@ -24,6 +24,8 @@ export function reasonText(card: NextCard, now: Date, lang: Lang, t: TFunction):
       return t('next.reason.dueThisWeek', { day: due ? formatDate(due, lang) : '' });
     case 'waiting':
       return t('next.reason.waiting', { date: formatDate(card.createdAt, lang) });
+    case 'fitsBeforeMeeting':
+      return t('next.reason.fitsBeforeMeeting', { time: card.nextEventAt != null ? formatTime(card.nextEventAt) : '' });
     default:
       return t(`next.reason.${card.reasonKey}`);
   }

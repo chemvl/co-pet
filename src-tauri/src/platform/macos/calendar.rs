@@ -54,7 +54,6 @@ pub fn calendars() -> Vec<CalendarInfo> {
 
 /// Busy times overlapping `[from_ms, to_ms)` in every event calendar not in `excluded`, sorted
 /// by start; `[]` without full access or with every calendar excluded.
-#[allow(dead_code)] // read by `next::slot::current` (Task 5.4)
 pub fn busy_between(from_ms: i64, to_ms: i64, excluded: &[String]) -> Vec<Busy> {
     if permissions::calendar_status() != "granted" {
         return Vec::new();

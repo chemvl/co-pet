@@ -21,6 +21,7 @@ function card(over: Partial<NextCard> = {}): NextCard {
     categoryId: 'todo',
     sourceTitle: null,
     createdAt: new Date(2025, 9, 10).getTime(),
+    nextEventAt: null,
     pickedBy: 'rank',
     ...over,
   };
@@ -39,5 +40,10 @@ describe('reasonText', () => {
     expect(reasonText(card({ reasonKey: 'waiting' }), NOW, 'vi', vi)).toBe('Đang chờ từ T6, 10/10');
     expect(reasonText(card({ reasonKey: 'highPriority' }), NOW, 'en', en)).toBe('High priority');
     expect(reasonText(card({ reasonKey: 'overdue', dueDate: '2025-10-14' }), NOW, 'en', en)).toMatch(/^Overdue since /);
+  });
+  it('words the free calendar slot', () => {
+    const fits = card({ reasonKey: 'fitsBeforeMeeting', nextEventAt: new Date(2025, 9, 15, 14, 0).getTime() });
+    expect(reasonText(fits, NOW, 'en', en)).toBe('Fits before your 14:00 meeting');
+    expect(reasonText(fits, NOW, 'vi', vi)).toBe('Kịp xong trước cuộc họp lúc 14:00');
   });
 });

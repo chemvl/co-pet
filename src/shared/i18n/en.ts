@@ -327,6 +327,7 @@ export const en = {
   'next.reason.dueThisWeek': 'Due {day}',
   'next.reason.highPriority': 'High priority',
   'next.reason.waiting': 'Waiting since {date}',
+  'next.reason.fitsBeforeMeeting': 'Fits before your {time} meeting',
   'next.step.openSource': 'Open “{title}”',
 
   'tray.label': 'Tray',

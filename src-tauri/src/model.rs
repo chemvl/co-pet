@@ -802,7 +802,8 @@ pub struct TaskQuery {
 }
 
 /// The What's Next card. `reason` is the model's sentence; `reason_key` the ranking reason
-/// (`overdue | dueSoon | dueToday | dueTomorrow | dueThisWeek | highPriority | waiting`).
+/// (`overdue | dueSoon | dueToday | dueTomorrow | dueThisWeek | highPriority | waiting |
+/// fitsBeforeMeeting`).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NextCard {
@@ -818,6 +819,8 @@ pub struct NextCard {
     pub source_title: Option<String>,
     /// Task creation time (epoch ms): the `waiting` reason's date.
     pub created_at: i64,
+    /// Start of the next calendar event (epoch ms), only with reason `fitsBeforeMeeting`; `None` for agents.
+    pub next_event_at: Option<i64>,
     /// `"ai" | "rank"`
     pub picked_by: String,
 }

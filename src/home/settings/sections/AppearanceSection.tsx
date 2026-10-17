@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { SegmentedControl } from '../../../ds';
-import { isPixelSpecies } from '../../../pet/PixelPets';
+import { asSpecies, resolveSkin } from '../../../pet/catalog';
 import { useT } from '../../../shared/i18n';
 import { useSetSetting, useSetting } from '../../../shared/queries';
-import { asLook, asSkin, Group, SettingRow, SkinSwatches, StyleTiles } from '../parts';
+import { Group, SettingRow, SkinSwatches, SpeciesTiles } from '../parts';
 
 const NAME_MAX = 24;
 
@@ -11,8 +11,8 @@ export function AppearanceSection() {
   const t = useT();
   const set = useSetSetting();
   const savedName = useSetting<string>('pet.name', 'Miso');
-  const look = asLook(useSetting<string>('pet.style', 'pixel'));
-  const skin = asSkin(useSetting<string>('pet.skin', 'peach'));
+  const species = asSpecies(useSetting<string>('pet.style', 'pixel'));
+  const skin = resolveSkin(species, useSetting<string>('pet.skin', 'peach'));
   const size = useSetting<number>('pet.size', 80);
   const theme = useSetting<string>('ui.theme', 'system');
   const [name, setName] = useState(savedName);
@@ -44,15 +44,12 @@ export function AppearanceSection() {
           />
         </SettingRow>
       </Group>
-      <Group title={t('settings.appearance.style')} desc={t('settings.appearance.styleDesc')}>
-        <StyleTiles value={look} skin={skin} onChange={(v) => void set('pet.style', v)} />
+      <Group title={t('petroom.species')}>
+        <SpeciesTiles value={species} skin={skin} onChange={(v) => void set('pet.style', v)} />
       </Group>
-      {/* The pixel pets have fixed colours. */}
-      {!isPixelSpecies(look) && (
-        <Group title={t('settings.appearance.skin')} desc={t('settings.appearance.skinDesc')}>
-          <SkinSwatches value={skin} onChange={(v) => void set('pet.skin', v)} />
-        </Group>
-      )}
+      <Group title={t('settings.appearance.skin')} desc={t('settings.appearance.skinDesc')}>
+        <SkinSwatches species={species} value={skin} onChange={(v) => void set('pet.skin', v)} />
+      </Group>
       <Group>
         <SettingRow label={t('settings.appearance.size')} desc={t('settings.appearance.sizeDesc')}>
           <SegmentedControl

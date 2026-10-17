@@ -1,10 +1,11 @@
 // Building blocks shared by the Settings sections, onboarding and other Home screens.
 import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Button } from '../../ds';
-import { CatArt, LOOKS, SKINS, type CatLook, type CatSkin } from '../../pet/CatArt';
+import { resolveSkin, skinsOf, SPECIES, swatchOf, type SkinId, type Species } from '../../pet/catalog';
+import { CatArt } from '../../pet/CatArt';
 import { poseFor } from '../../pet/pose';
 import { errorMessage } from '../../shared/errors';
-import { useT, type I18nKey } from '../../shared/i18n';
+import { useT } from '../../shared/i18n';
 import { useToast } from '../../shared/Toast';
 import './settings.css';
 
@@ -83,71 +84,53 @@ export function ProgressBar({ value, label }: { value: number | null; label: str
 const IDLE = poseFor('idle');
 
 /** A still idle cat, for tiles and avatars. */
-export function StillCat({ look, skin, label }: { look: CatLook; skin: CatSkin; label?: string }) {
+export function StillCat({ look, skin, label }: { look: Species; skin: SkinId; label?: string }) {
   return <CatArt look={look} skin={skin} parts={IDLE.parts} motion={null} mirrored={false} reducedMotion label={label} />;
 }
 
-export const LOOK_LABEL: Record<CatLook, I18nKey> = {
-  pixel: 'settings.appearance.stylePixel',
-  chicken: 'settings.appearance.styleChicken',
-  dog: 'settings.appearance.styleDog',
-  pig: 'settings.appearance.stylePig',
-  owl: 'settings.appearance.styleOwl',
-};
-
-export function StyleTiles(props: { value: CatLook; skin: CatSkin; onChange: (look: CatLook) => void; labelledBy?: string }) {
+/** One tile per species, each drawn in its resolved skin; Pet pack species carry a tag. */
+export function SpeciesTiles(props: { value: Species; skin: SkinId; onChange: (s: Species) => void; labelledBy?: string }) {
   const t = useT();
   return (
     <div className="st-tiles" role="group" aria-labelledby={props.labelledBy}>
-      {LOOKS.map((look) => (
+      {SPECIES.map((s) => (
         <button
-          key={look}
+          key={s.id}
           type="button"
           className="st-tile"
-          aria-pressed={props.value === look}
-          onClick={() => props.onChange(look)}
+          aria-pressed={props.value === s.id}
+          onClick={() => props.onChange(s.id)}
         >
-          <span className="st-tile__art"><StillCat look={look} skin={props.skin} /></span>
-          {t(LOOK_LABEL[look])}
+          <span className="st-tile__art"><StillCat look={s.id} skin={resolveSkin(s.id, props.skin)} /></span>
+          {t(s.label)}
+          {s.pack === 'petPack' ? <span className="st-tile__tag">{t('pet.pack.petPack')}</span> : null}
         </button>
       ))}
     </div>
   );
 }
 
-const SKIN_ORDER: readonly CatSkin[] = ['peach', 'tabby', 'midnight'];
-const SKIN_LABEL: Record<CatSkin, I18nKey> = {
-  peach: 'settings.appearance.skinPeach',
-  tabby: 'settings.appearance.skinTabby',
-  midnight: 'settings.appearance.skinMidnight',
-};
-
-export function SkinSwatches(props: { value: CatSkin; onChange: (skin: CatSkin) => void; labelledBy?: string }) {
+/** The three skins of `species`; `value` falls back to the species' default for the pressed state. */
+export function SkinSwatches(props: { species: Species; value: SkinId; onChange: (skin: SkinId) => void; labelledBy?: string }) {
   const t = useT();
+  const current = resolveSkin(props.species, props.value);
   return (
     <div className="st-swatches" role="group" aria-labelledby={props.labelledBy}>
-      {SKIN_ORDER.map((skin) => (
+      {skinsOf(props.species).map((entry) => (
         <button
-          key={skin}
+          key={entry.id}
           type="button"
           className="st-swatch"
-          aria-pressed={props.value === skin}
-          onClick={() => props.onChange(skin)}
+          aria-pressed={current === entry.id}
+          onClick={() => props.onChange(entry.id)}
         >
-          <span className="st-swatch__dot" style={{ background: SKINS[skin].body }} aria-hidden="true" />
-          {t(SKIN_LABEL[skin])}
+          <span className="st-swatch__dot" style={{ background: swatchOf(entry.id) }} aria-hidden="true" />
+          {t(entry.label)}
+          {entry.pack === 'petPack' ? <span className="st-swatch__tag">{t('pet.pack.petPack')}</span> : null}
         </button>
       ))}
     </div>
   );
-}
-
-export function asLook(v: unknown): CatLook {
-  return LOOKS.find((l) => l === v) ?? 'pixel';
-}
-
-export function asSkin(v: unknown): CatSkin {
-  return v === 'tabby' || v === 'midnight' ? v : 'peach';
 }
 
 /** A modal dialog: Escape and a click on the scrim close it. */

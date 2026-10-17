@@ -23,13 +23,14 @@ import type {
   CaptureResult, EventPayloads, HitRegion, HotkeyAction, MeetingLanguage, NextCard, NextTrigger, Placement,
   RecordingStatus,
 } from '../shared/types';
-import { CatArt, LOOKS, type CatLook, type CatSkin } from './CatArt';
+import { asPetSize, petLookOf, type PetSize, type SkinId, type Species } from './catalog';
+import { CatArt } from './CatArt';
 import { noticeFor, type Notice } from './notices';
 import {
   bubbleRects, bubbleZone, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
   DOCK_BOX, type Box, type Point, type Size,
 } from './placement';
-import { poseFor } from './pose';
+import { fxForArt, poseFor } from './pose';
 import { Floating } from './surfaces/Floating';
 import { ConsentPanel } from './surfaces/ConsentPanel';
 import { PetMenu } from './surfaces/PetMenu';
@@ -79,10 +80,7 @@ const REC_LANGUAGES: { lang: MeetingLanguage; label: I18nKey }[] = [
   { lang: 'vi+en', label: 'lang.viEn' },
 ];
 
-interface Look { look: CatLook; skin: CatSkin; size: number }
-
-const SKINS: CatSkin[] = ['peach', 'tabby', 'midnight'];
-const SIZES = [64, 80, 96];
+interface Look { species: Species; skin: SkinId; size: PetSize }
 
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 function subscribeReducedMotion(cb: () => void) {
@@ -100,13 +98,7 @@ export function PetApp() {
   // ---------- settings → look, name, paused ----------
   const name = typeof settings?.['pet.name'] === 'string' && settings['pet.name'] ? settings['pet.name'] : 'Miso';
   const paused = settings?.['pet.paused'] === true;
-  const wanted: Look | null = settings
-    ? {
-        look: LOOKS.find((l) => l === settings['pet.style']) ?? 'pixel',
-        skin: SKINS.find((s) => s === settings['pet.skin']) ?? 'peach',
-        size: SIZES.find((s) => s === settings['pet.size']) ?? 80,
-      }
-    : null;
+  const wanted: Look | null = settings ? { ...petLookOf(settings), size: asPetSize(settings['pet.size']) } : null;
   const [applied, setApplied] = useState<Look | null>(null);
   const pendingLook = useRef<Look | null>(null);
   const { machine, output } = usePetMachine(() => {
@@ -114,14 +106,14 @@ export function PetApp() {
     pendingLook.current = null;
   });
 
-  const wantedKey = wanted ? `${wanted.look}/${wanted.skin}/${wanted.size}` : null;
+  const wantedKey = wanted ? `${wanted.species}/${wanted.skin}/${wanted.size}` : null;
   useEffect(() => {
     if (!wanted) return;
     if (!applied) {
       setApplied(wanted);
       return;
     }
-    if (wanted.look === applied.look && wanted.skin === applied.skin && wanted.size === applied.size) return;
+    if (wanted.species === applied.species && wanted.skin === applied.skin && wanted.size === applied.size) return;
     // Style, skin or size changed: poof, and swap at its midpoint.
     pendingLook.current = wanted;
     machine.fire('poof');
@@ -722,10 +714,10 @@ export function PetApp() {
 
   // ---------- render ----------
   const pose = poseFor(output.body, output.variant);
-  const fx = output.fx && (output.fx.kind === 'category' || output.fx.kind === 'question' || output.fx.kind === 'agent') ? output.fx : null;
+  const fx = fxForArt(output.fx);
   const art = applied ? (
     <CatArt
-      look={applied.look}
+      look={applied.species}
       skin={applied.skin}
       parts={pose.parts}
       motion={paused ? null : pose.motion}

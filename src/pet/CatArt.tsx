@@ -4,26 +4,16 @@ import { useSyncExternalStore, type CSSProperties, type ReactElement } from 'rea
 import { Icon, type IconName } from '../ds';
 import type { BuiltinCategoryId, Edge } from '../shared/types';
 import type { CatMotion, CatParts } from './pose';
-import { PixelPet, PIXEL_SPECIES, type PixelSpecies } from './PixelPets';
+import { resolveSkin, SKINS, type SkinId, type Species } from './catalog';
+import { PixelPet } from './PixelPets';
 import './cat.css';
 
-/** The pixel cat (skinnable), then the pixel pets (fixed palettes: skins don't apply). */
-export type CatLook = 'pixel' | PixelSpecies;
-export const LOOKS: readonly CatLook[] = ['pixel', ...PIXEL_SPECIES];
-export type CatSkin = 'peach' | 'tabby' | 'midnight';
+/** Every species is skinnable (catalog.ts). */
 export type CatFx =
   | null
   | { kind: 'category'; icon: IconName; color: BuiltinCategoryId }
   | { kind: 'question' }
   | { kind: 'agent' };
-
-interface SkinColors { body: string; belly: string; eye: string }
-
-export const SKINS: Readonly<Record<CatSkin, SkinColors>> = {
-  peach: { body: '#f4a27c', belly: '#fde8dc', eye: '#2a211c' },
-  tabby: { body: '#9a8f86', belly: '#efe9e2', eye: '#2a211c' },
-  midnight: { body: '#3b3330', belly: '#6b5d52', eye: '#f3ece3' },
-};
 
 const OUTLINE = '#2a211c';
 const NOSE = '#d9775a';
@@ -31,8 +21,8 @@ const PAPER_LINE = '#8f8170';
 const ZZZ = '#6b5d52';
 
 export interface CatArtProps {
-  look: CatLook;
-  skin: CatSkin;
+  look: Species;
+  skin: SkinId;
   parts: CatParts;
   motion: CatMotion | null;
   /** one-shot length or loop period of `motion` */
@@ -93,9 +83,9 @@ export function CatArt(props: CatArtProps): ReactElement {
         >
           <g transform={mirrored ? 'translate(160 0) scale(-1 1)' : undefined}>
             {look === 'pixel' ? (
-              <PixelCat colors={SKINS[skin]} parts={parts} lowered={lowered} blink={blink} />
+              <PixelCat palette={SKINS[resolveSkin('pixel', skin)].palette} parts={parts} lowered={lowered} blink={blink} />
             ) : (
-              <PixelPet species={look} parts={parts} lowered={lowered} blink={blink} />
+              <PixelPet species={look} skin={resolveSkin(look, skin)} parts={parts} lowered={lowered} blink={blink} />
             )}
           </g>
           {parts.dots && <ThoughtDots left={fxLeft} />}
@@ -153,10 +143,10 @@ const PIXEL_MAP = [
 
 interface Px { x: number; y: number; w: number; h: number }
 
-function PixelCat(p: { colors: SkinColors; parts: CatParts; lowered: boolean; blink: boolean }) {
+function PixelCat(p: { palette: Readonly<Record<string, string>>; parts: CatParts; lowered: boolean; blink: boolean }) {
   const ox = 20;
   const oy = p.lowered ? 44 : 40;
-  const fills: Record<string, string> = { o: OUTLINE, b: p.colors.body, l: p.colors.belly, p: NOSE };
+  const fills: Record<string, string> = { o: OUTLINE, b: p.palette.b, l: p.palette.l, p: NOSE };
   const base: (Px & { f: string })[] = [];
   PIXEL_MAP.forEach((row, r) => {
     [...row].forEach((ch, k) => {
@@ -183,7 +173,7 @@ function PixelCat(p: { colors: SkinColors; parts: CatParts; lowered: boolean; bl
     case 'wink': eyes = [cell(3, 5), rightShut]; break;
   }
   const mouth = p.parts.mouth === 'open' ? [cell(5, 7), cell(6, 7)] : [];
-  const ink = p.colors.eye;
+  const ink = p.palette.e;
   const rects = (list: Px[], fill: string) =>
     list.map((r, i) => <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} />);
 

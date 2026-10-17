@@ -2,8 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button, SegmentedControl } from '../ds';
 import { useAiAction } from '../home/settings/ModelCards';
-import { asLook, asSkin } from '../home/settings/parts';
-import type { CatLook } from '../pet/CatArt';
+import { asSpecies, resolveSkin, type Species } from '../pet/catalog';
 import { errorText } from '../shared/errors';
 import { useLang, useT, type I18nKey } from '../shared/i18n';
 import { aiDownload, aiSelectModel, finishOnboarding } from '../shared/ipc';
@@ -27,19 +26,20 @@ export function OnboardingApp() {
   const runAi = useAiAction();
   const { data: ai } = useAiStatus();
   const savedName = useSetting<string>('pet.name', 'Miso');
-  const savedLook = asLook(useSetting<string>('pet.style', 'pixel'));
-  const skin = asSkin(useSetting<string>('pet.skin', 'peach'));
+  const savedLook = asSpecies(useSetting<string>('pet.style', 'pixel'));
+  const savedSkin = useSetting<string>('pet.skin', 'peach');
   const localOnly = useSetting<boolean>('privacy.localOnly', false);
   const activeModel = useSetting<string | null>('ai.modelId', null);
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState<string | null>(null);
-  const [look, setLook] = useState<CatLook | null>(null);
+  const [look, setLook] = useState<Species | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
 
   const petLook = look ?? savedLook;
+  const skin = resolveSkin(petLook, savedSkin);
 
   useEffect(() => {
     document.documentElement.lang = lang;

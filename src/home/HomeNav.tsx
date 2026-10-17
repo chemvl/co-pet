@@ -3,7 +3,8 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { Icon, type IconName } from '../ds';
-import { CatArt, LOOKS, type CatSkin } from '../pet/CatArt';
+import { petLookOf } from '../pet/catalog';
+import { CatArt } from '../pet/CatArt';
 import { poseFor } from '../pet/pose';
 import { categoryColor, categoryIcon, categoryLabel } from '../shared/categories';
 import { useT, type TFunction } from '../shared/i18n';
@@ -14,7 +15,6 @@ import { countsQuery } from './queries';
 /** `inbox`, `tasks`, `meetings`, `agents`, `integrations`, `settings` or a category id; empty for none. */
 export type NavKey = string;
 
-const SKINS: readonly CatSkin[] = ['peach', 'tabby', 'midnight'];
 const IDLE_PARTS = poseFor('idle').parts;
 
 function modelStatus(ai: AiStatus | undefined, t: TFunction): string {
@@ -42,15 +42,14 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
   const { data: ai } = useAiStatus();
   const { data: categories } = useCategories();
   const petName = typeof settings?.['pet.name'] === 'string' && settings['pet.name'] ? settings['pet.name'] : 'Miso';
-  const look = LOOKS.find((l) => l === settings?.['pet.style']) ?? 'pixel';
-  const skin = SKINS.find((s) => s === settings?.['pet.skin']) ?? 'peach';
+  const { species, skin } = petLookOf(settings);
   const unsorted = c?.unsorted ?? 0;
 
   return (
     <nav className="hm-nav" aria-label={t('home.nav')}>
       <div className="hm-nav__pet">
         <div className="hm-nav__avatar">
-          <CatArt look={look} skin={skin} parts={IDLE_PARTS} motion={null} mirrored={false} reducedMotion />
+          <CatArt look={species} skin={skin} parts={IDLE_PARTS} motion={null} mirrored={false} reducedMotion />
         </div>
         <div className="hm-nav__petText">
           <div className="pet-name hm-nav__petName">{petName}</div>

@@ -6,8 +6,9 @@ import { HotkeyRows } from '../home/settings/HotkeyRows';
 import {
   aiErrorReason, downloadPercent, modelMeta, modelName, transferOf, useAiAction,
 } from '../home/settings/ModelCards';
-import { ProgressBar, StyleTiles } from '../home/settings/parts';
-import { CatArt, type CatLook, type CatSkin } from '../pet/CatArt';
+import { ProgressBar, SpeciesTiles } from '../home/settings/parts';
+import type { SkinId, Species } from '../pet/catalog';
+import { CatArt } from '../pet/CatArt';
 import { poseFor, type CatPose } from '../pet/pose';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
@@ -20,7 +21,7 @@ import type { AiStatus } from '../shared/types';
 const reducedMotion =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function Cat({ look, skin, pose }: { look: CatLook; skin: CatSkin; pose: CatPose }) {
+function Cat({ look, skin, pose }: { look: Species; skin: SkinId; pose: CatPose }) {
   return (
     <CatArt
       look={look}
@@ -40,9 +41,9 @@ function Cat({ look, skin, pose }: { look: CatLook; skin: CatSkin; pose: CatPose
 export function PetStep(props: {
   name: string;
   onName: (name: string) => void;
-  look: CatLook;
-  onLook: (look: CatLook) => void;
-  skin: CatSkin;
+  look: Species;
+  onLook: (look: Species) => void;
+  skin: SkinId;
 }) {
   const t = useT();
   const styleId = useId();
@@ -57,8 +58,8 @@ export function PetStep(props: {
           <p className="ob-lead">{t('onboarding.pet.body')}</p>
         </div>
         <div>
-          <span className="ob-k" id={styleId}>{t('settings.appearance.style')}</span>
-          <StyleTiles value={props.look} skin={props.skin} onChange={props.onLook} labelledBy={styleId} />
+          <span className="ob-k" id={styleId}>{t('petroom.species')}</span>
+          <SpeciesTiles value={props.look} skin={props.skin} onChange={props.onLook} labelledBy={styleId} />
         </div>
         <div>
           <label className="ob-k" htmlFor="ob-name">{t('onboarding.pet.name')}</label>
@@ -78,7 +79,7 @@ export function PetStep(props: {
 
 /* ---------- shared layout for steps 2–5 ---------- */
 
-function SideLayout(props: { look: CatLook; skin: CatSkin; pose: CatPose; title: string; lead?: string; children: ReactNode }) {
+function SideLayout(props: { look: Species; skin: SkinId; pose: CatPose; title: string; lead?: string; children: ReactNode }) {
   return (
     <div className="ob-pad">
       <div className="ob-side">
@@ -97,7 +98,7 @@ function SideLayout(props: { look: CatLook; skin: CatSkin; pose: CatPose; title:
 
 /* ---------- 2 · Permissions ---------- */
 
-export function PermissionsStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
+export function PermissionsStep({ look, skin }: { look: Species; skin: SkinId }) {
   const t = useT();
   const qc = useQueryClient();
   const perms = useQuery({ queryKey: ['permissions'], queryFn: permissionsStatus, refetchInterval: 2000 });
@@ -147,7 +148,7 @@ export function PermissionsStep({ look, skin }: { look: CatLook; skin: CatSkin }
 
 /* ---------- 3 · Local AI ---------- */
 
-export function AiStep(props: { look: CatLook; skin: CatSkin; status: AiStatus | undefined; localOnly: boolean }) {
+export function AiStep(props: { look: Species; skin: SkinId; status: AiStatus | undefined; localOnly: boolean }) {
   const t = useT();
   const lang = useLang();
   const run = useAiAction();
@@ -209,7 +210,7 @@ export function AiStep(props: { look: CatLook; skin: CatSkin; status: AiStatus |
  * sign-in finishing now only emits `integration-changed`, which refreshes these cards; Home
  * stays closed until onboarding ends. Continue skips.
  */
-export function AppsStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
+export function AppsStep({ look, skin }: { look: Species; skin: SkinId }) {
   const t = useT();
   const { data: statuses } = useIntegrations();
   return (
@@ -223,7 +224,7 @@ export function AppsStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
 
 /* ---------- 5 · Hotkeys ---------- */
 
-export function HotkeysStep({ look, skin }: { look: CatLook; skin: CatSkin }) {
+export function HotkeysStep({ look, skin }: { look: Species; skin: SkinId }) {
   const t = useT();
   return (
     <SideLayout look={look} skin={skin} pose={poseFor('gesture')} title={t('onboarding.hotkeys.title')} lead={t('onboarding.hotkeys.body')}>

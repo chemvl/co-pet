@@ -1,6 +1,7 @@
 // Plan Step 5.2 pose table: machine body → cat parts + CSS motion (src/pet/cat.css).
 // One-shot durations equal the trigger lengths in petMachine.
-import { triggerMs, type Body } from './petMachine';
+import type { CatFx } from './CatArt';
+import { triggerMs, type Body, type Fx } from './petMachine';
 
 export type CatEyes = 'open' | 'wide' | 'up' | 'closed' | 'happy' | 'wink';
 
@@ -81,4 +82,9 @@ export function poseFor(body: Body, variant = 0): CatPose {
     case 'poof':
       return { parts: PLAIN, motion: 'poof', ms: triggerMs('poof') };
   }
+}
+
+/** The machine's fx the art draws above the head (category, question, agent); the rest is drawn by poses. */
+export function fxForArt(fx: Fx): CatFx {
+  return fx && (fx.kind === 'category' || fx.kind === 'question' || fx.kind === 'agent') ? fx : null;
 }

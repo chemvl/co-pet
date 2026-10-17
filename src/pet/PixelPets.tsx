@@ -2,16 +2,11 @@
 // (feet on the bottom edge, top 22% free for FX). Rows are palette keys, '.' is empty,
 // and a row may run two cells past the box on the right. Eyes and the mouth are overlays,
 // so every pose from pose.ts works. The `tail` and `ear` layers carry the cat's fidget
-// classes, so the tail and ear fidgets move them.
+// classes, so the tail and ear fidgets move them. The palette is the species' fixed keys plus
+// the skin's (catalog.ts).
 import type { ReactElement } from 'react';
+import { defaultSkin, PIXEL_SPECIES, skinsOf, type PixelSpecies, type SkinId } from './catalog';
 import type { CatEyes, CatParts } from './pose';
-
-export const PIXEL_SPECIES = ['chicken', 'dog', 'pig', 'owl'] as const;
-export type PixelSpecies = (typeof PIXEL_SPECIES)[number];
-
-export function isPixelSpecies(v: unknown): v is PixelSpecies {
-  return PIXEL_SPECIES.includes(v as PixelSpecies);
-}
 
 const CELL = 7.5;
 const INK = '#2a211c';
@@ -23,6 +18,7 @@ const MOUTH = '#8c3a2b';
 type Cell = readonly [number, number, number, number, string];
 
 interface PixelPet {
+  /** the keys that don't change with the skin */
   palette: Readonly<Record<string, string>>;
   body: readonly string[];
   /** drawn behind the body; the tail fidget wags it */
@@ -41,9 +37,7 @@ interface PixelPet {
 
 const PETS: Readonly<Record<PixelSpecies, PixelPet>> = {
   chicken: {
-    palette: {
-      o: INK, w: '#fffaf0', s: '#f3dfc4', S: '#e2c39c', r: '#f0605e', y: '#f9b23c', k: '#ffb0a8', d: MOUTH,
-    },
+    palette: { o: INK, k: '#ffb0a8', d: MOUTH },
     body: [
       '',
       '',
@@ -81,10 +75,7 @@ const PETS: Readonly<Record<PixelSpecies, PixelPet>> = {
     hand: 's',
   },
   dog: {
-    palette: {
-      o: INK, b: '#f6d2a2', e: '#9b5d3a', m: '#fff4e4', k: '#f5a08a', c: '#3fa58f', g: '#ffd25a', d: MOUTH,
-      t: '#ff7a8a',
-    },
+    palette: { o: INK, k: '#f5a08a', g: '#ffd25a', d: MOUTH, t: '#ff7a8a' },
     body: [
       '....oooooooo....',
       '.oooobbbbbbbo...',
@@ -130,9 +121,7 @@ const PETS: Readonly<Record<PixelSpecies, PixelPet>> = {
     hand: 'b',
   },
   pig: {
-    palette: {
-      o: INK, p: '#ffc4cf', P: '#f59bb0', n: '#ffa8ba', x: '#c9607a', k: '#ff8aa3', d: MOUTH, t: '#ff6f8a',
-    },
+    palette: { o: INK, k: '#ff8aa3', d: MOUTH, t: '#ff6f8a' },
     body: [
       '................',
       '................',
@@ -170,10 +159,7 @@ const PETS: Readonly<Record<PixelSpecies, PixelPet>> = {
     hand: 'p',
   },
   owl: {
-    palette: {
-      o: INK, b: '#a77b59', B: '#7e5840', f: '#fff3e3', l: '#f4dcb8', v: '#d1a77c', y: '#f6a53a',
-      k: '#f4a08c', d: MOUTH,
-    },
+    palette: { o: INK, k: '#f4a08c', d: MOUTH },
     body: [
       '..o.............',
       '..oBo...........',
@@ -231,14 +217,16 @@ function runs(rows: readonly string[], palette: Readonly<Record<string, string>>
   return out;
 }
 
-interface Layers { body: Run[]; tail: Run[]; ear: Run[] }
+interface Layers { palette: Readonly<Record<string, string>>; body: Run[]; tail: Run[]; ear: Run[] }
 
-const LAYERS = Object.fromEntries(
-  PIXEL_SPECIES.map((s) => {
-    const { palette, body, tail, ear } = PETS[s];
-    return [s, { body: runs(body, palette), tail: runs(tail, palette), ear: runs(ear, palette) }];
-  }),
-) as Record<PixelSpecies, Layers>;
+const LAYERS: Partial<Record<SkinId, Layers>> = Object.fromEntries(
+  PIXEL_SPECIES.flatMap((s) =>
+    skinsOf(s).map((k) => {
+      const palette = { ...PETS[s].palette, ...k.palette };
+      return [k.id, { palette, body: runs(PETS[s].body, palette), tail: runs(PETS[s].tail, palette), ear: runs(PETS[s].ear, palette) }];
+    }),
+  ),
+);
 
 /** Eye shapes in cells, relative to the eye's top-left. */
 type Shape = readonly (readonly [number, number, number, number])[];
@@ -268,9 +256,9 @@ function eyeRects(pet: PixelPet, shapes: readonly [Shape, Shape], fill: string) 
   );
 }
 
-export function PixelPet(p: { species: PixelSpecies; parts: CatParts; lowered: boolean; blink: boolean }) {
+export function PixelPet(p: { species: PixelSpecies; skin: SkinId; parts: CatParts; lowered: boolean; blink: boolean }) {
   const pet = PETS[p.species];
-  const layers = LAYERS[p.species];
+  const layers = LAYERS[p.skin] ?? LAYERS[defaultSkin(p.species)]!;
   const { eyes, mouth, item } = p.parts;
   const ink: [Shape, Shape] =
     eyes === 'wink' ? [EYES.open.ink, SHUT] : [EYES[eyes].ink, EYES[eyes].ink];
@@ -289,7 +277,7 @@ export function PixelPet(p: { species: PixelSpecies; parts: CatParts; lowered: b
       </g>
       {p.blink && <g className="cp-cat__lids">{eyeRects(pet, [SHUT, SHUT], INK)}</g>}
       {(mouth === 'open' ? pet.open : pet.smile).map(([x, y, w, h, key], i) =>
-        cellRect(`m${i}`, x, y, w, h, pet.palette[key]),
+        cellRect(`m${i}`, x, y, w, h, layers.palette[key]),
       )}
       {item && (
         <>
@@ -304,7 +292,7 @@ export function PixelPet(p: { species: PixelSpecies; parts: CatParts; lowered: b
             <rect
               key={hx}
               x={hx * CELL} y={(iy + 1.25) * CELL} width={1.25 * CELL} height={1.25 * CELL}
-              fill={pet.palette[pet.hand]} stroke={INK} strokeWidth="1.5"
+              fill={layers.palette[pet.hand]} stroke={INK} strokeWidth="1.5"
             />
           ))}
         </>

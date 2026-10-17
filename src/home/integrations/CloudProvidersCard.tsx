@@ -203,6 +203,7 @@ function ServerSetup({ p, server, onTest, onChange }: SetupProps & { server: 'ol
     queryKey: ['aiServerModels', server, p.baseUrl],
     queryFn: () => aiServerModels(server),
     retry: false,
+    enabled: p.baseUrl != null,
   });
   const list = models.data ?? [];
   // Keep a saved model visible even when the server doesn't list it (yet).

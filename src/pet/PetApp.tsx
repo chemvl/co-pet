@@ -40,7 +40,7 @@ import { PetNotice } from './surfaces/PetNotice';
 import { QuickNotePanel } from './surfaces/QuickNotePanel';
 import { RecordingDock } from './surfaces/RecordingDock';
 import { COUNTS_KEY, TRAY_KEY, TrayPanel } from './surfaces/TrayPanel';
-import { usePetMachine } from './usePetMachine';
+import { usePetLook } from './usePetMachine';
 import './pet.css';
 
 type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice' | 'next' | 'consent' | 'recLang';
@@ -99,25 +99,8 @@ export function PetApp() {
   const name = typeof settings?.['pet.name'] === 'string' && settings['pet.name'] ? settings['pet.name'] : 'Miso';
   const paused = settings?.['pet.paused'] === true;
   const wanted: Look | null = settings ? { ...petLookOf(settings), size: asPetSize(settings['pet.size']) } : null;
-  const [applied, setApplied] = useState<Look | null>(null);
-  const pendingLook = useRef<Look | null>(null);
-  const { machine, output } = usePetMachine(() => {
-    if (pendingLook.current) setApplied(pendingLook.current);
-    pendingLook.current = null;
-  });
-
   const wantedKey = wanted ? `${wanted.species}/${wanted.skin}/${wanted.size}` : null;
-  useEffect(() => {
-    if (!wanted) return;
-    if (!applied) {
-      setApplied(wanted);
-      return;
-    }
-    if (wanted.species === applied.species && wanted.skin === applied.skin && wanted.size === applied.size) return;
-    // Style, skin or size changed: poof, and swap at its midpoint.
-    pendingLook.current = wanted;
-    machine.fire('poof');
-  }, [wantedKey]); // `wanted` is rebuilt every render; its key says when it changed
+  const { machine, output, applied } = usePetLook(wanted, wantedKey);
 
   useEffect(() => machine.setPaused(paused), [machine, paused]);
 

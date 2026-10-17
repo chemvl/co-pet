@@ -57,7 +57,7 @@ export function SettingsPage({ section, onNavigate }: SettingsPageProps) {
     case 'transcribe': body = <TranscribeSection />; break;
     case 'notifications': body = <NotificationsSection />; break;
     case 'privacy': body = <PrivacySection onNavigate={onNavigate} />; break;
-    case 'appearance': body = <AppearanceSection />; break;
+    case 'appearance': body = <AppearanceSection onNavigate={onNavigate} />; break;
     case 'data': body = <DataSection />; break;
     case 'account': body = <AccountSection onNavigate={onNavigate} />; break;
     case 'about': body = <AboutSection />; break;

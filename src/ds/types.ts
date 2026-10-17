@@ -8,7 +8,8 @@ export type IconName =
   | 'sync' | 'export' | 'alert' | 'settings' | 'calendar' | 'clock' | 'language' | 'grip' | 'trash' | 'undo' | 'moon'
   | 'sun' | 'monitor'
   /** Co-pet addition */
-  | 'headphones';
+  | 'headphones'
+  | 'paw';
 export type CategoryId = 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted';
 export type ItemKind = 'file' | 'image' | 'url' | 'text' | 'richtext' | 'code' | 'screenshot' | 'audio' | 'meeting';
 export type Lang = 'en' | 'vi';

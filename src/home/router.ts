@@ -1,7 +1,7 @@
 // Hash router for the Home window: `#/inbox`, `#/inbox/pinned`, `#/inbox/unsorted`,
 // `#/category/<id>`, `#/item/<id>`, `#/tasks`, `#/tasks/done`, `#/tasks/<open|done>/<id>`,
 // `#/tasks/new`, `#/meetings`, `#/meetings/<id>`, `#/agents`, `#/integrations`, `#/categories`,
-// `#/categories/<id>`, `#/settings/<section>`.
+// `#/categories/<id>`, `#/pet`, `#/settings/<section>`.
 import { useEffect, useState } from 'react';
 import type { CategoryId } from '../shared/types';
 
@@ -18,6 +18,7 @@ export type Route =
   | { page: 'meetings'; id?: string }
   | { page: 'integrations' }
   | { page: 'agents' }
+  | { page: 'pet' }
   /** The Categories screen; `id` selects the category being edited (else the first). */
   | { page: 'categories'; id?: string }
   | { page: 'settings'; section: string };
@@ -56,6 +57,8 @@ export function parseRoute(hash: string): Route {
       return arg ? { page: 'categories', id: arg } : { page: 'categories' };
     case 'integrations':
       return { page: 'integrations' };
+    case 'pet':
+      return { page: 'pet' };
     case 'settings':
       return { page: 'settings', section: arg || DEFAULT_SETTINGS_SECTION };
   }
@@ -83,6 +86,8 @@ export function routePath(r: Route): string {
       return r.id ? `categories/${encodeURIComponent(r.id)}` : 'categories';
     case 'integrations':
       return 'integrations';
+    case 'pet':
+      return 'pet';
     case 'settings':
       return `settings/${r.section}`;
   }

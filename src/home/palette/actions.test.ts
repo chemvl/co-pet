@@ -24,6 +24,8 @@ describe('matchActions', () => {
     expect(ids(ctx('')).length).toBe(MAX_ACTIONS);
   });
 
+  it('lists Go to Pet room for "room"', () => expect(ids(ctx('room'))).toEqual(['go.petroom']));
+
   it('offers Record meeting only while nothing is being recorded', () => {
     expect(ids(ctx('meeting'))).toEqual(['go.meetings', 'meeting.record']);
     expect(ids(ctx('meeting', { recording: true }))).toEqual(['go.meetings']);

@@ -1,5 +1,5 @@
 // Home sidebar: pet avatar + model status, Inbox, Tasks, Meetings, Agents, the live categories
-// with counts (Unsorted's is a red badge and stays last), Integrations and Settings at the bottom.
+// with counts (Unsorted's is a red badge and stays last), Pet room, Integrations and Settings at the bottom.
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { Icon, type IconName } from '../ds';
@@ -12,7 +12,7 @@ import { useAiStatus, useCategories, useSettings } from '../shared/queries';
 import type { AiStatus } from '../shared/types';
 import { countsQuery } from './queries';
 
-/** `inbox`, `tasks`, `meetings`, `agents`, `integrations`, `settings` or a category id; empty for none. */
+/** `inbox`, `tasks`, `meetings`, `agents`, `pet`, `integrations`, `settings` or a category id; empty for none. */
 export type NavKey = string;
 
 const IDLE_PARTS = poseFor('idle').parts;
@@ -106,6 +106,7 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
         />
       ))}
       <div className="hm-nav__spacer" />
+      <NavLink href="#/pet" active={active === 'pet'} icon="paw" label={t('petroom.title')} />
       <NavLink href="#/integrations" active={active === 'integrations'} icon="link" label={t('integrations.title')} />
       <NavLink href="#/settings/general" active={active === 'settings'} icon="settings" label={t('common.settings')} />
     </nav>

@@ -219,6 +219,17 @@ describe('petMachine loops', () => {
     expect(body()).toBe('sleep');
   });
 
+  it('a one-shot right after sleep is cleared plays (Pet room preview)', () => {
+    const { clock, machine, body } = setup();
+    machine.set('sleep', true);
+    expect(body()).toBe('sleep');
+    machine.set('sleep', false);
+    machine.fire('catch');
+    expect(body()).toBe('catch');
+    clock.advance(600);
+    expect(body()).toBe('idle');
+  });
+
   it('glance_dropped_while_asleep', () => {
     const { clock, machine, body } = setup();
     machine.set('sleep', true);

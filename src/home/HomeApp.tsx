@@ -16,6 +16,7 @@ import { IntegrationsPage } from './integrations/IntegrationsPage';
 import { itemQuery, meetingQuery } from './queries';
 import { MeetingActionsProvider } from './meetings/recordFlow';
 import { MeetingsPage } from './meetings/MeetingsPage';
+import { PetRoomPage } from './petroom/PetRoomPage';
 import { navigate, routePath, useRoute, type Route } from './router';
 import { SettingsPage } from './settings/SettingsPage';
 import { TasksPage } from './tasks/TasksPage';
@@ -76,6 +77,8 @@ function navKey(route: Route, itemCategory: string | undefined, firstCategory: s
       return route.id ?? firstCategory ?? '';
     case 'integrations':
       return 'integrations';
+    case 'pet':
+      return 'pet';
     case 'settings':
       return 'settings';
   }
@@ -149,6 +152,10 @@ export function HomeApp(): ReactElement {
     case 'integrations':
       pageName = t('integrations.title');
       page = <IntegrationsPage />;
+      break;
+    case 'pet':
+      pageName = t('petroom.title');
+      page = <PetRoomPage />;
       break;
     case 'settings':
       pageName = t('settings.title');

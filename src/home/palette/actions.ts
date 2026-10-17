@@ -98,6 +98,7 @@ export const ACTIONS: readonly PaletteAction[] = [
   goTo('go.integrations', 'export', 'palette.goIntegrations', 'integrations'),
   goTo('go.categories', 'reference', 'palette.goCategories', 'categories'),
   goTo('go.settings', 'settings', 'palette.openSettings', 'settings'),
+  goTo('go.petroom', 'paw', 'palette.goPetRoom', 'pet'),
   goTo('task.new', 'plus', 'palette.newTask', 'tasks/new'),
   {
     id: 'note.add',

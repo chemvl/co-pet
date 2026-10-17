@@ -120,6 +120,11 @@ export const vi: Record<keyof typeof en, string> = {
   'error.busy': 'Co-pet vẫn đang xử lý cuộc họp này.',
   'error.transcribeFailed': 'Chuyển văn bản thất bại.',
   'error.noAudio': 'Bản ghi không có âm thanh.',
+  'error.notSetUp': 'Hãy hoàn tất cài đặt nhà cung cấp AI trong Integrations.',
+  'error.aiModel': 'Mô hình này không dùng được với khoá này. Hãy chọn mô hình khác.',
+  'error.aiUnavailable': 'Nhà cung cấp AI hiện không phản hồi. Hãy thử lại sau.',
+  'error.aiRequest': 'Nhà cung cấp AI đã từ chối yêu cầu.',
+  'error.serverUnreachable': 'Co-pet không kết nối được máy chủ đó. Hãy kiểm tra máy chủ đang chạy và địa chỉ đúng.',
 
   'kind.file': 'File',
   'kind.image': 'Hình ảnh',

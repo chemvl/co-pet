@@ -119,6 +119,11 @@ export const en = {
   'error.busy': 'Co-pet is still working on this meeting.',
   'error.transcribeFailed': 'Transcription failed.',
   'error.noAudio': 'The recording has no audio.',
+  'error.notSetUp': 'Finish setting up the AI provider in Integrations.',
+  'error.aiModel': "That model isn't available with this key. Pick another model.",
+  'error.aiUnavailable': "The AI provider isn't answering right now. Try again later.",
+  'error.aiRequest': 'The AI provider turned down the request.',
+  'error.serverUnreachable': "Co-pet can't reach that server. Check that it's running and the address is right.",
 
   'kind.file': 'File',
   'kind.image': 'Image',

@@ -237,9 +237,9 @@ pub(crate) fn phrase_ok(typed: &str, phrases: &[&str]) -> bool {
     phrases.contains(&typed.as_str())
 }
 
-/// Deletes the export tokens, the account session and sync key from the keychain, the database,
-/// the library and the meeting recordings (models stay), then restarts into onboarding. Error
-/// `confirmation` when the typed phrase doesn't match.
+/// Deletes the export tokens, AI provider keys, the account session and sync key from the
+/// keychain, the database, the library and the meeting recordings (models stay), then restarts
+/// into onboarding. Error `confirmation` when the typed phrase doesn't match.
 pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult<()> {
     if !phrase_ok(confirmation, &CONFIRMATIONS) {
         return Err(AppError::Code("confirmation"));
@@ -257,7 +257,7 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
         // Read before the database goes.
         let user_id: Option<String> = settings::read(&app, "sync.userId")?;
-        for account in ["notion", "asana", account::auth::SESSION] {
+        for account in ["notion", "asana", account::auth::SESSION].into_iter().chain(crate::ai::KEY_ACCOUNTS) {
             secrets::delete(account)?;
         }
         if let Some(user_id) = user_id {

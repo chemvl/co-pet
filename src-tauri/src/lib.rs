@@ -8,7 +8,6 @@ mod library;
 mod paths;
 mod extract;
 mod llm;
-#[allow(dead_code)] // router, commands and cloud calls land in Task 4.2
 mod ai;
 mod triage;
 mod next;
@@ -73,6 +72,7 @@ pub fn run() {
             paths.clear_tmp()?;
             app.manage(paths);
             app.manage(db);
+            app.manage(ai::KeyCache::default());
             app.manage(llm::download::Downloader::default());
             app.manage(llm::LlmServer::default());
             llm::reap_orphans(&handle);
@@ -143,6 +143,11 @@ pub fn run() {
             commands::ai_download,
             commands::ai_pause,
             commands::ai_select_model,
+            commands::ai_configure,
+            commands::ai_set_key,
+            commands::ai_remove_key,
+            commands::ai_test,
+            commands::ai_server_models,
             commands::speech_status,
             commands::speech_download,
             commands::speech_pause,

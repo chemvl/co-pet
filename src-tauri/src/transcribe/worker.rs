@@ -693,12 +693,16 @@ pub fn start(app: &AppHandle) {
     start_retention(app);
 }
 
-/// A local model became ready: summaries that waited for one are pending again.
-pub fn llm_model_ready(app: &AppHandle) {
+/// A model or provider became usable: summaries skipped for `noModel`, `notSetUp` or
+/// `cloudMeetingsOff` are pending again.
+pub fn summaries_unblocked(app: &AppHandle) {
     let result = (|| -> AppResult<Vec<String>> {
         let conn = app.state::<Db>().inner().conn();
         let device = export::device_id(&conn)?;
-        let ids = meetings::summary_in_state_for(&conn, &device, None, Some("noModel"))?;
+        let mut ids = Vec::new();
+        for code in ["noModel", "notSetUp", "cloudMeetingsOff"] {
+            ids.extend(meetings::summary_in_state_for(&conn, &device, None, Some(code))?);
+        }
         for id in &ids {
             meetings::set_summary_state(&conn, id, "pending", None)?;
         }

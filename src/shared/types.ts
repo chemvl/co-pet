@@ -340,6 +340,24 @@ export interface Placement {
 export interface ModelInfo { id: string; label: string; bytes: number; downloaded: boolean }
 
 export type AiState = 'none' | 'downloading' | 'paused' | 'verifying' | 'ready' | 'failed';
+
+export type AiProvider = 'local' | 'anthropic' | 'openai' | 'gemini' | 'ollama' | 'lmstudio';
+export type CloudProvider = Exclude<AiProvider, 'local'>;
+export type KeyProvider = 'anthropic' | 'openai' | 'gemini';
+export interface CloudModelInfo { id: string; label: string }
+export interface CloudProviderStatus {
+  id: CloudProvider;
+  hasKey: boolean;
+  model: string | null;
+  baseUrl: string | null;
+  /** Curated models; empty for Ollama / LM Studio. */
+  models: CloudModelInfo[];
+  /** A model is set and, for key providers, a key is saved. */
+  ready: boolean;
+}
+/** `providers` in Anthropic, OpenAI, Gemini, Ollama, LM Studio order. */
+export interface CloudStatus { provider: AiProvider; providers: CloudProviderStatus[] }
+
 export interface AiStatus {
   modelId: string | null;
   state: AiState;
@@ -348,6 +366,7 @@ export interface AiStatus {
   error: string | null;
   models: ModelInfo[];
   recommendedId: string;
+  cloud: CloudStatus;
 }
 
 export type SpeechPackId = 'speech' | 'speaker';

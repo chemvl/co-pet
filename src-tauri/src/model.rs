@@ -362,6 +362,37 @@ pub struct AiStatus {
     /// The registry, for model cards.
     pub models: Vec<ModelInfo>,
     pub recommended_id: String,
+    pub cloud: CloudStatus,
+}
+
+/// A curated cloud model.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudModelInfo {
+    pub id: String,
+    pub label: String,
+}
+
+/// One cloud provider's saved setup. The key itself never leaves the keychain.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProviderStatus {
+    pub id: String,
+    pub has_key: bool,
+    pub model: Option<String>,
+    pub base_url: Option<String>,
+    /// Curated models; empty for Ollama / LM Studio.
+    pub models: Vec<CloudModelInfo>,
+    /// A model is set and, for key providers, a key is saved.
+    pub ready: bool,
+}
+
+/// `provider`: the `ai.provider` setting. `providers` in `ai::Provider::CLOUD` order.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudStatus {
+    pub provider: String,
+    pub providers: Vec<CloudProviderStatus>,
 }
 
 /// `status`: `saved | duplicate | skipped | failed`. `message` is an i18n key (e.g.

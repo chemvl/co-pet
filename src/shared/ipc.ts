@@ -6,7 +6,7 @@ import type {
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
-  MeetingDetail, MeetingSummary, DiaryWeek,
+  MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider,
 } from './types';
 
 // Step 3 — storage
@@ -92,6 +92,18 @@ export const addActionToTasks = (meetingId: string, actionId: string) =>
   invoke<TaskSummary>('add_action_to_tasks', { meetingId, actionId });
 export const copyMeetingMarkdown = (id: string) => invoke<void>('copy_meeting_markdown', { id });
 export const aiSelectModel = (modelId: string) => invoke<void>('ai_select_model', { modelId });
+/** Makes `provider` the active AI provider and saves its model / server address.
+ *  Rejects with `"invalid"` or `"localOnly"`. */
+export const aiConfigure = (provider: AiProvider, model: string | null = null, baseUrl: string | null = null) =>
+  invoke<void>('ai_configure', { provider, model, baseUrl });
+/** Saves the key in the keychain. Rejects with `"invalid"`. */
+export const aiSetKey = (provider: KeyProvider, key: string) => invoke<void>('ai_set_key', { provider, key });
+export const aiRemoveKey = (provider: KeyProvider) => invoke<void>('ai_remove_key', { provider });
+/** One tiny call with the provider's saved setup. Rejects with `"localOnly"`, `"notSetUp"`, `"unauthorized"`,
+ *  `"rateLimited"`, `"network"`, `"serverUnreachable"`, `"aiModel"`, `"aiUnavailable"` or `"aiRequest"`. */
+export const aiTest = (provider: CloudProvider) => invoke<void>('ai_test', { provider });
+/** The server's model ids, sorted. Rejects with `"localOnly"` or `"serverUnreachable"`. */
+export const aiServerModels = (provider: 'ollama' | 'lmstudio') => invoke<string[]>('ai_server_models', { provider });
 export const recategorize = (ids: string[], categoryId: CategoryId) =>
   invoke<{ eventIds: string[] }>('recategorize', { ids, categoryId });
 export const makeRuleFromItem = (itemId: string) => invoke<Rule>('make_rule_from_item', { itemId });

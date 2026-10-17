@@ -138,7 +138,7 @@ impl Downloader {
         if lock(&self.inner).state == "ready" {
             persist(app, spec.id, "ready");
             activate(app, spec);
-            crate::transcribe::worker::llm_model_ready(app);
+            crate::transcribe::worker::summaries_unblocked(app);
             events::ai_status(app, self.status(app));
             return Ok(());
         }
@@ -190,7 +190,7 @@ impl Downloader {
                 Ok(_) => {
                     persist(&app, spec.id, "ready");
                     activate(&app, spec);
-                    crate::transcribe::worker::llm_model_ready(&app);
+                    crate::transcribe::worker::summaries_unblocked(&app);
                 }
                 Err(e) => {
                     eprintln!("[download] {} failed: {e}", spec.id);
@@ -254,6 +254,7 @@ impl Downloader {
                 })
                 .collect(),
             recommended_id: models::recommended_model().id.to_string(),
+            cloud: crate::ai::cloud_status(app),
         }
     }
 

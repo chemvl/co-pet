@@ -1,6 +1,7 @@
 //! macOS keychain: generic passwords under the service `com.copet.app`. Holds the Notion and
-//! Asana tokens (`notion`, `asana`: JSON `ProviderToken`), and from M8 the Supabase session and
-//! sync keys. Values never go to SQLite or the logs.
+//! Asana tokens (`notion`, `asana`: JSON `ProviderToken`), the AI provider keys (`ai.anthropic`,
+//! `ai.openai`, `ai.gemini`: the raw key), and from M8 the Supabase session and sync keys.
+//! Values never go to SQLite or the logs.
 use security_framework::passwords::{delete_generic_password, get_generic_password, set_generic_password};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};

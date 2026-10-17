@@ -4,13 +4,20 @@
 pub mod schema;
 pub mod wire;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{json, Map, Value};
+use tauri::{AppHandle, Manager};
 
-use crate::db::settings;
+use crate::db::{settings, Db};
 use crate::error::{AppError, AppResult};
+use crate::llm::download::Downloader;
+use crate::llm::LlmServer;
+use crate::model::{CloudModelInfo, CloudProviderStatus, CloudStatus};
+use crate::{backend, events, secrets};
 
 /// Per-call options for a structured-output chat: the `json_schema` name, the reply token limit
 /// and the request timeout.
@@ -100,6 +107,7 @@ fn curated(p: Provider, id: &str) -> Option<&'static CloudModel> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
     Triage,
+    #[allow(dead_code)] // What's Next moves onto `ai::chat_json` in Task 4.3
     Next,
     Meeting,
 }
@@ -154,6 +162,7 @@ pub enum Route {
 }
 
 impl Route {
+    #[allow(dead_code)] // triage's Why provider reads it from Task 4.3
     pub fn provider(&self) -> Provider {
         match self {
             Route::Local => Provider::Local,
@@ -207,6 +216,305 @@ pub fn normalize_url(s: &str) -> AppResult<String> {
         return Err(AppError::Code("invalid"));
     }
     Ok(u.origin().ascii_serialization())
+}
+
+/// Managed (`app.manage(ai::KeyCache::default())` right after `app.manage(db)` in lib.rs setup):
+/// whether each key account holds a key, read from the keychain once per provider.
+#[derive(Default)]
+pub struct KeyCache(Mutex<HashMap<&'static str, bool>>);
+
+impl KeyCache {
+    /// False for providers without a key account. A keychain read error is logged, reads as
+    /// false and is not cached.
+    pub fn has(&self, p: Provider) -> bool {
+        let Some(account) = p.keychain_account() else { return false };
+        let mut known = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(&present) = known.get(account) {
+            return present;
+        }
+        match secrets::get(account) {
+            Ok(key) => *known.entry(account).or_insert(key.is_some()),
+            Err(e) => {
+                eprintln!("[ai] {e}");
+                false
+            }
+        }
+    }
+
+    pub fn set(&self, p: Provider, present: bool) {
+        if let Some(account) = p.keychain_account() {
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).insert(account, present);
+        }
+    }
+}
+
+/// [`resolve`] over the saved settings, the downloaded local model and the cached key state.
+pub fn route(app: &AppHandle, purpose: Purpose) -> Result<Route, &'static str> {
+    let config = AiConfig::read(&app.state::<Db>().conn(), None).map_err(|e| {
+        eprintln!("[ai] settings: {e}");
+        "notSetUp"
+    })?;
+    let local_ready = crate::llm::active_model_path(app).is_some();
+    let has_key = app.state::<KeyCache>().has(config.provider);
+    resolve(&config, purpose, local_ready, has_key)
+}
+
+/// Whether a model call for `purpose` would go out now (see [`route`]).
+#[allow(dead_code)] // triage, What's Next and meeting summaries call it from Task 4.3
+pub fn ready(app: &AppHandle, purpose: Purpose) -> bool {
+    route(app, purpose).is_ok()
+}
+
+/// The single entry point for every model call: the local `llama-server` or the routed cloud
+/// provider. Errors: the [`resolve`] codes, then those of the call itself.
+#[allow(dead_code)] // triage, What's Next and meeting summaries call it from Task 4.3
+pub async fn chat_json(
+    app: &AppHandle,
+    purpose: Purpose,
+    opts: &ChatOpts,
+    system: &str,
+    user: &str,
+    schema: &Value,
+) -> AppResult<Value> {
+    let route = route(app, purpose).map_err(AppError::Code)?;
+    call(app, &route, opts, system, user, schema).await
+}
+
+/// One structured-output call over `route`. Cloud errors: `notSetUp` (key gone from the
+/// keychain), `transport_code` when no reply came, `status_code` for a non-2xx reply.
+async fn call(app: &AppHandle, route: &Route, opts: &ChatOpts, system: &str, user: &str, schema: &Value) -> AppResult<Value> {
+    let Route::Cloud { provider, model, effort, base_url } = route else {
+        let llm = app.state::<LlmServer>();
+        llm.ensure_running(app).await?;
+        return llm.chat_json(opts, system, user, schema).await;
+    };
+    let p = *provider;
+    let key = match p.keychain_account() {
+        Some(account) => match secrets::get(account)? {
+            Some(key) => Some(key),
+            None => {
+                app.state::<KeyCache>().set(p, false);
+                return Err(AppError::Code("notSetUp"));
+            }
+        },
+        None => None,
+    };
+    let target =
+        wire::Target { provider: p, model, effort: *effort, base_url: base_url.as_deref(), key: key.as_deref() };
+    let req = wire::request(&target, opts, system, user, &schema::for_provider(schema, p));
+    let mut http = backend::http().post(&req.url).json(&req.body).timeout(opts.timeout);
+    for (name, value) in &req.headers {
+        http = http.header(*name, value);
+    }
+    let resp = http.send().await.map_err(|e| {
+        eprintln!("[ai] {}: {}", p.as_str(), e.without_url());
+        AppError::Code(wire::transport_code(p))
+    })?;
+    let status = resp.status().as_u16();
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        eprintln!("[ai] {} {status}: {}", p.as_str(), body.chars().take(300).collect::<String>());
+        return Err(AppError::Code(wire::status_code(p, status, &body)));
+    }
+    let reply: Value = resp.json().await.map_err(|e| {
+        eprintln!("[ai] {} reply: {}", p.as_str(), e.without_url());
+        AppError::Code(wire::transport_code(p))
+    })?;
+    let mut v: Value = serde_json::from_str(&wire::reply_text(p, &reply)?)?;
+    schema::clamp(&mut v, schema);
+    Ok(v)
+}
+
+/// Sets `setting[p]` in a JSON object setting (`ai.cloudModels`, `ai.serverUrls`).
+fn set_entry(app: &AppHandle, setting: &str, p: Provider, value: &str) -> AppResult<()> {
+    let mut map: Map<String, Value> = settings::read(app, setting)?;
+    map.insert(p.as_str().to_owned(), json!(value));
+    settings::set(app, setting, &Value::Object(map))
+}
+
+fn emit_status(app: &AppHandle) {
+    events::ai_status(app, app.state::<Downloader>().status(app));
+}
+
+/// `configure`'s model and address for `p`: a curated id for key providers, a 1–200 character
+/// trimmed name for servers, none for local; an address for servers only. Else `invalid`.
+fn configure_args<'a>(p: Provider, model: Option<&'a str>, base_url: Option<&str>) -> AppResult<(Option<&'a str>, Option<String>)> {
+    let model = match model {
+        None => None,
+        Some(m) if p.needs_key() => Some(curated(p, m).ok_or(AppError::Code("invalid"))?.id),
+        Some(m) if p.is_server() && (1..=200).contains(&m.trim().chars().count()) => Some(m.trim()),
+        Some(_) => return Err(AppError::Code("invalid")),
+    };
+    let base_url = match base_url {
+        None => None,
+        Some(u) if p.is_server() => Some(normalize_url(u)?),
+        Some(_) => return Err(AppError::Code("invalid")),
+    };
+    Ok((model, base_url))
+}
+
+/// Makes `provider` the active one and saves its model (curated id, or a server's model name)
+/// and server address. Errors: `invalid`, `localOnly` (any non-local provider).
+pub async fn configure(app: &AppHandle, provider: &str, model: Option<&str>, base_url: Option<&str>) -> AppResult<()> {
+    let p = Provider::parse(provider)?;
+    if p != Provider::Local {
+        backend::ensure_network(app)?;
+    }
+    let (model, base_url) = configure_args(p, model, base_url)?;
+    let previous: String = settings::read(app, "ai.provider")?;
+    if let Some(m) = model {
+        set_entry(app, "ai.cloudModels", p, m)?;
+    }
+    if let Some(u) = &base_url {
+        set_entry(app, "ai.serverUrls", p, u)?;
+    }
+    settings::set(app, "ai.provider", &json!(p.as_str()))?;
+    if previous == Provider::Local.as_str() && p != Provider::Local {
+        app.state::<LlmServer>().stop().await;
+    }
+    crate::transcribe::worker::summaries_unblocked(app);
+    emit_status(app);
+    Ok(())
+}
+
+/// The trimmed key when it is 8–512 characters without whitespace, else `invalid`.
+fn checked_key(key: &str) -> AppResult<&str> {
+    let key = key.trim();
+    if !(8..=512).contains(&key.chars().count()) || key.chars().any(char::is_whitespace) {
+        return Err(AppError::Code("invalid"));
+    }
+    Ok(key)
+}
+
+/// Saves a key provider's API key in the keychain. Error `invalid` (not a key provider, or a
+/// malformed key).
+pub fn set_key(app: &AppHandle, provider: &str, key: &str) -> AppResult<()> {
+    let p = Provider::parse(provider)?;
+    let account = p.keychain_account().ok_or(AppError::Code("invalid"))?;
+    let key = checked_key(key)?;
+    secrets::set(account, key)?;
+    app.state::<KeyCache>().set(p, true);
+    crate::transcribe::worker::summaries_unblocked(app);
+    emit_status(app);
+    Ok(())
+}
+
+/// Error `invalid` (not a key provider).
+pub fn remove_key(app: &AppHandle, provider: &str) -> AppResult<()> {
+    let p = Provider::parse(provider)?;
+    let account = p.keychain_account().ok_or(AppError::Code("invalid"))?;
+    secrets::delete(account)?;
+    app.state::<KeyCache>().set(p, false);
+    emit_status(app);
+    Ok(())
+}
+
+const TEST_CHAT: ChatOpts = ChatOpts { name: "test", max_tokens: 16, timeout: Duration::from_secs(20) };
+
+/// One tiny call with `provider`'s saved setup (not necessarily the active provider). Errors:
+/// `localOnly`, `invalid` (local), `notSetUp`, the call's codes, `aiRequest` (no boolean `ok`).
+pub async fn test(app: &AppHandle, provider: &str) -> AppResult<()> {
+    let p = Provider::parse(provider)?;
+    backend::ensure_network(app)?;
+    if p == Provider::Local {
+        return Err(AppError::Code("invalid"));
+    }
+    let config = AiConfig::read(&app.state::<Db>().conn(), Some(p))?;
+    let has_key = app.state::<KeyCache>().has(p);
+    let route = resolve(&config, Purpose::Triage, false, has_key).map_err(AppError::Code)?;
+    let schema = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok"],
+        "properties": { "ok": { "type": "boolean" } },
+    });
+    let reply = call(app, &route, &TEST_CHAT, "Answer with ok set to true.", "ping", &schema).await?;
+    if !reply["ok"].is_boolean() {
+        return Err(AppError::Code("aiRequest"));
+    }
+    Ok(())
+}
+
+/// The model ids an Ollama / LM Studio server offers (`GET <base>/v1/models`), sorted. Errors:
+/// `invalid` (not a server provider), `localOnly`, `notSetUp` (no address), `serverUnreachable`,
+/// `status_code` for a non-2xx reply.
+pub async fn server_models(app: &AppHandle, provider: &str) -> AppResult<Vec<String>> {
+    let p = Provider::parse(provider)?;
+    if !p.is_server() {
+        return Err(AppError::Code("invalid"));
+    }
+    backend::ensure_network(app)?;
+    let base = AiConfig::read(&app.state::<Db>().conn(), Some(p))?.base_url.ok_or(AppError::Code("notSetUp"))?;
+    let resp = backend::http()
+        .get(format!("{base}/v1/models"))
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("[ai] {} models: {}", p.as_str(), e.without_url());
+            AppError::Code("serverUnreachable")
+        })?;
+    let status = resp.status().as_u16();
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        eprintln!("[ai] {} models {status}: {}", p.as_str(), body.chars().take(300).collect::<String>());
+        return Err(AppError::Code(wire::status_code(p, status, &body)));
+    }
+    Ok(model_ids(&resp.json().await?))
+}
+
+/// `data[].id` of an OpenAI-style model list, sorted.
+fn model_ids(list: &Value) -> Vec<String> {
+    let mut ids: Vec<String> = list["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|m| m["id"].as_str().map(str::to_owned))
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// The active provider and every cloud provider's saved setup, for `AiStatus.cloud`.
+pub fn cloud_status(app: &AppHandle) -> CloudStatus {
+    // Before the database lock: a first read per provider goes to the keychain.
+    let keys = app.state::<KeyCache>();
+    let has_key: Vec<bool> = Provider::CLOUD.iter().map(|&p| keys.has(p)).collect();
+    let db = app.state::<Db>();
+    let conn = db.conn();
+    let provider = settings::get::<String>(&conn, "ai.provider").unwrap_or_else(|e| {
+        eprintln!("[ai] settings: {e}");
+        Provider::Local.as_str().to_owned()
+    });
+    let providers = Provider::CLOUD
+        .iter()
+        .zip(has_key)
+        .map(|(&p, has_key)| provider_status(&conn, p, has_key))
+        .collect();
+    CloudStatus { provider, providers }
+}
+
+fn provider_status(conn: &Connection, p: Provider, has_key: bool) -> CloudProviderStatus {
+    let (model, base_url) = match AiConfig::read(conn, Some(p)) {
+        Ok(c) => (c.model, c.base_url),
+        Err(e) => {
+            eprintln!("[ai] settings: {e}");
+            (None, None)
+        }
+    };
+    let ready = model.is_some() && (!p.needs_key() || has_key) && (!p.is_server() || base_url.is_some());
+    CloudProviderStatus {
+        id: p.as_str().to_owned(),
+        has_key,
+        model,
+        base_url,
+        models: CLOUD_MODELS
+            .iter()
+            .filter(|m| m.provider == p)
+            .map(|m| CloudModelInfo { id: m.id.to_owned(), label: m.label.to_owned() })
+            .collect(),
+        ready,
+    }
 }
 
 #[cfg(test)]
@@ -333,5 +641,71 @@ mod tests {
         assert!(matches!(Provider::parse("claude"), Err(AppError::Code("invalid"))));
         let accounts: Vec<&str> = Provider::CLOUD.iter().filter_map(|p| p.keychain_account()).collect();
         assert_eq!(accounts, KEY_ACCOUNTS);
+    }
+
+    fn invalid<T: std::fmt::Debug>(r: AppResult<T>) -> bool {
+        matches!(r, Err(AppError::Code("invalid")))
+    }
+
+    #[test]
+    fn configure_args_validate_per_provider() {
+        assert_eq!(configure_args(Provider::Local, None, None).unwrap(), (None, None));
+        assert!(invalid(configure_args(Provider::Local, Some("x"), None)));
+        assert!(invalid(configure_args(Provider::Local, None, Some("http://localhost:1234"))));
+        assert_eq!(configure_args(Provider::Anthropic, Some("claude-sonnet-5-5"), None).unwrap().0, Some("claude-sonnet-5-5"));
+        assert!(invalid(configure_args(Provider::Anthropic, Some("gpt-6-luna"), None)));
+        assert!(invalid(configure_args(Provider::OpenAi, None, Some("http://localhost:1234"))));
+        assert_eq!(
+            configure_args(Provider::Ollama, Some(" qwen3:4b "), Some("http://localhost:11434/v1")).unwrap(),
+            (Some("qwen3:4b"), Some("http://localhost:11434".to_owned()))
+        );
+        assert!(invalid(configure_args(Provider::LmStudio, Some("  "), None)));
+        assert!(invalid(configure_args(Provider::LmStudio, Some(&"m".repeat(201)), None)));
+        assert!(configure_args(Provider::LmStudio, Some(&"m".repeat(200)), None).is_ok());
+        assert!(invalid(configure_args(Provider::Ollama, None, Some("http://h/api"))));
+    }
+
+    #[test]
+    fn keys_are_trimmed_and_bounded() {
+        assert_eq!(checked_key("  sk-ant-12345  ").unwrap(), "sk-ant-12345");
+        assert!(invalid(checked_key("1234567")));
+        assert!(checked_key("12345678").is_ok());
+        assert!(invalid(checked_key(&"k".repeat(513))));
+        assert!(invalid(checked_key("sk-ant 12345")));
+    }
+
+    #[test]
+    fn key_cache_remembers_set_values() {
+        let cache = KeyCache::default();
+        cache.set(Provider::Anthropic, true);
+        assert!(cache.has(Provider::Anthropic));
+        cache.set(Provider::Anthropic, false);
+        assert!(!cache.has(Provider::Anthropic));
+        // Servers have no key account, so nothing is read or stored.
+        cache.set(Provider::Ollama, true);
+        assert!(!cache.has(Provider::Ollama));
+    }
+
+    #[test]
+    fn provider_status_reports_setup() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let a = provider_status(&conn, Provider::Anthropic, false);
+        assert_eq!((a.id.as_str(), a.model.as_deref(), a.ready), ("anthropic", Some("claude-haiku-5-5"), false));
+        let labels: Vec<&str> = a.models.iter().map(|m| m.label.as_str()).collect();
+        assert_eq!(labels, ["Claude Haiku 5.5", "Claude Sonnet 5.5"]);
+        assert!(provider_status(&conn, Provider::Anthropic, true).ready);
+        let o = provider_status(&conn, Provider::Ollama, false);
+        assert_eq!((o.model, o.base_url.as_deref(), o.ready), (None, Some("http://localhost:11434"), false));
+        assert!(o.models.is_empty());
+        settings::put(&conn, "ai.cloudModels", &json!({ "ollama": "qwen3:4b" })).unwrap();
+        assert!(provider_status(&conn, Provider::Ollama, false).ready);
+    }
+
+    #[test]
+    fn server_model_ids_are_sorted() {
+        let list = json!({ "object": "list", "data": [{ "id": "qwen3:4b" }, { "id": "llama3.2" }, { "object": "model" }] });
+        assert_eq!(model_ids(&list), ["llama3.2", "qwen3:4b"]);
+        assert!(model_ids(&json!({})).is_empty());
     }
 }

@@ -73,7 +73,7 @@ pub async fn select_model(app: &AppHandle, model_id: &str) -> AppResult<()> {
         app.state::<LlmServer>().stop().await;
     }
     if active_model_path(app).is_some() {
-        crate::transcribe::worker::llm_model_ready(app);
+        crate::transcribe::worker::summaries_unblocked(app);
     }
     crate::events::ai_status(app, app.state::<download::Downloader>().status(app));
     Ok(())

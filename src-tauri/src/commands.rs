@@ -23,6 +23,9 @@ pub fn set_setting(app: AppHandle, key: String, value: Value) -> AppResult<()> {
         app.state::<crate::export::queue::ExportQueue>().poke();
         crate::sync::poke(&app);
     }
+    if key == "ai.cloudMeetings" && value == Value::Bool(true) {
+        crate::transcribe::worker::summaries_unblocked(&app);
+    }
     Ok(())
 }
 
@@ -320,6 +323,38 @@ pub async fn copy_meeting_markdown(app: AppHandle, id: String) -> AppResult<()> 
 #[tauri::command]
 pub async fn ai_select_model(app: AppHandle, model_id: String) -> AppResult<()> {
     crate::llm::select_model(&app, &model_id).await
+}
+
+/// Errors: `invalid`, `localOnly`.
+#[tauri::command]
+pub async fn ai_configure(
+    app: AppHandle,
+    provider: String,
+    model: Option<String>,
+    base_url: Option<String>,
+) -> AppResult<()> {
+    crate::ai::configure(&app, &provider, model.as_deref(), base_url.as_deref()).await
+}
+
+/// Error `invalid`.
+#[tauri::command]
+pub fn ai_set_key(app: AppHandle, provider: String, key: String) -> AppResult<()> {
+    crate::ai::set_key(&app, &provider, &key)
+}
+
+#[tauri::command]
+pub fn ai_remove_key(app: AppHandle, provider: String) -> AppResult<()> {
+    crate::ai::remove_key(&app, &provider)
+}
+
+#[tauri::command]
+pub async fn ai_test(app: AppHandle, provider: String) -> AppResult<()> {
+    crate::ai::test(&app, &provider).await
+}
+
+#[tauri::command]
+pub async fn ai_server_models(app: AppHandle, provider: String) -> AppResult<Vec<String>> {
+    crate::ai::server_models(&app, &provider).await
 }
 
 #[tauri::command]

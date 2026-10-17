@@ -45,17 +45,20 @@ pub(crate) enum Summarized {
     Done { item_id: String, created: Vec<String> },
 }
 
-/// The first gate that stops a summary, in order: AI off or local-only, a secret in the
-/// transcript (the meeting item then becomes sensitive), the item's category excluded from AI,
-/// no local model.
+/// The first gate that stops a summary, in order: AI off or local-only, a sensitive meeting item
+/// or a secret in the transcript (the meeting item then becomes sensitive), the item's category
+/// excluded from AI, no local model.
 fn gate(conn: &mut Connection, m: &MeetingRow, lang: Lang, has_model: bool) -> AppResult<Option<&'static str>> {
     if !settings::get::<bool>(conn, "ai.enabled")? || settings::get::<bool>(conn, "privacy.localOnly")? {
         return Ok(Some("aiOff"));
     }
+    let item = item_state(conn, &m.id)?;
+    if item.as_ref().is_some_and(|(_, _, sensitive)| *sensitive) {
+        return Ok(Some("sensitive"));
+    }
     let text = m.transcript.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join("\n");
     if settings::get::<bool>(conn, "privacy.secretDetection")? && secrets::is_sensitive(&text) {
-        let summary = item_state(conn, &m.id)?.and_then(|(_, summary, _)| summary);
-        write_item(conn, m, lang, summary, true)?;
+        write_item(conn, m, lang, item.and_then(|(_, summary, _)| summary), true)?;
         return Ok(Some("sensitive"));
     }
     let private: bool = conn.query_row(
@@ -509,15 +512,25 @@ mod tests {
             (m.summary_state, m.summary_error)
         };
         let skipped = |code: &str| ("skipped".to_string(), Some(code.to_string()));
+        let item_sensitive = |id: &str| -> bool {
+            let item = meetings::item_id(&db.conn(), id).unwrap().unwrap();
+            db.conn().query_row("SELECT sensitive FROM items WHERE id = ?1", [&item], |r| r.get(0)).unwrap()
+        };
 
         let secret = format!("deploy with sk-ant-api03-{}", "a".repeat(40));
         let id = meeting(&db, &["Hello.", &secret]);
         assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("sensitive"));
         assert_eq!(state(&id), skipped("sensitive"));
-        let item = meetings::item_id(&db.conn(), &id).unwrap().unwrap();
-        let sensitive: bool =
-            db.conn().query_row("SELECT sensitive FROM items WHERE id = ?1", [&item], |r| r.get(0)).unwrap();
-        assert!(sensitive);
+        assert!(item_sensitive(&id));
+
+        // The item stays sensitive once detection is off: never sent to the model, in any mode.
+        settings::put(&db.conn(), "privacy.secretDetection", &json!(false)).unwrap();
+        for mode in [Mode::First, Mode::Retranscribe, Mode::NotesOnly { lang: "en".into() }] {
+            meetings::set_summary_state(&db.conn(), &id, "pending", None).unwrap();
+            assert_eq!(run(&db, &id, mode, true, no_llm()), Summarized::Skipped("sensitive"));
+            assert_eq!(state(&id), skipped("sensitive"));
+        }
+        settings::put(&db.conn(), "privacy.secretDetection", &json!(true)).unwrap();
 
         let id = meeting(&db, &["Plain talk."]);
         let item = meetings::item_id(&db.conn(), &id).unwrap().unwrap();
@@ -536,6 +549,12 @@ mod tests {
         assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("aiOff"));
         assert_eq!(state(&id), skipped("aiOff"));
         assert_eq!(task_count(&db), 0);
+
+        // AI off comes first: a secret transcript doesn't mark the item sensitive then.
+        let id = meeting(&db, &[&secret]);
+        assert_eq!(run(&db, &id, Mode::First, true, no_llm()), Summarized::Skipped("aiOff"));
+        assert_eq!(state(&id), skipped("aiOff"));
+        assert!(!item_sensitive(&id));
     }
 
     #[test]

@@ -17,7 +17,7 @@ use crate::platform::macos::fullscreen;
 use crate::windows;
 
 const KEY: &str = "hotkeys";
-const ACTIONS: [&str; 4] = ["focusPet", "sendSelection", "captureScreen", "quickNote"];
+const ACTIONS: [&str; 5] = ["focusPet", "sendSelection", "captureScreen", "quickNote", "recordMeeting"];
 /// A recorder that went away without ending its suspension can't leave the hotkeys off longer.
 const SUSPEND_MAX: Duration = Duration::from_secs(60);
 

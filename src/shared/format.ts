@@ -47,6 +47,24 @@ export function formatEstimate(min: number, lang: Lang): string {
   return m ? `~${h} ${hourUnit} ${m} ${minUnit}` : `~${h} ${hourUnit}`;
 }
 
+/** Recording time: `04:07`; from an hour `1:02:03`. */
+export function formatClock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const mmss = `${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
+  return h ? `${h}:${mmss}` : mmss;
+}
+
+/** `42 min` / `42 phút`; from an hour `1 h 5 min` / `1 giờ 5 phút`; under a minute `1 min`. */
+export function formatDuration(ms: number, lang: Lang): string {
+  const [minUnit, hourUnit] = lang === 'vi' ? ['phút', 'giờ'] : ['min', 'h'];
+  const total = Math.max(1, Math.round(ms / 60_000));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (!h) return `${m} ${minUnit}`;
+  return m ? `${h} ${hourUnit} ${m} ${minUnit}` : `${h} ${hourUnit}`;
+}
+
 /** Joins non-empty parts with ` · ` (source · context · time). */
 export function joinMeta(parts: (string | null | undefined | false)[]): string {
   return parts.filter(Boolean).join(' · ');

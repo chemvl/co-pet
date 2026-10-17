@@ -85,6 +85,16 @@ html, body { background: transparent; }
 }
 .pt-notice .cp-btn { margin-left: calc(var(--space-2) * -1); }
 
+/* Consent before the first recording: the notice's card with a heading and two actions. */
+.pt-consent {
+  width: 280px; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4); background: var(--bubble); color: var(--bubble-ink); border: 1px solid var(--bubble-ring);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-float);
+}
+.pt-consent h2, .pt-consent p { margin: 0; }
+.pt-consent p { color: var(--ink-muted); }
+.pt-consent__actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+
 /* What's Next: the card's own buttons show focus; the wrapper only takes the keys. */
 .pt-next:focus { outline: none; }
 

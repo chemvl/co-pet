@@ -9,8 +9,8 @@ export interface PetMenuEntry {
   onSelect(): void;
 }
 
-/** `null` entries render as separators. */
-export function PetMenu(p: { items: (PetMenuEntry | null)[]; onClose(): void }) {
+/** `null` entries render as separators. `label` names the menu (default: the pet menu). */
+export function PetMenu(p: { items: (PetMenuEntry | null)[]; label?: string; onClose(): void }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -42,7 +42,7 @@ export function PetMenu(p: { items: (PetMenuEntry | null)[]; onClose(): void }) 
   };
 
   return (
-    <div ref={ref} className="pt-menu" role="menu" aria-label={t('pet.menu.label')} onKeyDown={onKeyDown}>
+    <div ref={ref} className="pt-menu" role="menu" aria-label={p.label ?? t('pet.menu.label')} onKeyDown={onKeyDown}>
       {p.items.map((item, i) =>
         item ? (
           <button

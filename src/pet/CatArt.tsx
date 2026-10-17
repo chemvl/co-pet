@@ -50,6 +50,8 @@ export interface CatArtProps {
   fx?: CatFx;
   /** the pet is hidden: animations pause */
   hidden?: boolean;
+  /** a meeting is recording: headphones and a rec dot (grey while paused) */
+  recording?: { paused: boolean };
   /** accessible name; the art is decorative without it */
   label?: string;
   className?: string;
@@ -122,6 +124,15 @@ export function CatArt(props: CatArtProps): ReactElement {
           ) : (
             <span className="cp-cat__fx-q">?</span>
           )}
+        </span>
+      )}
+      {props.recording && (
+        <span
+          className={`cp-cat__rec cp-cat__rec--${fxLeft ? 'left' : 'right'}${props.recording.paused ? ' is-rec-paused' : ''}`}
+          aria-hidden
+        >
+          <Icon name="headphones" size={16} />
+          <span className="cp-cat__rec-dot" />
         </span>
       )}
     </div>

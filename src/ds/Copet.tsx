@@ -319,7 +319,8 @@ export function RecordingHUD(p: RecordingHUDProps): ReactElement {
       <span className="cp-hud__time" role="timer">{p.elapsed || '00:00'}</span>
       <Meter label={L.me} level={p.paused ? 0 : p.micLevel} />
       <Meter label={L.system} level={p.paused ? 0 : p.systemLevel} />
-      <Button variant="quiet" size="sm" icon="language" iconEnd="chevron-down" className="cp-hud__lang">{p.language || 'Auto'}</Button>
+      <Button variant="quiet" size="sm" icon="language" iconEnd="chevron-down" className="cp-hud__lang" aria-label={L.language}
+        aria-haspopup={p.onLanguage ? 'menu' : undefined} onClick={p.onLanguage ? (e) => p.onLanguage!(e.currentTarget) : undefined}>{p.language || 'Auto'}</Button>
       <Button variant="quiet" size="sm" icon={p.paused ? 'play' : 'pause'} aria-label={p.paused ? L.resume : L.pause} onClick={p.onPause} />
       <Button variant="danger" size="sm" icon="stop" onClick={p.onStop}>{L.stop}</Button>
     </div>
@@ -362,13 +363,21 @@ export function TaskRow(p: TaskRowProps): ReactElement {
 }
 
 /* ---------- TranscriptSegment ---------- */
+/** Co-pet addition: resets the button look when the speaker chip is a button (`onSpeaker`). */
+const SPEAKER_BUTTON: CSSProperties = { border: 0, padding: 0, background: 'none', cursor: 'pointer' };
 export function TranscriptSegment(p: TranscriptSegmentProps): ReactElement {
+  const speakerClass = cx('cp-speaker', p.isMe ? 'cp-speaker--me' : 'cp-speaker--n' + ((p.speakerIndex || 1) % 4));
   return (
     <div className={cx('cp-seg-line', p.active && 'is-active', p.className)}>
-      <button type="button" className="cp-seg-line__time" aria-label={'Play from ' + p.start}>{p.start}</button>
+      <button type="button" className="cp-seg-line__time" aria-label={p.playLabel ?? 'Play from ' + p.start} onClick={p.onPlay}>{p.start}</button>
       <div className="cp-seg-line__body">
         <div className="cp-seg-line__head">
-          <span className={cx('cp-speaker', p.isMe ? 'cp-speaker--me' : 'cp-speaker--n' + ((p.speakerIndex || 1) % 4))}>{p.speaker}</span>
+          {p.onSpeaker ? (
+            <button type="button" className={speakerClass} style={SPEAKER_BUTTON} aria-label={p.speakerLabel}
+              onClick={(e) => p.onSpeaker!(e.currentTarget)}>{p.speaker}</button>
+          ) : (
+            <span className={speakerClass}>{p.speaker}</span>
+          )}
           {p.language ? <span className="cp-seg-line__lang">{p.language}</span> : null}
         </div>
         <p className="cp-seg-line__text">{p.children || p.text}</p>

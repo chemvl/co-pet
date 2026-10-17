@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatEstimate, formatSize, formatTime, formatWeekday, joinMeta } from './format';
+import {
+  formatClock, formatDate, formatDuration, formatEstimate, formatSize, formatTime, formatWeekday, joinMeta,
+} from './format';
 
 describe('format', () => {
   it('formats dates per language', () => {
@@ -34,6 +36,21 @@ describe('format', () => {
     expect(formatEstimate(120, 'vi')).toBe('~2 giờ');
     expect(formatEstimate(90, 'en')).toBe('~1 h 30 min');
     expect(formatEstimate(90, 'vi')).toBe('~1 giờ 30 phút');
+  });
+  it('formats a recording clock', () => {
+    expect(formatClock(0)).toBe('00:00');
+    expect(formatClock(247_900)).toBe('04:07');
+    expect(formatClock(3_599_999)).toBe('59:59');
+    expect(formatClock(3_723_000)).toBe('1:02:03');
+  });
+  it('formats durations per language', () => {
+    expect(formatDuration(42 * 60_000, 'en')).toBe('42 min');
+    expect(formatDuration(42 * 60_000, 'vi')).toBe('42 phút');
+    expect(formatDuration(65 * 60_000, 'en')).toBe('1 h 5 min');
+    expect(formatDuration(65 * 60_000, 'vi')).toBe('1 giờ 5 phút');
+    expect(formatDuration(120 * 60_000, 'en')).toBe('2 h');
+    expect(formatDuration(20_000, 'en')).toBe('1 min');
+    expect(formatDuration(20_000, 'vi')).toBe('1 phút');
   });
   it('joins non-empty meta parts', () => {
     expect(joinMeta(['Slack', '', null, '#frontend', undefined, '14:02'])).toBe('Slack · #frontend · 14:02');

@@ -107,7 +107,7 @@ pub struct SettingsChanged {
     pub key: String,
 }
 
-/// `action`: `focusPet | sendSelection | captureScreen | quickNote`.
+/// `action`: `focusPet | sendSelection | captureScreen | quickNote | recordMeeting`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hotkey {

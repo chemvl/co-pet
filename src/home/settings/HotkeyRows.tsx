@@ -1,4 +1,4 @@
-// The four global hotkeys: Kbd + Change. Recording captures the next key combo (plan Step 12).
+// The five global hotkeys: Kbd + Change. Recording captures the next key combo (plan Step 12).
 // Shared by Settings › General and onboarding step 4.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -15,6 +15,7 @@ const ACTIONS: readonly { action: HotkeyAction; label: I18nKey }[] = [
   { action: 'sendSelection', label: 'settings.hotkeys.sendSelection' },
   { action: 'captureScreen', label: 'settings.hotkeys.captureScreen' },
   { action: 'quickNote', label: 'settings.hotkeys.quickNote' },
+  { action: 'recordMeeting', label: 'settings.hotkeys.recordMeeting' },
 ];
 
 export function HotkeyRows() {

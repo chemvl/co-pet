@@ -489,7 +489,7 @@ export interface Example {
   createdAt: number;
 }
 
-export type HotkeyAction = 'focusPet' | 'sendSelection' | 'captureScreen' | 'quickNote';
+export type HotkeyAction = 'focusPet' | 'sendSelection' | 'captureScreen' | 'quickNote' | 'recordMeeting';
 
 // ---------- M5: agents ----------
 

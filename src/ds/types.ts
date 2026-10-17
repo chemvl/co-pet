@@ -5,7 +5,9 @@ export type IconName =
   | 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted'
   | 'inbox' | 'tasks' | 'search' | 'copy' | 'paste' | 'pin' | 'more' | 'close' | 'check' | 'plus' | 'chevron-down'
   | 'play' | 'pause' | 'stop' | 'snooze' | 'skip' | 'link' | 'image' | 'file' | 'text' | 'lock' | 'agent'
-  | 'sync' | 'export' | 'alert' | 'settings' | 'calendar' | 'clock' | 'language' | 'grip' | 'trash' | 'undo' | 'moon';
+  | 'sync' | 'export' | 'alert' | 'settings' | 'calendar' | 'clock' | 'language' | 'grip' | 'trash' | 'undo' | 'moon'
+  /** Co-pet addition */
+  | 'headphones';
 export type CategoryId = 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted';
 export type ItemKind = 'file' | 'image' | 'url' | 'text' | 'richtext' | 'code' | 'screenshot' | 'audio' | 'meeting';
 export type Lang = 'en' | 'vi';
@@ -140,9 +142,12 @@ export interface RecordingHUDProps {
   systemLevel?: number;
   language?: string;
   paused?: boolean;
-  labels?: Partial<{ me: string; system: string; pause: string; resume: string; stop: string; recording: string; paused: string }>;
+  /** Co-pet addition: `language` is the language button's aria-label. */
+  labels?: Partial<{ me: string; system: string; pause: string; resume: string; stop: string; recording: string; paused: string; language: string }>;
   onPause?: () => void;
   onStop?: () => void;
+  /** Co-pet addition: called by the language button with that button as the menu anchor. */
+  onLanguage?: (anchor: HTMLButtonElement) => void;
   className?: string;
 }
 
@@ -182,5 +187,13 @@ export interface TranscriptSegmentProps {
   text?: string;
   children?: React.ReactNode;
   className?: string;
+  /** Co-pet addition: the time button plays from `start`. */
+  onPlay?: () => void;
+  /** Co-pet addition: the time button's aria-label (replaces the English 'Play from …'). */
+  playLabel?: string;
+  /** Co-pet addition: renders the speaker chip as a button, called with it as the menu anchor. */
+  onSpeaker?: (anchor: HTMLButtonElement) => void;
+  /** Co-pet addition: the speaker button's aria-label. */
+  speakerLabel?: string;
 }
 

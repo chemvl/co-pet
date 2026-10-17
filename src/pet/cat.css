@@ -52,6 +52,25 @@
 .cp-cat__fx-q { font: 700 18px/1 var(--font-display); color: var(--bubble-ink); }
 .cp-cat__fx-agent { display: flex; color: var(--info); }
 
+/* Recording accessory: headphones disc with the rec dot, on the side away from the edge (shows
+   while peeking), below the pet badge (top 4px, 20px tall) and clear of the centred FX. */
+.cp-cat__rec {
+  position: absolute; top: 26px; width: 24px; height: 24px; box-sizing: border-box; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; pointer-events: none;
+  background: var(--bubble); color: var(--bubble-ink); box-shadow: 0 0 0 1px var(--bubble-ring);
+}
+.cp-cat__rec--left { left: 0; }
+.cp-cat__rec--right { right: 0; }
+.cp-cat__rec-dot {
+  position: absolute; top: -2px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--rec); box-shadow: 0 0 0 2px var(--bubble);
+  animation: cp-rec 1.6s ease-in-out infinite;
+}
+.cp-cat__rec--left .cp-cat__rec-dot { left: -2px; }
+.cp-cat__rec--right .cp-cat__rec-dot { right: -2px; }
+/* Paused: a still grey dot (reduced motion stills it through `.is-still`). */
+.cp-cat__rec.is-rec-paused .cp-cat__rec-dot { animation: none; background: var(--ink-muted); }
+
 /* Reduced motion (or pause): the key pose only. Hidden: freeze where it is. */
 .cp-cat.is-still, .cp-cat.is-still * { animation: none !important; }
 .cp-cat.is-paused, .cp-cat.is-paused * { animation-play-state: paused !important; }

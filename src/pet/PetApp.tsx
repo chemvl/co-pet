@@ -14,12 +14,14 @@ import { errorMessage, errorText } from '../shared/errors';
 import { useT, type I18nKey } from '../shared/i18n';
 import {
   captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
-  counts as fetchCounts, focusPetPanel, getPlacement, nextAction, on, openHome, pasteItems, petStatus, quitApp,
-  requestPermission, resignPetPanel, setHitRegions, setPetMoving, whatsNext,
+  counts as fetchCounts, focusPetPanel, getPlacement, nextAction, on, openHome, pasteItems, pauseRecording, petStatus,
+  quitApp, requestPermission, resignPetPanel, resumeRecording, setHitRegions, setPetMoving, setRecordingLanguage,
+  startRecording, stopRecording, transcribeItem, whatsNext,
 } from '../shared/ipc';
-import { useCategories, useSetSetting, useSettings } from '../shared/queries';
+import { useCategories, useRecording, useSetSetting, useSettings } from '../shared/queries';
 import type {
-  CaptureResult, EventPayloads, HitRegion, HotkeyAction, NextCard, NextTrigger, Placement,
+  CaptureResult, EventPayloads, HitRegion, HotkeyAction, MeetingLanguage, NextCard, NextTrigger, Placement,
+  RecordingStatus,
 } from '../shared/types';
 import { CatArt, LOOKS, type CatLook, type CatSkin } from './CatArt';
 import { noticeFor, type Notice } from './notices';
@@ -29,22 +31,25 @@ import {
 } from './placement';
 import { poseFor } from './pose';
 import { Floating } from './surfaces/Floating';
+import { ConsentPanel } from './surfaces/ConsentPanel';
 import { PetMenu } from './surfaces/PetMenu';
 import type { CardAction } from '../shared/NextCardView';
 import { NextPanel } from './surfaces/NextPanel';
 import { PetNotice } from './surfaces/PetNotice';
 import { QuickNotePanel } from './surfaces/QuickNotePanel';
+import { RecordingDock } from './surfaces/RecordingDock';
 import { COUNTS_KEY, TRAY_KEY, TrayPanel } from './surfaces/TrayPanel';
 import { usePetMachine } from './usePetMachine';
 import './pet.css';
 
-type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice' | 'next';
+type Surface = null | 'bubbles' | 'tray' | 'menu' | 'quicknote' | 'notice' | 'next' | 'consent' | 'recLang';
 type Region = 'pet' | 'panel' | 'halo' | null;
 
 const BUBBLES: { icon: IconName; label: I18nKey }[] = [
   { icon: 'whats-next', label: 'pet.bubble.whatsNext' },
   { icon: 'screenshot', label: 'pet.bubble.captureScreen' },
   { icon: 'clipboard', label: 'pet.bubble.saveClipboard' },
+  { icon: 'mic', label: 'pet.bubble.recordMeeting' },
   { icon: 'home', label: 'pet.bubble.openHome' },
   { icon: 'note', label: 'pet.bubble.quickNote' },
 ];
@@ -63,7 +68,16 @@ const DOUBLE_CLICK_MS = 300;
 const MOVE_THRESHOLD = 4;
 const HIDE_HOUR_MS = 3_600_000;
 /** Surfaces that need keyboard focus: the panel is made key while they're open. */
-const KEYED: Surface[] = ['tray', 'menu', 'quicknote'];
+const KEYED: Surface[] = ['tray', 'menu', 'quicknote', 'consent', 'recLang'];
+/** The HUD shows only beside these; any other surface opens over it. */
+const WITH_HUD: Surface[] = [null, 'bubbles', 'recLang'];
+const REC_LANGUAGES: { lang: MeetingLanguage; label: I18nKey }[] = [
+  { lang: 'auto', label: 'lang.auto' },
+  { lang: 'en', label: 'lang.en' },
+  { lang: 'vi', label: 'lang.vi' },
+  { lang: 'zh', label: 'lang.zh' },
+  { lang: 'vi+en', label: 'lang.viEn' },
+];
 
 interface Look { look: CatLook; skin: CatSkin; size: number }
 
@@ -124,6 +138,7 @@ export function PetApp() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [menuAt, setMenuAt] = useState<Point | null>(null);
   const [panelRect, setPanelRect] = useState<Box | null>(null);
+  const [hudRect, setHudRect] = useState<Box | null>(null);
   const [halo, setHalo] = useState<'none' | 'on' | 'fading'>('none');
   const [moving, setMoving] = useState<Point | null>(null);
   const [petFocused, setPetFocused] = useState(false);
@@ -297,6 +312,78 @@ export function PetApp() {
   // The pet holds up its sign while the card is open.
   useEffect(() => machine.set('holdSign', surface === 'next'), [machine, surface]);
 
+  // ---------- Record meeting ----------
+  const { data: recordingData, dataUpdatedAt: recordingAt } = useRecording();
+  const recState = recordingData?.state ?? 'idle';
+  const consentShown = settings?.['transcribe.consentShown'] === true;
+
+  const startNow = () => {
+    startRecording().then(
+      (s) => {
+        if (!s.mic) showNotice({ message: t('notice.recMicMissing'), permission: 'microphone' });
+        else if (!s.system) showNotice({ message: t('notice.recSystemMissing'), permission: 'screenRecording' });
+      },
+      (e: unknown) =>
+        showNotice({
+          message: errorMessage(t, e),
+          permission: errorText(e) === 'noAudioSource' ? 'microphone' : undefined,
+        }),
+    );
+  };
+
+  /** Bubble `mic` and hotkey `recordMeeting`: a running recording only wakes the pet. */
+  const beginRecording = () => {
+    if (recState !== 'idle') {
+      machine.fire('wake');
+      setOut(true);
+      return;
+    }
+    if (!consentShown) {
+      openSurface('consent');
+      return;
+    }
+    closeSurface();
+    startNow();
+  };
+
+  const onConsentStart = () => {
+    void setSetting('transcribe.consentShown', true);
+    closeSurface();
+    startNow();
+  };
+
+  const onHudPause = () => {
+    (recState === 'recording' ? pauseRecording : resumeRecording)().catch((e: unknown) =>
+      showNotice({ message: errorMessage(t, e) }),
+    );
+  };
+
+  const onHudStop = () => {
+    stopRecording().catch((e: unknown) => {
+      // `recording-status` (endedReason `tooShort`) already says it.
+      if (errorText(e) !== 'tooShort') showNotice({ message: errorMessage(t, e) });
+    });
+  };
+
+  /** The language menu opens at the HUD's language button, away from the edge. */
+  const onHudLanguage = (anchor: HTMLButtonElement) => {
+    const r = anchor.getBoundingClientRect();
+    const edgeNow = live.current.placement?.edge ?? 'right';
+    const x = edgeNow === 'right' ? r.right : edgeNow === 'left' ? r.left : r.left + r.width / 2;
+    setMenuAt({ x, y: edgeNow === 'bottom' ? r.top : r.bottom });
+    openSurface('recLang');
+  };
+
+  const onRecordingStatus = (s: RecordingStatus) => {
+    if (s.state !== 'idle' || !s.endedReason) return;
+    showNotice({ message: t(s.endedReason === 'maxLength' ? 'notice.recMaxLength' : 'notice.recTooShort') });
+  };
+
+  // The language menu belongs to the HUD: it goes when the recording ends.
+  useEffect(() => {
+    if (recState === 'idle' && surface === 'recLang') closeSurface();
+  }, [recState, surface, closeSurface]);
+
   const onBubble = (icon: IconName) => {
     if (icon === 'whats-next') {
       void askNext();
@@ -304,6 +391,10 @@ export function PetApp() {
     }
     if (icon === 'note') {
       openSurface('quicknote');
+      return;
+    }
+    if (icon === 'mic') {
+      beginRecording();
       return;
     }
     closeSurface();
@@ -398,6 +489,8 @@ export function PetApp() {
     } else if (action === 'captureScreen') {
       closeSurface();
       runCapture(captureScreenshot);
+    } else if (action === 'recordMeeting') {
+      beginRecording();
     } else {
       runCapture(captureSelection);
     }
@@ -413,8 +506,8 @@ export function PetApp() {
   };
 
   // The subscriptions live for the window's lifetime and call the latest handlers.
-  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext });
-  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext };
+  const handlers = useRef({ applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus });
+  handlers.current = { applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus };
 
   useEffect(() => {
     const h = handlers;
@@ -433,6 +526,7 @@ export function PetApp() {
       on('hotkey', (e) => h.current.onHotkey(e.action)),
       on('capture-result', (r) => h.current.onDropResult(r)),
       on('whats-next', (e) => h.current.onWhatsNext(e)),
+      on('recording-status', (s) => h.current.onRecordingStatus(s)),
       getCurrentWindow().onFocusChanged(({ payload: focused }) => {
         // A click outside (another app became key) closes the keyboard surfaces.
         if (!focused && KEYED.includes(live.current.surface)) setSurface(null);
@@ -509,6 +603,7 @@ export function PetApp() {
         for (const r of bubbleRects(edge, point, size, BUBBLES.length)) regions.push({ ...r, kind: 'panel' });
       }
       if (panelRect) regions.push({ ...panelRect, kind: 'panel' });
+      if (hudRect) regions.push({ ...hudRect, kind: 'panel' });
     }
     const key = JSON.stringify(regions);
     if (key === regionsKey.current) return;
@@ -633,6 +728,7 @@ export function PetApp() {
       edge={edge}
       fx={fx}
       hidden={hidden}
+      recording={recState !== 'idle' ? { paused: recState === 'paused' } : undefined}
     />
   ) : null;
 
@@ -684,7 +780,7 @@ export function PetApp() {
                   : undefined
           }
           petProps={{
-            'aria-label': t('pet.a11y', { name }),
+            'aria-label': recState !== 'idle' ? `${t('pet.a11y', { name })}, ${t('rec.a11y')}` : t('pet.a11y', { name }),
             onClick: onPetClick,
             onPointerDown: onPetPointerDown,
             onContextMenu: (e) => {
@@ -767,9 +863,49 @@ export function PetApp() {
             onClose={closeNotice}
             onAction={() => {
               if (notice.permission) void requestPermission(notice.permission);
-              if (notice.home !== undefined) goHome(notice.home);
+              if (notice.transcribeItemId) {
+                const itemId = notice.transcribeItemId;
+                closeSurface();
+                transcribeItem(itemId).then(
+                  (meetingId) => goHome(`meetings/${encodeURIComponent(meetingId)}`),
+                  (e: unknown) => showNotice({ message: errorMessage(t, e) }),
+                );
+              } else if (notice.home !== undefined) goHome(notice.home);
               else closeSurface();
             }}
+          />
+        </Floating>
+      ) : null}
+
+      {!hidden && surface === 'consent' ? (
+        <Floating place={placeNextToPet} onRect={setPanelRect}>
+          <ConsentPanel onStart={onConsentStart} onClose={closeSurface} />
+        </Floating>
+      ) : null}
+
+      {!hidden && surface === 'recLang' && menuAt ? (
+        <Floating place={placeMenu} onRect={setPanelRect}>
+          <PetMenu
+            label={t('rec.hud.language')}
+            onClose={closeSurface}
+            items={REC_LANGUAGES.map(({ lang, label }) => ({
+              key: lang,
+              label: t(label),
+              onSelect: () =>
+                void setRecordingLanguage(lang).catch((e: unknown) => showNotice({ message: errorMessage(t, e) })),
+            }))}
+          />
+        </Floating>
+      ) : null}
+
+      {!hidden && recordingData && recState !== 'idle' && WITH_HUD.includes(surface) ? (
+        <Floating place={placeNextToPet} onRect={setHudRect}>
+          <RecordingDock
+            status={recordingData}
+            receivedAt={recordingAt}
+            onPause={onHudPause}
+            onStop={onHudStop}
+            onLanguage={onHudLanguage}
           />
         </Floating>
       ) : null}

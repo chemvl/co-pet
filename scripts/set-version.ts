@@ -1,4 +1,5 @@
-// `bun run set-version <x.y.z>`: writes one version to tauri.conf.json, Cargo.toml and package.json.
+// `bun run set-version <x.y.z>`: writes one version to tauri.conf.json, Cargo.toml, package.json and
+// the `copet` package entry of Cargo.lock.
 // `readVersions()` is used by `scripts/release.ts` to check the three agree.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -6,10 +7,12 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "..");
 const TAURI_CONF = join(root, "src-tauri/tauri.conf.json");
 const CARGO_TOML = join(root, "src-tauri/Cargo.toml");
+const CARGO_LOCK = join(root, "src-tauri/Cargo.lock");
 const PACKAGE_JSON = join(root, "package.json");
 
 const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
 const CARGO_VERSION_RE = /^version = "([^"]*)"/m;
+const LOCK_VERSION_RE = /^(name = "copet"\nversion = )"[^"]*"/m;
 
 // Rewrites only the top-level `"version"` line (2-space indent) so the rest of the file keeps its
 // formatting; re-parses the result to confirm the JSON value changed.
@@ -34,6 +37,9 @@ function setVersion(version: string) {
   if (!CARGO_VERSION_RE.test(toml)) throw new Error("src-tauri/Cargo.toml has no version line");
   writeFileSync(CARGO_TOML, toml.replace(CARGO_VERSION_RE, `version = "${version}"`));
   writeJsonVersion(PACKAGE_JSON, version);
+  const lock = readFileSync(CARGO_LOCK, "utf8");
+  if (!LOCK_VERSION_RE.test(lock)) throw new Error("src-tauri/Cargo.lock has no copet package entry");
+  writeFileSync(CARGO_LOCK, lock.replace(LOCK_VERSION_RE, `$1"${version}"`));
 }
 
 if (import.meta.main) {

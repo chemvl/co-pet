@@ -18,8 +18,9 @@ export type NavKey = string;
 
 const IDLE_PARTS = poseFor('idle').parts;
 
-function modelStatus(ai: AiStatus | undefined, t: TFunction): string {
+function modelStatus(ai: AiStatus | undefined, localOnly: boolean, t: TFunction): string {
   const cloud = activeCloud(ai);
+  if (cloud && localOnly) return t('ai.rulesOnly');
   if (cloud) return cloud.ready ? t('ai.cloudReady', { provider: providerName(cloud.id) }) : t('ai.rulesOnly');
   if (ai?.state === 'ready') return t('ai.ready');
   if ((ai?.state === 'downloading' || ai?.state === 'verifying') && ai.bytesTotal > 0) {
@@ -56,7 +57,7 @@ export function HomeNav({ active }: { active: NavKey }): ReactElement {
         </div>
         <div className="hm-nav__petText">
           <div className="pet-name hm-nav__petName">{petName}</div>
-          <div className="caption hm-muted">{modelStatus(ai, t)}</div>
+          <div className="caption hm-muted">{modelStatus(ai, settings?.['privacy.localOnly'] === true, t)}</div>
         </div>
       </div>
       <NavLink

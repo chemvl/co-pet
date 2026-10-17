@@ -98,7 +98,7 @@ if (prefix !== "copet") process.env.COPET_UPDATE_FEED = feed;
 run(["bun", "run", "fetch:llama"]);
 run(["bun", "run", "sign:llama"]);
 const confOverride = join(mkdtempSync(join(tmpdir(), "copet-release-")), "sign.json");
-writeFileSync(confOverride, JSON.stringify({ bundle: { macOS: { signingIdentity: env.APPLE_SIGNING_IDENTITY } } }));
+writeFileSync(confOverride, JSON.stringify({ bundle: { createUpdaterArtifacts: true, macOS: { signingIdentity: env.APPLE_SIGNING_IDENTITY } } }));
 run(["bun", "run", "tauri", "build", "--config", confOverride]);
 
 const app = join(BUNDLE, "macos/Co-pet.app");

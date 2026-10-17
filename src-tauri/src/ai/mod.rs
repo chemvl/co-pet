@@ -309,7 +309,7 @@ async fn call(app: &AppHandle, route: &Route, opts: &ChatOpts, system: &str, use
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        eprintln!("[ai] {} {status}: {}", p.as_str(), body.chars().take(300).collect::<String>());
+        log_status(p, "", status, &body);
         return Err(AppError::Code(wire::status_code(p, status, &body)));
     }
     let reply: Value = resp.json().await.map_err(|e| {
@@ -453,10 +453,19 @@ pub async fn server_models(app: &AppHandle, provider: &str) -> AppResult<Vec<Str
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        eprintln!("[ai] {} models {status}: {}", p.as_str(), body.chars().take(300).collect::<String>());
+        log_status(p, " models", status, &body);
         return Err(AppError::Code(wire::status_code(p, status, &body)));
     }
     Ok(model_ids(&resp.json().await?))
+}
+
+/// Logs a non-2xx reply. 401/403 bodies can echo the (redacted) key, so only the status is logged.
+fn log_status(p: Provider, what: &str, status: u16, body: &str) {
+    if matches!(status, 401 | 403) {
+        eprintln!("[ai] {}{what} {status}", p.as_str());
+    } else {
+        eprintln!("[ai] {}{what} {status}: {}", p.as_str(), body.chars().take(300).collect::<String>());
+    }
 }
 
 /// `data[].id` of an OpenAI-style model list, sorted.

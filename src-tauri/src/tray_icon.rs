@@ -7,9 +7,10 @@ use tauri::image::Image;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Listener, Manager, Wry};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::db::settings;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::i18n::{self, tr};
 use crate::platform::macos::fullscreen;
@@ -104,8 +105,12 @@ fn on_menu(app: &AppHandle, id: &str) {
         "restartUpdate" => {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = updater::install(&app).await {
-                    eprintln!("[tray] restartUpdate: {e}");
+                match updater::install(&app).await {
+                    Err(AppError::Code("recording")) => {
+                        app.dialog().message(tr(i18n::lang(&app), "update.recording")).show(|_| {});
+                    }
+                    Err(e) => eprintln!("[tray] restartUpdate: {e}"),
+                    Ok(()) => {}
                 }
             });
             Ok(())

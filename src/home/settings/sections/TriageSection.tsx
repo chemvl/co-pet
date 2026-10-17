@@ -23,18 +23,21 @@ export function TriageSection() {
   // Size of the model being fetched, else the recommended one.
   const pending = status?.models.find((m) => m.id === (status.modelId ?? status.recommendedId));
   const cloud = activeCloud(status);
-  const providerLabel = cloud
+  // Local-only mode turns cloud providers off, so the provider is not presented as in use.
+  const providerLabel = cloud && localOnly
+    ? t('integrations.ai.localOnly')
+    : cloud
     ? `${providerName(cloud.id)}${cloud.ready ? '' : ` · ${t('integrations.ai.notSetUp')}`}`
     : t('integrations.ai.local');
 
   return (
     <>
       <Group title={t('settings.triage.model')} desc={t('settings.triage.modelDesc')}>
-        {!ready && status?.cloud.provider === 'local' ? (
+        {(!ready && status?.cloud.provider === 'local') || (cloud && localOnly) ? (
           <p className="st-info">
             <Icon name="idea" size={20} />
             <span>
-              {localOnly
+              {localOnly && (cloud || !ready)
                 ? t('settings.triage.localOnlyBlocked')
                 : t('ai.rulesUntilDownload', { size: pending ? formatSize(pending.bytes, lang) : '' })}
             </span>

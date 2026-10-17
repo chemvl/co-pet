@@ -430,6 +430,13 @@ export type SyncState = 'off' | 'paused' | 'needsKey' | 'signedOut' | 'syncing' 
 
 /** `sync_status` / `sync-status`. `pending`: changes waiting to upload; `blobsPending`: files
  *  waiting to upload or download. */
+export interface SyncStatus {
+  state: SyncState;
+  lastSyncedAt: number | null;
+  pending: number;
+  blobsPending: number;
+}
+
 export type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'upToDate' | 'failed';
 
 /** The updater's state (`update_status`). `progress` is 0–1 while downloading. */
@@ -439,13 +446,6 @@ export interface UpdateStatus {
   notes: string | null;
   progress: number | null;
   error: string | null;
-}
-
-export interface SyncStatus {
-  state: SyncState;
-  lastSyncedAt: number | null;
-  pending: number;
-  blobsPending: number;
 }
 
 export type ExportProvider = 'notion' | 'asana';

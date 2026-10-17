@@ -48,6 +48,10 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         ),
         "quit.recording.ok" => ("Stop and quit", "Dừng và thoát"),
         "quit.recording.cancel" => ("Keep recording", "Tiếp tục ghi"),
+        "update.recording" => (
+            "Stop the recording before restarting.",
+            "Hãy dừng ghi âm trước khi khởi động lại.",
+        ),
         "category.todo" => ("To-do", "Việc cần làm"),
         "category.read" => ("Read later", "Đọc sau"),
         "category.reference" => ("Reference", "Tài liệu"),

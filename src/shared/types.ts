@@ -561,6 +561,8 @@ export interface EventPayloads {
   'capture-result': CaptureResult;
   /** Pet window only: a proactive What's Next card. */
   'whats-next': { card: NextCard; trigger: 'return' | 'afterDone' | 'afterMeeting' };
+  /** Pet window only: last week's diary is ready; `week` = this week's Monday. */
+  'diary-ready': { week: string };
   /** Export jobs changed; task lists show `TaskSummary.export`. */
   'exports-changed': { taskIds: string[] };
   /** `provider` is null only for an OAuth handoff this app never started. */

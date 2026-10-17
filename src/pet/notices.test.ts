@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { translate, type TFunction } from '../shared/i18n';
 import type { CaptureResult } from '../shared/types';
-import { noticeFor } from './notices';
+import { diaryNotice, noticeFor } from './notices';
 
 const t: TFunction = (key, params) => translate('en', key, params);
 
@@ -30,5 +30,16 @@ describe('noticeFor', () => {
 
   it('says nothing about a plain saved result', () => {
     expect(noticeFor(saved(), t)).toBeNull();
+  });
+});
+
+describe('diaryNotice', () => {
+  it('opens the Pet room with an Open diary action', () => {
+    expect(diaryNotice(t)).toEqual({
+      message: "Last week's diary is ready.",
+      home: 'pet',
+      homeLabel: 'Open diary',
+      ms: 8000,
+    });
   });
 });

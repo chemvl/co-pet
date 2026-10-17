@@ -26,6 +26,8 @@ pub const NAVIGATE: &str = "navigate";
 pub const CAPTURE_RESULT: &str = "capture-result";
 /// Pet window only: a proactive What's Next card.
 pub const WHATS_NEXT: &str = "whats-next";
+/// Pet window only: last week's diary notice.
+pub const DIARY_READY: &str = "diary-ready";
 /// Export jobs changed; listeners also refresh task lists (`TaskSummary.export`).
 pub const EXPORTS_CHANGED: &str = "exports-changed";
 /// A Notion/Asana connection finished (OAuth or token) or failed.
@@ -152,6 +154,13 @@ pub struct CategoriesChanged {}
 pub struct WhatsNextEvent {
     pub card: NextCard,
     pub trigger: String,
+}
+
+/// `week`: this week's Monday (`YYYY-MM-DD`); the pet stores it in `diary.lastNoticeWeek` once shown.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiaryReady {
+    pub week: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -327,6 +336,13 @@ pub fn capture_result(app: &AppHandle, r: CaptureResult) {
 pub fn whats_next(app: &AppHandle, ev: WhatsNextEvent) {
     if let Err(e) = app.emit_to(crate::windows::PET, WHATS_NEXT, ev) {
         eprintln!("[events] emit {WHATS_NEXT} failed: {e}");
+    }
+}
+
+/// Sent to the pet window only; it shows last week's diary notice.
+pub fn diary_ready(app: &AppHandle, ev: DiaryReady) {
+    if let Err(e) = app.emit_to(crate::windows::PET, DIARY_READY, ev) {
+        eprintln!("[events] emit {DIARY_READY} failed: {e}");
     }
 }
 

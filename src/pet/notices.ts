@@ -13,6 +13,8 @@ export interface Notice {
   transcribeItemId?: string;
   /** …or opens Home at this route */
   home?: string;
+  /** label of the `home` action; `common.openHome` when unset */
+  homeLabel?: string;
   /** how long it stays up; `NOTICE_MS` when unset */
   ms?: number;
 }
@@ -22,7 +24,7 @@ const PERMISSION_OF: Partial<Record<string, PermissionKind>> = {
   'notice.needsAccessibility': 'accessibility',
 };
 
-/** The transcribe offer stays longer than a plain notice: it asks for a decision. */
+/** Offers stay longer than a plain notice: they ask for a decision. */
 const OFFER_MS = 8000;
 
 const isNoticeKey = (s: string): s is I18nKey => s.startsWith('notice.') && s in en;
@@ -43,4 +45,9 @@ export function noticeFor(r: CaptureResult, t: TFunction): Notice | null {
   if (r.status !== 'skipped' || !r.message) return null;
   if (!isNoticeKey(r.message)) return { message: t('notice.captureFailed', { reason: r.message }) };
   return { message: t(r.message, r.messageParams), permission: PERMISSION_OF[r.message] };
+}
+
+/** Last week's diary is ready: opens the Pet room (`#/pet`), where the diary lives. */
+export function diaryNotice(t: TFunction): Notice {
+  return { message: t('notice.diaryReady'), home: 'pet', homeLabel: t('notice.openDiary'), ms: OFFER_MS };
 }

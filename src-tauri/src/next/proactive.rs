@@ -6,13 +6,15 @@ use std::time::Duration;
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, Timelike};
 use rusqlite::Connection;
 use serde::Deserialize;
+use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-use crate::db::{items, now_ms, settings, tasks, Db};
+use crate::db::{diary, items, now_ms, settings, tasks, Db};
 use crate::error::{AppError, AppResult};
-use crate::events::{self, WhatsNextEvent};
+use crate::events::{self, DiaryReady, WhatsNextEvent};
 use crate::platform::macos::fullscreen::Visibility;
 use crate::platform::macos::idle::{self, Sleep};
+use crate::transcribe::recorder::Recorder;
 
 const TICK: Duration = Duration::from_secs(30);
 /// Input this recent after being away counts as a return.
@@ -69,9 +71,21 @@ fn shown_last_hour(conn: &Connection, now_ms: i64) -> AppResult<i64> {
     )?)
 }
 
+/// Onboarding done, inside `whatsNext.workHours`, and the pet neither paused nor hidden by the user.
+fn pet_available(conn: &Connection, now: DateTime<Local>) -> AppResult<bool> {
+    if !settings::get::<bool>(conn, "onboarding.completed")?
+        || settings::get::<bool>(conn, "pet.paused")?
+        || !in_work_hours(&settings::get(conn, "whatsNext.workHours")?, now.naive_local())
+    {
+        return Ok(false);
+    }
+    let now_ms = now.timestamp_millis();
+    Ok(!settings::get::<Option<f64>>(conn, "pet.hiddenUntil")?.is_some_and(|until| (now_ms as f64) < until))
+}
+
 /// The settings-based guardrails for `trigger` (`return | afterDone | afterMeeting`) at `now`:
-/// the trigger's switch, onboarding done, inside work hours, pet not paused or hidden by the
-/// user, and fewer than `whatsNext.maxPerHour` proactive cards shown in the last hour.
+/// the trigger's switch, [`pet_available`], and fewer than `whatsNext.maxPerHour` proactive
+/// cards shown in the last hour.
 fn settings_allow(conn: &Connection, trigger: &str, now: DateTime<Local>) -> AppResult<bool> {
     let switch = match trigger {
         "return" => "whatsNext.onReturn",
@@ -79,18 +93,50 @@ fn settings_allow(conn: &Connection, trigger: &str, now: DateTime<Local>) -> App
         "afterMeeting" => "whatsNext.afterMeeting",
         _ => return Err(AppError::Code("invalid")),
     };
-    if !settings::get::<bool>(conn, switch)?
-        || !settings::get::<bool>(conn, "onboarding.completed")?
-        || settings::get::<bool>(conn, "pet.paused")?
-        || !in_work_hours(&settings::get(conn, "whatsNext.workHours")?, now.naive_local())
-    {
+    if !settings::get::<bool>(conn, switch)? || !pet_available(conn, now)? {
         return Ok(false);
+    }
+    Ok(shown_last_hour(conn, now.timestamp_millis())? < settings::get::<i64>(conn, "whatsNext.maxPerHour")?)
+}
+
+/// Last week's diary notice when due at `now`: `diary.weeklyNotice` on, [`pet_available`], and this
+/// week's Monday not yet in `diary.lastNoticeWeek`. An empty last week is marked as handled here
+/// (`settings::put`) and offers nothing.
+fn diary_due(conn: &Connection, now: DateTime<Local>) -> AppResult<Option<DiaryReady>> {
+    if !settings::get::<bool>(conn, "diary.weeklyNotice")? || !pet_available(conn, now)? {
+        return Ok(None);
     }
     let now_ms = now.timestamp_millis();
-    if settings::get::<Option<f64>>(conn, "pet.hiddenUntil")?.is_some_and(|until| (now_ms as f64) < until) {
-        return Ok(false);
+    let week = diary::week_bounds(&Local, now_ms, 0)?.start.format("%Y-%m-%d").to_string();
+    if settings::get::<Option<String>>(conn, "diary.lastNoticeWeek")?.as_deref() == Some(week.as_str()) {
+        return Ok(None);
     }
-    Ok(shown_last_hour(conn, now_ms)? < settings::get::<i64>(conn, "whatsNext.maxPerHour")?)
+    if diary::is_empty(&diary::week(conn, &Local, now_ms, -1)?) {
+        settings::put(conn, "diary.lastNoticeWeek", &Value::String(week))?;
+        return Ok(None);
+    }
+    Ok(Some(DiaryReady { week }))
+}
+
+/// [`diary_due`] while the user is at the Mac (`idle::seconds_since_input() < RETURN_SECS`), outside
+/// sleep hours, not hidden for full screen, the pet awake (`Sleep`) and nothing recording
+/// (`Recorder::is_active`). The pet records the week when it shows the notice, so one it couldn't
+/// show is offered again next tick.
+fn offer_diary(app: &AppHandle) {
+    if idle::seconds_since_input() >= RETURN_SECS
+        || idle::in_sleep_hours(app)
+        || app.state::<Visibility>().current().hidden
+        || app.state::<Sleep>().current()
+        || app.try_state::<Recorder>().is_some_and(|r| r.is_active())
+    {
+        return;
+    }
+    let due = diary_due(&app.state::<Db>().conn(), Local::now());
+    match due {
+        Ok(Some(ev)) => events::diary_ready(app, ev),
+        Ok(None) => {}
+        Err(e) => eprintln!("[next] diary notice: {e}"),
+    }
 }
 
 /// Every guardrail: [`settings_allow`], outside sleep hours, and not hidden for full screen.
@@ -121,8 +167,9 @@ fn away_secs(conn: &Connection) -> AppResult<Option<f64>> {
     Ok(Some(settings::get::<f64>(conn, "whatsNext.idleMinutes")? * 60.0))
 }
 
-/// The 30 s scheduler. Each tick: emit `counts-changed` when the due-soon flag flips, then (while
-/// `whatsNext.onReturn` is on) run return detection and offer the `return` card.
+/// The 30 s scheduler. Each tick: emit `counts-changed` when the due-soon flag flips, offer last
+/// week's diary notice, then (while `whatsNext.onReturn` is on) run return detection and offer the
+/// `return` card.
 pub fn start(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -145,6 +192,7 @@ pub fn start(app: &AppHandle) {
                 }
                 Err(e) => eprintln!("[next] due-soon check: {e}"),
             }
+            offer_diary(&app);
             let away = match away {
                 Ok(Some(secs)) => secs,
                 Ok(None) => {
@@ -320,5 +368,50 @@ mod tests {
         feedback(&conn, &t, "return", "shown", ms - 60_000);
         assert_eq!(shown_last_hour(&conn, ms).unwrap(), 2);
         assert!(!settings_allow(&conn, "afterMeeting", now).unwrap(), "counts toward 2 per hour");
+    }
+
+    fn item(conn: &Connection, at: i64) {
+        conn.execute(
+            "INSERT INTO items (id, kind, title, source_kind, content_hash, status, captured_at, updated_at)
+             VALUES (?1, 'text', ?1, 'drop', ?1, 'inbox', ?2, ?2)",
+            params![new_id(), at],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn diary_notice_once_per_week() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let set = |k: &str, v: serde_json::Value| settings::put(&conn, k, &v).unwrap();
+        set("onboarding.completed", json!(true));
+        item(&conn, at(14, 10, 0).timestamp_millis());
+        let now = at(19, 10, 0);
+        let due = || diary_due(&conn, now).unwrap().map(|d| d.week);
+        assert_eq!(due(), Some("2026-10-19".to_owned()));
+        set("diary.lastNoticeWeek", json!("2026-10-19"));
+        assert_eq!(due(), None, "already shown this week");
+        set("diary.lastNoticeWeek", json!("2026-10-12"));
+        assert_eq!(due(), Some("2026-10-19".to_owned()));
+
+        set("diary.weeklyNotice", json!(false));
+        assert_eq!(due(), None, "switch off");
+        set("diary.weeklyNotice", json!(true));
+        set("pet.paused", json!(true));
+        assert_eq!(due(), None, "paused");
+        set("pet.paused", json!(false));
+        assert!(diary_due(&conn, at(24, 10, 0)).unwrap().is_none(), "Saturday");
+    }
+
+    #[test]
+    fn empty_last_week_marks_without_notice() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        settings::put(&conn, "onboarding.completed", &json!(true)).unwrap();
+        assert!(diary_due(&conn, at(19, 10, 0)).unwrap().is_none());
+        assert_eq!(
+            settings::get::<Option<String>>(&conn, "diary.lastNoticeWeek").unwrap().as_deref(),
+            Some("2026-10-19")
+        );
     }
 }

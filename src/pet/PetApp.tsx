@@ -25,7 +25,7 @@ import type {
 } from '../shared/types';
 import { asPetSize, petLookOf, type PetSize, type SkinId, type Species } from './catalog';
 import { CatArt } from './CatArt';
-import { noticeFor, type Notice } from './notices';
+import { diaryNotice, noticeFor, type Notice } from './notices';
 import {
   bubbleRects, bubbleZone, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
   DOCK_BOX, type Box, type Point, type Size,
@@ -420,6 +420,14 @@ export function PetApp() {
     openNext(e.card, e.trigger, false);
   };
 
+  /** Last week's diary: only onto an idle, visible, awake pet; the week is recorded once shown. */
+  const onDiaryReady = (e: EventPayloads['diary-ready']) => {
+    if (live.current.surface !== null || live.current.hidden || machine.output().body === 'sleep') return;
+    machine.fire('wake');
+    showNotice(diaryNotice(t));
+    void setSetting('diary.lastNoticeWeek', e.week);
+  };
+
   const endHalo = () => {
     live.current.halo = 'fading';
     machine.set('dragOver', false);
@@ -539,10 +547,10 @@ export function PetApp() {
 
   // The subscriptions live for the window's lifetime and call the latest handlers.
   const handlers = useRef({
-    applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus, showSpeech,
+    applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onDiaryReady, onRecordingStatus, showSpeech,
   });
   handlers.current = {
-    applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onRecordingStatus, showSpeech,
+    applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onDiaryReady, onRecordingStatus, showSpeech,
   };
 
   useEffect(() => {
@@ -562,6 +570,7 @@ export function PetApp() {
       on('hotkey', (e) => h.current.onHotkey(e.action)),
       on('capture-result', (r) => h.current.onDropResult(r)),
       on('whats-next', (e) => h.current.onWhatsNext(e)),
+      on('diary-ready', (e) => h.current.onDiaryReady(e)),
       on('recording-status', (s) => h.current.onRecordingStatus(s)),
       getCurrentWindow().onFocusChanged(({ payload: focused }) => {
         // A click outside (another app became key) closes the keyboard surfaces.

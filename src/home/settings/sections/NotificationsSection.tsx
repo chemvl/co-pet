@@ -1,3 +1,4 @@
+import { Switch } from '../../../ds';
 import { useT } from '../../../shared/i18n';
 import { useSetSetting, useSetting } from '../../../shared/queries';
 import { Group, TimeRange } from '../parts';
@@ -9,6 +10,7 @@ export function NotificationsSection() {
   const t = useT();
   const set = useSetSetting();
   const hours = useSetting<SleepHours>('pet.sleepHours', { start: '23:00', end: '07:00' });
+  const diaryNotice = useSetting<boolean>('diary.weeklyNotice', true);
 
   return (
     <>
@@ -17,6 +19,15 @@ export function NotificationsSection() {
       </Group>
       <Group title={t('settings.notifications.fullscreen')}>
         <p className="st-body">{t('settings.notifications.fullscreenDesc')}</p>
+      </Group>
+      <Group title={t('diary.title')}>
+        <Switch
+          id="st-diary-notice"
+          label={t('settings.notifications.diaryNotice')}
+          description={t('settings.notifications.diaryNoticeDesc')}
+          checked={diaryNotice}
+          onChange={(v) => void set('diary.weeklyNotice', v)}
+        />
       </Group>
     </>
   );

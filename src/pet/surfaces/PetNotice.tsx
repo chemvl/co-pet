@@ -20,7 +20,7 @@ export function PetNotice(p: { notice: Notice; onAction(): void; onClose(): void
     : n.transcribeItemId
       ? t('notice.transcribe')
       : n.home !== undefined
-        ? t('common.openHome')
+        ? (n.homeLabel ?? t('common.openHome'))
         : null;
   return (
     <div className="pt-notice" role="status">

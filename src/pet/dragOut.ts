@@ -42,7 +42,7 @@ export function armDragOut(e: ReactPointerEvent, opts: DragOutOptions): void {
     try {
       const plan = await prepareDrag(opts.items.map((i) => i.id), asFiles);
       const first = opts.items[0];
-      const icon = renderDragImage({ kind: first.kind, title: first.title, count: opts.items.length });
+      const icon = renderDragImage({ kind: first.kind, meetingId: first.meetingId, title: first.title, count: opts.items.length });
       await startDrag({ item: plan, icon, mode: 'copy' }, ({ result }) => opts.onEnd(result === 'Dropped'));
     } catch (err) {
       opts.onEnd(false);

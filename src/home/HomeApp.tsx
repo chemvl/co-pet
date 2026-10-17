@@ -13,7 +13,9 @@ import { AgentsPage } from './agents/AgentsPage';
 import { CategoriesPage } from './categories/CategoriesPage';
 import { ItemDetail } from './ItemDetail';
 import { IntegrationsPage } from './integrations/IntegrationsPage';
-import { itemQuery } from './queries';
+import { itemQuery, meetingQuery } from './queries';
+import { MeetingActionsProvider } from './meetings/recordFlow';
+import { MeetingsPage } from './meetings/MeetingsPage';
 import { navigate, routePath, useRoute, type Route } from './router';
 import { SettingsPage } from './settings/SettingsPage';
 import { TasksPage } from './tasks/TasksPage';
@@ -34,11 +36,19 @@ function useLiveQueries(): void {
       void qc.invalidateQueries({ queryKey: ['task'] });
       void qc.invalidateQueries({ queryKey: ['item'] });
       void qc.invalidateQueries({ queryKey: ['next'] });
+      // Action items link their tasks.
+      void qc.invalidateQueries({ queryKey: ['meeting'] });
+    };
+    const refreshMeetings = () => {
+      void qc.invalidateQueries({ queryKey: ['meetings'] });
+      void qc.invalidateQueries({ queryKey: ['meeting'] });
     };
     const subs = [
       on('items-changed', refresh),
       on('tasks-changed', refreshTasks),
       on('exports-changed', refreshTasks),
+      on('meetings-changed', refreshMeetings),
+      on('recording-status', () => void qc.invalidateQueries({ queryKey: ['meetings'] })),
       on('settings-changed', refresh),
       on('counts-changed', (c) => qc.setQueryData<Counts>(['counts'], c)),
       on('navigate', ({ route }) => navigate(route)),
@@ -57,6 +67,8 @@ function navKey(route: Route, itemCategory: string | undefined, firstCategory: s
       return itemCategory ?? '';
     case 'tasks':
       return 'tasks';
+    case 'meetings':
+      return 'meetings';
     case 'agents':
       return 'agents';
     case 'categories':
@@ -76,11 +88,13 @@ export function HomeApp(): ReactElement {
   const [search, setSearch] = useState('');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const lastList = useRef('inbox');
-  // Back from an item (e.g. a task's source) returns to the last list, Tasks included.
-  if (route.page === 'inbox' || route.page === 'category' || (route.page === 'tasks' && !route.new)) {
+  // Back from an item (e.g. a task's source) returns to the last list, Tasks and Meetings included.
+  if (route.page === 'inbox' || route.page === 'category' || route.page === 'meetings' || (route.page === 'tasks' && !route.new)) {
     lastList.current = routePath(route);
   }
   const item = useQuery({ ...itemQuery(route.page === 'item' ? route.id : ''), enabled: route.page === 'item' }).data;
+  const meetingId = route.page === 'meetings' ? route.id : undefined;
+  const meeting = useQuery({ ...meetingQuery(meetingId ?? ''), enabled: meetingId != null }).data;
   const { data: categories } = useCategories();
   // A category route whose id isn't live shows the Inbox (see InboxPage).
   const category = route.page === 'category' ? categories?.find((c) => c.id === route.categoryId) : undefined;
@@ -120,6 +134,10 @@ export function HomeApp(): ReactElement {
       pageName = t('tasks.title');
       page = <TasksPage route={route} />;
       break;
+    case 'meetings':
+      pageName = meeting ? `${t('meetings.title')} · ${meeting.title}` : t('meetings.title');
+      page = <MeetingsPage route={route} />;
+      break;
     case 'agents':
       pageName = t('agents.title');
       page = <AgentsPage />;
@@ -141,12 +159,15 @@ export function HomeApp(): ReactElement {
   return (
     <SelectionProvider>
       <div className="hm-win">
-        <TitleBar page={pageName} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} />
-        <div className="hm-body">
-          <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
-          <main className="hm-main">{page}</main>
-        </div>
-        {paletteOpen ? <Palette onClose={() => setPaletteOpen(false)} onSearch={setSearch} /> : null}
+        {/* Inside .hm-win so the consent dialog gets the window's button font and focus ring. */}
+        <MeetingActionsProvider>
+          <TitleBar page={pageName} onOpenPalette={() => setPaletteOpen(true)} onNavigate={navigate} />
+          <div className="hm-body">
+            <HomeNav active={navKey(route, item?.categoryId, categories?.[0]?.id)} />
+            <main className="hm-main">{page}</main>
+          </div>
+          {paletteOpen ? <Palette onClose={() => setPaletteOpen(false)} onSearch={setSearch} /> : null}
+        </MeetingActionsProvider>
       </div>
     </SelectionProvider>
   );

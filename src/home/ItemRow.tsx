@@ -5,6 +5,7 @@ import { Icon, KIND_ICON, Kbd, StatusPill } from '../ds';
 import { categoryLabelOf } from '../shared/categories';
 import { useLang, useT } from '../shared/i18n';
 import { useAddedBy, useCategories, useSyncStatus } from '../shared/queries';
+import { displayKind } from '../shared/itemKind';
 import { localPillLabel } from '../shared/sync';
 import type { Category, CategoryId, ItemSummary } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
@@ -26,7 +27,7 @@ export function KindTile({ item, large }: { item: ItemSummary; large?: boolean }
   const thumb = !item.sensitive && item.thumbPath ? convertFileSrc(item.thumbPath) : null;
   return (
     <div className={`hm-kt${large ? ' hm-kt--lg' : ''}`}>
-      {thumb ? <img src={thumb} alt="" draggable={false} /> : <Icon name={KIND_ICON[item.kind]} size={large ? 20 : 18} />}
+      {thumb ? <img src={thumb} alt="" draggable={false} /> : <Icon name={KIND_ICON[displayKind(item)]} size={large ? 20 : 18} />}
     </div>
   );
 }

@@ -10,14 +10,20 @@ const notion: ProviderStatus = {
 };
 const ctx = (query: string, extra: Partial<PaletteContext> = {}): PaletteContext => ({
   t, query, selection: { itemIds: [] }, integrations: [], navigate: () => {}, toast: () => {},
-  setSearch: () => {}, convertToTask: async () => {}, petPaused: false, syncState: undefined, ...extra,
+  setSearch: () => {}, convertToTask: async () => {}, petPaused: false, syncState: undefined,
+  recording: false, recordMeeting: () => {}, importMeeting: () => {}, ...extra,
 });
 const ids = (c: PaletteContext) => matchActions(c).map((m) => m.action.id);
 
 describe('matchActions', () => {
   it('lists the first actions whose `when` passes for an empty query', () => {
-    expect(ids(ctx(''))).toEqual(['go.inbox', 'go.tasks', 'go.agents', 'go.integrations', 'go.categories', 'go.settings']);
+    expect(ids(ctx(''))).toEqual(['go.inbox', 'go.tasks', 'go.meetings', 'meeting.record', 'meeting.import', 'go.agents']);
     expect(ids(ctx('')).length).toBe(MAX_ACTIONS);
+  });
+
+  it('offers Record meeting only while nothing is being recorded', () => {
+    expect(ids(ctx('meeting'))).toEqual(['go.meetings', 'meeting.record']);
+    expect(ids(ctx('meeting', { recording: true }))).toEqual(['go.meetings']);
   });
 
   it('lists the Notion rows of the board for "notion" with a task selected', () => {

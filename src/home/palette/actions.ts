@@ -26,6 +26,12 @@ export interface PaletteContext {
   petPaused: boolean;
   /** Undefined until `sync_status` answers. */
   syncState: SyncState | undefined;
+  /** A meeting is being recorded (or paused). */
+  recording: boolean;
+  /** Home's Record meeting flow (consent dialog the first time). */
+  recordMeeting: () => void;
+  /** Picks an audio or video file and imports it as a meeting. */
+  importMeeting: () => void;
 }
 
 export interface PaletteAction {
@@ -74,6 +80,20 @@ const goTo = (id: string, icon: IconName, key: Parameters<TFunction>[0], path: s
 export const ACTIONS: readonly PaletteAction[] = [
   goTo('go.inbox', 'inbox', 'palette.goInbox', 'inbox'),
   goTo('go.tasks', 'tasks', 'palette.goTasks', 'tasks'),
+  goTo('go.meetings', 'meeting', 'palette.goMeetings', 'meetings'),
+  {
+    id: 'meeting.record',
+    icon: 'mic',
+    label: (t) => t('meetings.record'),
+    when: (ctx) => !ctx.recording,
+    run: (ctx) => ctx.recordMeeting(),
+  },
+  {
+    id: 'meeting.import',
+    icon: 'file',
+    label: (t) => t('meetings.import'),
+    run: (ctx) => ctx.importMeeting(),
+  },
   goTo('go.agents', 'agent', 'palette.goAgents', 'agents'),
   goTo('go.integrations', 'export', 'palette.goIntegrations', 'integrations'),
   goTo('go.categories', 'reference', 'palette.goCategories', 'categories'),

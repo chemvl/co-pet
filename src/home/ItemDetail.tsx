@@ -9,7 +9,7 @@ import { categoryLabelOf } from '../shared/categories';
 import { errorMessage, errorText } from '../shared/errors';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
-import { copyItems } from '../shared/ipc';
+import { copyItems, transcribeItem } from '../shared/ipc';
 import { useAddedBy, useAiStatus, useCategories, useSetting } from '../shared/queries';
 import { useToast } from '../shared/Toast';
 import type { ItemDetail as Item } from '../shared/types';
@@ -19,6 +19,7 @@ import { KindTile, LocalPill } from './ItemRow';
 import { detailMeta, extOf, historyText, hostOf, whenShort, whyText } from './itemText';
 import { categoryMenuItems, Menu, MenuButton } from './Menu';
 import { itemQuery } from './queries';
+import { navigate } from './router';
 import { useItemActions } from './useItemActions';
 import { useSetSelection } from './selection';
 
@@ -70,6 +71,7 @@ function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactE
           {item.fileAvailable ? null : <div className="caption hm-muted">{t('item.fileElsewhere')}</div>}
         </div>
         <ConvertButton item={item} />
+        <TranscribeButton item={item} />
         <CopyButton item={item} />
         <OpenButton item={item} />
         <MoreMenu item={item} />
@@ -143,6 +145,7 @@ function ItemPane({ item }: { item: Item }): ReactElement {
       </div>
       <div className="hm-det__actions">
         <ConvertButton item={item} size="md" />
+        <TranscribeButton item={item} size="md" />
         <CopyButton item={item} size="md" />
         <OpenButton item={item} size="md" />
       </div>
@@ -203,13 +206,41 @@ function CopyButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['siz
   );
 }
 
-/** The surface's primary action; sensitive items convert too (the title is already visible). */
+/** The surface's primary action: Open meeting for a meeting's item, else Convert to task
+ *  (sensitive items convert too: the title is already visible). */
 function ConvertButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['size'] }): ReactElement {
   const t = useT();
   const actions = useItemActions();
+  const meetingId = item.meetingId;
+  if (meetingId) {
+    return (
+      <Button variant="primary" size={size} icon="meeting" onClick={() => navigate(`meetings/${encodeURIComponent(meetingId)}`)}>
+        {t('item.openMeeting')}
+      </Button>
+    );
+  }
   return (
     <Button variant="primary" size={size} icon="tasks" onClick={() => void actions.convertToTask(item)}>
       {t('item.convertToTask')}
+    </Button>
+  );
+}
+
+/** Audio and video files become a meeting: transcribe, then open it. */
+function TranscribeButton({ item, size = 'sm' }: { item: Item; size?: ButtonProps['size'] }): ReactElement | null {
+  const t = useT();
+  const fail = useFail();
+  const [busy, setBusy] = useState(false);
+  if (item.kind !== 'file' || !/^(audio|video)\//.test(item.mime ?? '')) return null;
+  const run = () => {
+    setBusy(true);
+    transcribeItem(item.id)
+      .then((id) => navigate(`meetings/${encodeURIComponent(id)}`), fail)
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Button variant="secondary" size={size} icon="mic" disabled={busy} onClick={run}>
+      {t('item.transcribe')}
     </Button>
   );
 }

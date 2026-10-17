@@ -146,7 +146,7 @@ export function TasksPage({ route }: TasksPageProps): ReactElement {
         title={task.title}
         done={task.status === 'done'}
         // An agent's label wins over the source title; the editor still shows the source.
-        source={task.addedBy || task.sourceTitle ? 'item' : undefined}
+        source={task.sourceMeetingId ? 'meeting' : task.addedBy || task.sourceTitle ? 'item' : undefined}
         sourceLabel={task.addedBy ? addedBy(task.addedBy) : (task.sourceTitle ?? undefined)}
         estimate={task.estimateMin != null ? formatEstimate(task.estimateMin, lang) : undefined}
         due={dueText(task, now, lang, t)}

@@ -104,11 +104,15 @@ export function PermissionsStep({ look, skin }: { look: CatLook; skin: CatSkin }
   const cards = [
     { kind: 'screenRecording', icon: 'screenshot', title: 'onboarding.perm.screen', desc: 'onboarding.perm.screenDesc' },
     { kind: 'accessibility', icon: 'paste', title: 'onboarding.perm.accessibility', desc: 'onboarding.perm.accessibilityDesc' },
+    { kind: 'microphone', icon: 'mic', title: 'onboarding.perm.mic', desc: 'onboarding.perm.micDesc' },
   ] as const;
   return (
     <SideLayout look={look} skin={skin} pose={poseFor('thinking')} title={t('onboarding.perm.title')} lead={t('onboarding.perm.body')}>
       {cards.map((c) => {
-        const granted = perms.data?.[c.kind] ?? false;
+        const value = perms.data?.[c.kind];
+        const granted = value === true || value === 'granted';
+        // macOS asks for the microphone itself the first time Co-pet records.
+        const askLater = value === 'notDetermined';
         return (
           <div key={c.kind} className="ob-perm">
             <div className="ob-perm__icon"><Icon name={c.icon} size={20} /></div>
@@ -116,6 +120,8 @@ export function PermissionsStep({ look, skin }: { look: CatLook; skin: CatSkin }
             <div className="ob-perm__side">
               {granted ? (
                 <StatusPill status="synced" label={t('onboarding.perm.allowed')} />
+              ) : askLater ? (
+                <StatusPill status="pending" label={t('onboarding.perm.askLater')} />
               ) : (
                 <>
                   <StatusPill status="pending" label={t('onboarding.perm.notAllowed')} />

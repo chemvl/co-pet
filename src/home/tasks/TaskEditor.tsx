@@ -216,8 +216,15 @@ function EditForm({ task, overlay, onClose }: { task: TaskDetail; overlay: boole
       <Fields draft={draft} onChange={change} requireTitle />
       <Field label={t('tasks.field.source')}>
         {task.sourceItemId && task.sourceTitle ? (
-          <a className="hm-link tk-source" href={`#/item/${encodeURIComponent(task.sourceItemId)}`}>
-            <Icon name="inbox" size={16} />
+          <a
+            className="hm-link tk-source"
+            href={
+              task.sourceMeetingId
+                ? `#/meetings/${encodeURIComponent(task.sourceMeetingId)}`
+                : `#/item/${encodeURIComponent(task.sourceItemId)}`
+            }
+          >
+            <Icon name={task.sourceMeetingId ? 'meeting' : 'inbox'} size={16} />
             <span className="hm-ellipsis">{task.sourceTitle}</span>
           </a>
         ) : (

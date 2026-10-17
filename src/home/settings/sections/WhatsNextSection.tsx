@@ -18,6 +18,7 @@ export function WhatsNextSection() {
   const set = useSetSetting();
   const onReturn = useSetting<boolean>('whatsNext.onReturn', true);
   const afterDone = useSetting<boolean>('whatsNext.afterDone', true);
+  const afterMeeting = useSetting<boolean>('whatsNext.afterMeeting', true);
   const idleMinutes = useSetting<number>('whatsNext.idleMinutes', 10);
   const hours = useSetting<WorkHours>('whatsNext.workHours', { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] });
   const maxPerHour = useSetting<number>('whatsNext.maxPerHour', 2);
@@ -57,6 +58,13 @@ export function WhatsNextSection() {
           label={t('settings.whatsnext.afterDone')}
           checked={afterDone}
           onChange={(v) => void set('whatsNext.afterDone', v)}
+        />
+        <Switch
+          id="st-next-meeting"
+          label={t('settings.whatsnext.afterMeeting')}
+          description={t('settings.whatsnext.afterMeetingDesc')}
+          checked={afterMeeting}
+          onChange={(v) => void set('whatsNext.afterMeeting', v)}
         />
         <SettingRow label={t('settings.whatsnext.maxPerHour')} htmlFor="st-next-rate">
           <select

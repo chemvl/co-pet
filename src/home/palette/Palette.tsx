@@ -9,12 +9,14 @@ import { errorMessage } from '../../shared/errors';
 import { useT } from '../../shared/i18n';
 import { copyItems, exportTask, getItem, listItems } from '../../shared/ipc';
 import { useIntegrations, useSetting, useSyncStatus } from '../../shared/queries';
+import { displayKind } from '../../shared/itemKind';
 import { useToast } from '../../shared/Toast';
 import type { ItemSummary, TaskSummary } from '../../shared/types';
 import { CategoryTag } from '../CategoryTag';
 import { useDebounced } from '../hooks';
 import { exportPill, isReady, PROVIDER_NAME, PROVIDERS } from '../integrations/model';
 import { tasksQuery } from '../queries';
+import { useMeetingActions } from '../meetings/recordFlow';
 import { navigate } from '../router';
 import { useHomeSelection } from '../selection';
 import { useTaskActions } from '../tasks/useTaskActions';
@@ -43,7 +45,7 @@ interface SubRow {
 }
 
 /** `text` with `<mark>` over `ranges` and the `bold` words in `<b>`. */
-function Highlight({ text, ranges, bold = [] }: { text: string; ranges: Array<[number, number]>; bold?: readonly string[] }): ReactElement {
+export function Highlight({ text, ranges, bold = [] }: { text: string; ranges: Array<[number, number]>; bold?: readonly string[] }): ReactElement {
   const marked = new Uint8Array(text.length);
   for (const [a, b] of ranges) marked.fill(1, a, b);
   for (const word of bold) {
@@ -73,6 +75,7 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
   const { data: integrations } = useIntegrations();
   const petPaused = useSetting<boolean>('pet.paused', false);
   const syncState = useSyncStatus().data?.state;
+  const meetings = useMeetingActions();
   const listId = useId();
 
   const [input, setInput] = useState('');
@@ -117,6 +120,9 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
     },
     petPaused,
     syncState,
+    recording: meetings.recording,
+    recordMeeting: meetings.record,
+    importMeeting: meetings.importFile,
   };
 
   const actionRows = matchActions(ctx);
@@ -300,7 +306,7 @@ export function Palette({ onClose, onSearch }: { onClose: () => void; onSearch: 
       const e = entries[i] as Extract<Entry, { kind: 'item' }>;
       return (
         <div key={item.id} {...rowProps(i, selected, () => runEntry(e))}>
-          <span className="pl-ic"><Icon name={KIND_ICON[item.kind]} size={18} /></span>
+          <span className="pl-ic"><Icon name={KIND_ICON[displayKind(item)]} size={18} /></span>
           <span className="pl-lb"><Highlight text={item.title} ranges={e.ranges} /></span>
           <CategoryTag id={item.categoryId} size="sm" />
           {selected ? enterKbd : null}

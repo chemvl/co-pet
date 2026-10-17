@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { historyText, whyText } from './itemText';
+import { historyText, rowMeta, whyText } from './itemText';
 import { translate, type TFunction } from '../shared/i18n';
 import type { ItemDetail, ItemEvent } from '../shared/types';
 
@@ -67,5 +67,14 @@ describe('agent edits', () => {
 
   it('the Why chip says an agent moved it, despite the old ai source', () => {
     expect(whyText(item, t, '1 GB')).toEqual({ text: 'Moved by an agent' });
+  });
+});
+
+describe('meeting items', () => {
+  it('the row says "Meeting recording" instead of the source kind', () => {
+    const capturedAt = new Date(2026, 9, 15, 10, 0).getTime();
+    const note = { ...item, sourceKind: 'note' as const, capturedAt };
+    expect(rowMeta(note, t, 'en')).toBe('Quick note · Thu 15 Oct');
+    expect(rowMeta({ ...note, meetingId: 'm1' }, t, 'en')).toBe('Meeting recording · Thu 15 Oct');
   });
 });

@@ -34,11 +34,12 @@ export function whenShort(ms: number, lang: Lang, withTime = false): string {
   return withTime ? `${formatDate(d, lang)} ${formatTime(d)}` : formatDate(d, lang);
 }
 
-/** Row metadata: source · context · time (`developers.notion.com · Chrome · 14:02`). */
+/** Row metadata: source · context · time (`developers.notion.com · Chrome · 14:02`); a meeting's
+ *  item reads "Meeting recording" for its source. */
 export function rowMeta(item: ItemSummary, t: TFunction, lang: Lang): string {
   return joinMeta([
     item.kind === 'url' ? hostOf(item.url) : null,
-    sourceKindLabel(item.sourceKind, t),
+    item.meetingId ? t('item.source.meeting') : sourceKindLabel(item.sourceKind, t),
     item.sourceApp,
     FILE_KINDS.includes(item.kind) && item.sizeBytes != null ? formatSize(item.sizeBytes, lang) : null,
     whenShort(item.capturedAt, lang),

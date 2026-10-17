@@ -1,6 +1,7 @@
 // Hash router for the Home window: `#/inbox`, `#/inbox/pinned`, `#/inbox/unsorted`,
 // `#/category/<id>`, `#/item/<id>`, `#/tasks`, `#/tasks/done`, `#/tasks/<open|done>/<id>`,
-// `#/tasks/new`, `#/agents`, `#/integrations`, `#/categories`, `#/categories/<id>`, `#/settings/<section>`.
+// `#/tasks/new`, `#/meetings`, `#/meetings/<id>`, `#/agents`, `#/integrations`, `#/categories`,
+// `#/categories/<id>`, `#/settings/<section>`.
 import { useEffect, useState } from 'react';
 import type { CategoryId } from '../shared/types';
 
@@ -13,6 +14,8 @@ export type Route =
   | { page: 'item'; id: string }
   /** `id` selects a task; `new` opens the editor in create mode. */
   | { page: 'tasks'; view: TasksView; id?: string; new?: true }
+  /** `id` selects a meeting (else the first one opens where there's room). */
+  | { page: 'meetings'; id?: string }
   | { page: 'integrations' }
   | { page: 'agents' }
   /** The Categories screen; `id` selects the category being edited (else the first). */
@@ -45,6 +48,8 @@ export function parseRoute(hash: string): Route {
       if (arg === 'new') return { page: 'tasks', view: 'open', new: true };
       if (arg === 'open' || arg === 'done') return arg2 ? { page: 'tasks', view: arg, id: arg2 } : { page: 'tasks', view: arg };
       return { page: 'tasks', view: 'open' };
+    case 'meetings':
+      return arg ? { page: 'meetings', id: arg } : { page: 'meetings' };
     case 'agents':
       return { page: 'agents' };
     case 'categories':
@@ -70,6 +75,8 @@ export function routePath(r: Route): string {
       if (r.new) return 'tasks/new';
       if (r.id) return `tasks/${r.view}/${encodeURIComponent(r.id)}`;
       return r.view === 'open' ? 'tasks' : 'tasks/done';
+    case 'meetings':
+      return r.id ? `meetings/${encodeURIComponent(r.id)}` : 'meetings';
     case 'agents':
       return 'agents';
     case 'categories':

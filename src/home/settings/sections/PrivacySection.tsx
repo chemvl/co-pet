@@ -1,13 +1,16 @@
 import { Switch } from '../../../ds';
 import { useT } from '../../../shared/i18n';
 import { useSetSetting, useSetting } from '../../../shared/queries';
-import { Group } from '../parts';
+import { Group, SettingRow } from '../parts';
+
+const RETENTION_DAYS = [7, 30, 90];
 
 export function PrivacySection({ onNavigate }: { onNavigate: (route: string) => void }) {
   const t = useT();
   const set = useSetSetting();
   const secrets = useSetting<boolean>('privacy.secretDetection', true);
   const localOnly = useSetting<boolean>('privacy.localOnly', false);
+  const retention = useSetting<number | null>('transcribe.audioRetentionDays', 30);
   return (
     <>
       <Group title={t('settings.privacy')}>
@@ -25,6 +28,21 @@ export function PrivacySection({ onNavigate }: { onNavigate: (route: string) => 
           checked={localOnly}
           onChange={(v) => void set('privacy.localOnly', v)}
         />
+        <SettingRow label={t('settings.privacy.keepAudio')} desc={t('settings.privacy.keepAudioDesc')} htmlFor="st-keep-audio">
+          <select
+            id="st-keep-audio"
+            className="st-input"
+            value={retention ?? ''}
+            onChange={(e) => void set('transcribe.audioRetentionDays', e.currentTarget.value ? Number(e.currentTarget.value) : null)}
+          >
+            {RETENTION_DAYS.map((n) => (
+              <option key={n} value={n}>
+                {t('settings.privacy.days', { n })}
+              </option>
+            ))}
+            <option value="">{t('settings.privacy.keepForever')}</option>
+          </select>
+        </SettingRow>
       </Group>
       <Group title={t('settings.capture.excluded')} desc={t('settings.privacy.excludedHint')}>
         <button type="button" className="st-link" onClick={() => onNavigate('settings/capture')}>

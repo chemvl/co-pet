@@ -10,6 +10,7 @@ import { formatTime, joinMeta } from '../../shared/format';
 import { useLang, useT } from '../../shared/i18n';
 import { copyItems, counts as fetchCounts, listItems } from '../../shared/ipc';
 import { useAddedBy, useCategories } from '../../shared/queries';
+import { displayKind } from '../../shared/itemKind';
 import type { ItemSummary } from '../../shared/types';
 import { armDragOut } from '../dragOut';
 
@@ -190,10 +191,10 @@ export function TrayPanel(p: {
           return (
             <div key={item.id} role="listitem" data-item-id={item.id} className="pt-tray__row">
               <TrayCard
-                kind={item.kind}
+                kind={displayKind(item)}
                 title={item.title}
                 meta={joinMeta([
-                  item.sourceApp,
+                  item.meetingId ? t('item.source.meeting') : item.sourceApp,
                   item.kind === 'url' ? hostOf(item.url) : extOf(item.fileName),
                   formatTime(item.capturedAt),
                   pending && t('common.sorting'),

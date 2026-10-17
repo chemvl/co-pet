@@ -3,6 +3,7 @@
 // and, for a multi-selection, a count badge. Returned as a PNG data URL, which
 // tauri-plugin-drag accepts as `icon`.
 import { ICONS, KIND_ICON, type IconName } from '../ds';
+import { displayKind } from '../shared/itemKind';
 import type { ItemKind } from '../shared/types';
 
 const CARD_W = 280;
@@ -14,6 +15,8 @@ const ROTATE_DEG = 1.5;
 
 export interface DragImageInput {
   kind: ItemKind;
+  /** a meeting's item draws the meeting icon */
+  meetingId: string | null;
   title: string;
   /** number of dragged items; a badge shows when > 1 */
   count: number;
@@ -57,7 +60,7 @@ export function renderDragImage(input: DragImageInput): string {
   ctx.roundRect(tx, ty, tile, tile, 8);
   ctx.fillStyle = v('--surface-sunken');
   ctx.fill();
-  drawIcon(ctx, KIND_ICON[input.kind] ?? 'file', tx + (tile - 20) / 2, ty + (tile - 20) / 2, 20, v('--ink-muted'));
+  drawIcon(ctx, KIND_ICON[displayKind(input)] ?? 'file', tx + (tile - 20) / 2, ty + (tile - 20) / 2, 20, v('--ink-muted'));
 
   // Title in `label` style (500 13px/20px sans), one line with an ellipsis.
   const textX = tx + tile + 12;

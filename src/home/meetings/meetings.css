@@ -1,0 +1,53 @@
+/* Meetings screen (Meetings.dc.html): list 248 px, transcript, summary 340 px. Home shell
+   classes (hm-*) come from home.css. */
+
+.mt-m0 { margin: 0; }
+.mt-page { flex: 1 1 0; min-height: 0; display: flex; }
+.mt-msg { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-6) var(--space-5); }
+.mt-msg > p { margin: 0; max-width: 52ch; }
+
+/* ---------- list ---------- */
+.mt-list { flex: none; width: 248px; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4) var(--space-3); border-right: 1px solid var(--line); overflow-y: auto; }
+.mt-list--full { flex: 1 1 0; width: auto; border-right: 0; }
+.mt-list__actions { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); margin-bottom: var(--space-3); }
+.mt-list__actions > .cp-btn { justify-content: center; }
+.mt-list__rec { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 32px; }
+.mt-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px var(--space-3); border-radius: var(--radius-sm); color: var(--ink); text-decoration: none; }
+.mt-row:hover { background: var(--surface-hover); }
+.mt-row.is-sel { background: var(--surface-selected); }
+.mt-row__t { max-width: 100%; }
+.mt-row .caption { max-width: 100%; }
+.mt-list__spacer { flex: 1 1 0; min-height: var(--space-3); }
+.mt-list__foot { padding: 0 var(--space-1); }
+
+/* The live recording pill: a pulsing rec dot instead of the status icon. */
+.mt-rec.cp-pill { color: var(--rec); }
+.mt-rec.cp-pill svg { display: none; }
+.mt-rec.cp-pill::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--rec); animation: cp-rec 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .mt-rec.cp-pill::before { animation: none; } }
+
+/* ---------- transcript ---------- */
+.mt-tr { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.mt-th { flex: none; display: flex; flex-direction: column; gap: 10px; padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--line); }
+.mt-th__row { display: flex; align-items: center; gap: var(--space-2); }
+.mt-th__text { flex: 1 1 0; min-width: 0; }
+.mt-th__title { margin: 0; }
+.mt-player { display: flex; align-items: center; gap: 10px; }
+.mt-time { font: 500 12px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-muted); }
+.mt-track { flex: 1 1 0; min-width: 0; height: 6px; margin: 0; border-radius: var(--radius-pill); background: linear-gradient(to right, var(--clover) var(--mt-pos, 0%), var(--line) var(--mt-pos, 0%)); -webkit-appearance: none; appearance: none; cursor: pointer; }
+.mt-track::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; border-radius: var(--radius-pill); background: var(--clover); border: 0; }
+.mt-track:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.mt-segs { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); overflow-y: auto; }
+.mt-segs mark { background: var(--clover-soft); color: inherit; border-radius: var(--radius-xs); }
+
+/* ---------- summary ---------- */
+.mt-sp { flex: none; width: 340px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: var(--space-4) var(--space-5); border-left: 1px solid var(--line); overflow-y: auto; }
+.mt-sp__bar { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.mt-k { margin: 0 0 var(--space-1); font: 600 13px/20px var(--font-sans); color: var(--ink); }
+.mt-sp ul { margin: 0; padding-left: 18px; font: 400 13px/20px var(--font-sans); }
+.mt-sp li { margin-bottom: 2px; }
+.mt-sp li .cp-btn { margin-left: var(--space-1); vertical-align: middle; }
+.mt-sp__msg { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.mt-sp__msg > p { margin: 0; }
+.mt-chg { display: flex; flex-direction: column; gap: var(--space-2); padding: 10px var(--space-3); border-radius: var(--radius-md); background: var(--info-soft); font: 400 13px/20px var(--font-sans); }
+.mt-chg__row { display: flex; align-items: center; gap: var(--space-2); }

@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
-  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus,
+  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
   MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider,
@@ -35,6 +35,7 @@ export const requestPermission = (
   kind: 'screenRecording' | 'accessibility' | 'microphone' | 'calendar',
 ) => invoke<void>('request_permission', { kind });
 export const permissionsStatus = () => invoke<PermissionsStatus>('permissions_status');
+export const listCalendars = () => invoke<CalendarInfo[]>('list_calendars');
 
 // Step 7 — tray, copy, paste, drag-out
 export const prepareDrag = (ids: string[], asFiles: boolean) =>

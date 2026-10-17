@@ -427,6 +427,15 @@ pub struct PermissionsStatus {
     pub calendar: String,
 }
 
+/// `list_calendars`: one event calendar on this Mac. `id` is EventKit's `calendarIdentifier`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarInfo {
+    pub id: String,
+    pub title: String,
+    pub account: String,
+}
+
 /// `list_excluded_apps`: an excluded bundle id and the installed app's name (`None` when the app
 /// isn't installed).
 #[derive(Debug, Clone, Serialize)]

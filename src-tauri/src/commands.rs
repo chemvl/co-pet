@@ -139,6 +139,14 @@ pub fn permissions_status() -> crate::model::PermissionsStatus {
     crate::platform::macos::permissions::status()
 }
 
+/// Event calendars on this Mac, or `[]` without full calendar access.
+#[tauri::command]
+pub async fn list_calendars() -> AppResult<Vec<crate::model::CalendarInfo>> {
+    tauri::async_runtime::spawn_blocking(crate::platform::macos::calendar::calendars)
+        .await
+        .map_err(|e| crate::error::AppError::msg(e.to_string()))
+}
+
 // ---------- Step 9: triage + local AI ----------
 
 #[tauri::command]

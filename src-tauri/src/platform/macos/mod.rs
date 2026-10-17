@@ -1,5 +1,6 @@
 //! macOS integration. AppKit objects are main-thread-only: callers off the main thread go through
 //! [`on_main`] (async) or [`on_main_sync`] (blocking), which run inline when already on it.
+pub mod calendar;
 pub mod drop_target;
 pub mod frontmost;
 pub mod fullscreen;

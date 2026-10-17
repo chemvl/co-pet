@@ -132,6 +132,7 @@ pub fn run() {
             commands::resign_pet_panel,
             commands::request_permission,
             commands::permissions_status,
+            commands::list_calendars,
             commands::capture_clipboard,
             commands::capture_screenshot,
             commands::capture_selection,

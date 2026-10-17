@@ -399,6 +399,9 @@ export interface PermissionsStatus {
   calendar: 'granted' | 'denied' | 'notDetermined';
 }
 
+/** `list_calendars`: one event calendar on this Mac; `id` is EventKit's `calendarIdentifier`. */
+export interface CalendarInfo { id: string; title: string; account: string }
+
 /** `pet_status`: the current `pet-visibility` and `pet-flags.sleep` values. */
 export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | null; sleep: boolean }
 

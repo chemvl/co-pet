@@ -4,8 +4,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 use crate::db::{settings, Db};
-use crate::platform::macos::calendar::{self, Busy};
-use crate::platform::macos::permissions;
+use crate::platform::calendar::{self, Busy};
+use crate::platform::permissions;
 
 const LOOKAHEAD_MS: i64 = 12 * 3_600_000;
 const READ_TIMEOUT: Duration = Duration::from_secs(2);

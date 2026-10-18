@@ -20,11 +20,10 @@ pub fn lang(app: &AppHandle) -> Lang {
     }
 }
 
-/// `Vi` when `NSLocale.preferredLanguages[0]` starts with `vi`, else `En`.
+/// `Vi` when the OS's first preferred language starts with `vi`, else `En`.
 pub fn system_lang() -> Lang {
-    let first = objc2_foundation::NSLocale::preferredLanguages().firstObject();
-    match first {
-        Some(code) if code.to_string().starts_with("vi") => Lang::Vi,
+    match crate::platform::locale::preferred_language() {
+        Some(c) if c.starts_with("vi") => Lang::Vi,
         _ => Lang::En,
     }
 }

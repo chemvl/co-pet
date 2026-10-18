@@ -12,7 +12,7 @@ use tauri::{AppHandle, Listener, Manager};
 use tokio::sync::Notify;
 
 use super::assemble::{assemble, langs_of};
-use super::audio::{self, Afconvert, Convert, TrackWriter};
+use super::audio::{self, Convert, NativeConvert, TrackWriter};
 use super::diarize::{Diarizer, SherpaDiarizer};
 use super::models::{self, Pack, SPEAKER, SPEECH};
 use super::recorder::Recorder;
@@ -154,12 +154,12 @@ pub(crate) trait Engines {
     fn speaker(&self, paths: &Paths) -> AppResult<Box<dyn Diarizer>>;
 }
 
-/// `afconvert`, whisper.cpp and sherpa-onnx with the downloaded packs.
+/// The native audio converter, whisper.cpp and sherpa-onnx with the downloaded packs.
 struct Real;
 
 impl Engines for Real {
     fn convert(&self) -> &dyn Convert {
-        &Afconvert
+        &NativeConvert
     }
 
     fn speech(&self, paths: &Paths) -> AppResult<Box<dyn SpeechToText>> {
@@ -908,7 +908,7 @@ pub async fn retranscribe(app: &AppHandle, id: &str, language: &str) -> AppResul
         let converted = ["mic", "system"].iter().try_for_each(|track| -> AppResult<()> {
             let m4a = dir.join(format!("{track}.m4a"));
             if m4a.exists() {
-                Afconvert.wav16k(&m4a, &dir.join(format!("{track}-raw.wav")))?;
+                NativeConvert.wav16k(&m4a, &dir.join(format!("{track}-raw.wav")))?;
             }
             Ok(())
         });
@@ -963,7 +963,7 @@ mod tests {
     use crate::db::items::get_row;
     use crate::transcribe::diarize::Turn;
 
-    /// `afconvert` stand-in: copies the file (test tracks are already 16 kHz WAVs).
+    /// `NativeConvert` stand-in: copies the file (test tracks are already 16 kHz WAVs).
     struct CopyConvert;
 
     impl Convert for CopyConvert {

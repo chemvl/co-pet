@@ -37,7 +37,7 @@ pub async fn wait_modifiers_released() {
 /// Posts Cmd+`ch` to the frontmost app. Runs on the main thread: enigo resolves `ch` through the
 /// current keyboard layout (Text Input Sources), which is main-thread-only.
 pub async fn command_key(app: &AppHandle, ch: char) -> AppResult<()> {
-    super::on_main(app, move |_| post_command_key(ch)).await?
+    crate::platform::on_main(app, move |_| post_command_key(ch)).await?
 }
 
 fn post_command_key(ch: char) -> AppResult<()> {

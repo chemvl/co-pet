@@ -3,8 +3,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use objc2_app_kit::NSWorkspace;
-use objc2_foundation::{NSBundle, NSString};
 use rusqlite::Connection;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
@@ -17,6 +15,7 @@ use crate::error::{AppError, AppResult};
 use crate::llm::LlmServer;
 use crate::model::ExcludedApp;
 use crate::paths::Paths;
+use crate::platform::apps;
 use crate::secrets;
 use crate::transcribe::recorder::Recorder;
 use crate::transcribe::worker::TranscribeQueue;
@@ -32,11 +31,12 @@ const CONFIRMATIONS: [&str; 3] = ["delete everything", "xóa tất cả", "xoá 
 /// `capture.excludedApps`. `None` when cancelled; error `notAnApp` without a bundle id.
 pub async fn pick_excluded_app(app: &AppHandle) -> AppResult<Option<String>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
+    let picker = apps::picker();
     let mut dialog = app
         .dialog()
         .file()
-        .set_directory("/Applications")
-        .add_filter("Applications", &["app"]);
+        .set_directory(&picker.dir)
+        .add_filter(picker.filter_name, picker.extensions);
     if let Some(home) = app.get_webview_window(windows::HOME) {
         dialog = dialog.set_parent(&home);
     }
@@ -45,7 +45,7 @@ pub async fn pick_excluded_app(app: &AppHandle) -> AppResult<Option<String>> {
     });
     let Some(picked) = rx.await.ok().flatten() else { return Ok(None) };
     let path = picked.into_path().map_err(|e| AppError::msg(e.to_string()))?;
-    let id = bundle_id(&path).ok_or(AppError::Code("notAnApp"))?;
+    let id = apps::app_id(&path).ok_or(AppError::Code("notAnApp"))?;
     let mut ids: Vec<String> = settings::read(app, EXCLUDED_APPS)?;
     if !ids.contains(&id) {
         ids.push(id.clone());
@@ -54,41 +54,16 @@ pub async fn pick_excluded_app(app: &AppHandle) -> AppResult<Option<String>> {
     Ok(Some(id))
 }
 
-fn bundle_id(app_path: &Path) -> Option<String> {
-    let bundle = NSBundle::bundleWithPath(&NSString::from_str(app_path.to_str()?))?;
-    Some(bundle.bundleIdentifier()?.to_string())
-}
-
 /// Every excluded bundle id with the installed app's display name (`None` when not installed).
 pub fn list_excluded_apps(app: &AppHandle) -> AppResult<Vec<ExcludedApp>> {
     let ids: Vec<String> = settings::read(app, EXCLUDED_APPS)?;
-    let workspace = NSWorkspace::sharedWorkspace();
     Ok(ids
         .into_iter()
         .map(|bundle_id| {
-            let name = workspace
-                .URLForApplicationWithBundleIdentifier(&NSString::from_str(&bundle_id))
-                .and_then(|url| app_name(&url));
+            let name = apps::display_name(&bundle_id);
             ExcludedApp { bundle_id, name }
         })
         .collect())
-}
-
-/// `CFBundleDisplayName`, else `CFBundleName`, else the bundle's file name without `.app`.
-fn app_name(url: &objc2_foundation::NSURL) -> Option<String> {
-    if let Some(bundle) = NSBundle::bundleWithURL(url) {
-        for key in ["CFBundleDisplayName", "CFBundleName"] {
-            let value = bundle.objectForInfoDictionaryKey(&NSString::from_str(key));
-            if let Some(name) = value.and_then(|v| v.downcast::<NSString>().ok()) {
-                let name = name.to_string();
-                if !name.trim().is_empty() {
-                    return Some(name);
-                }
-            }
-        }
-    }
-    let path = url.path()?.to_string();
-    Path::new(&path).file_stem().map(|s| s.to_string_lossy().into_owned())
 }
 
 // ---------- export ----------

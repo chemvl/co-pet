@@ -10,8 +10,8 @@ use crate::error::{AppError, AppResult};
 use crate::library;
 use crate::model::{DragPlan, ItemRow};
 use crate::paths::Paths;
-use crate::platform::macos::pasteboard::{self, TYPE_HTML, TYPE_PLAIN, TYPE_URL, TYPE_URL_NAME};
-use crate::platform::macos::{keys, on_main, permissions};
+use crate::platform::pasteboard::{self, TYPE_HTML, TYPE_PLAIN, TYPE_URL, TYPE_URL_NAME};
+use crate::platform::{keys, on_main, permissions};
 
 /// Lets the user's app take key status back before Cmd+V.
 const PASTE_DELAY: Duration = Duration::from_millis(120);
@@ -19,7 +19,7 @@ const PASTE_DELAY: Duration = Duration::from_millis(120);
 const COPY_PNG_MAX_SOURCE: u64 = 40 * 1024 * 1024;
 
 pub async fn prepare_drag(app: &AppHandle, ids: Vec<String>, as_files: bool) -> AppResult<DragPlan> {
-    crate::platform::macos::drop_target::mark_own_drag();
+    crate::platform::drop_target::mark_own_drag();
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let rows = items::get_rows(&handle.state::<Db>().conn(), &ids)?;

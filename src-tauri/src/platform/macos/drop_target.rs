@@ -33,7 +33,8 @@ use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSString};
 use tauri::AppHandle;
 
 use super::frontmost::{self, FrontApp};
-use super::{pasteboard, pointer, screens};
+use super::screens;
+use crate::platform::{pasteboard, pointer};
 use crate::capture;
 use crate::model::Rect;
 
@@ -187,7 +188,7 @@ impl DropView {
 }
 
 /// Lays the drop view over the pet window's webview and creates the (hidden) catcher panel.
-pub fn install(app: &AppHandle, mtm: MainThreadMarker, window: &NSWindow) {
+pub(in crate::platform) fn install(app: &AppHandle, mtm: MainThreadMarker, window: &NSWindow) {
     let _ = APP.set(app.clone());
     let Some(content) = window.contentView() else { return };
     content.addSubview(&DropView::new(mtm, content.bounds()));
@@ -233,7 +234,7 @@ fn new_catcher(mtm: MainThreadMarker) -> Retained<NSPanel> {
 }
 
 /// Puts the catcher over `rect` (global top-left points) just below the pet panel, or hides it.
-pub fn place_catcher(mtm: MainThreadMarker, pet: &NSWindow, rect: Option<Rect>) {
+pub(in crate::platform) fn place_catcher(mtm: MainThreadMarker, pet: &NSWindow, rect: Option<Rect>) {
     CATCHER.with_borrow(|catcher| {
         let Some(catcher) = catcher else { return };
         match rect {
@@ -327,7 +328,7 @@ fn give_back(pid: i32, why: &str) {
 /// the source app once, unless Home or Onboarding (`may_restore` false) is open. Co-pet's own
 /// drag-outs are not fought tick by tick: once one ends, activation goes back once to the app
 /// that was frontmost when it started.
-pub fn set_dragging(mtm: MainThreadMarker, dragging: bool, may_restore: bool) {
+pub(in crate::platform) fn set_dragging(mtm: MainThreadMarker, dragging: bool, may_restore: bool) {
     if DRAGGING.replace(dragging) != dragging {
         if dragging {
             begin_drag();

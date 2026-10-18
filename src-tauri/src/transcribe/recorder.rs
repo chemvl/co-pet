@@ -11,10 +11,6 @@ use std::time::{Duration, Instant};
 use chrono::{Local, TimeZone};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SizedSample};
-use screencapturekit::prelude::{
-    CMSampleBuffer, CMSampleBufferExt, ErrorHandler, SCContentFilter, SCShareableContent, SCStream,
-    SCStreamConfiguration, SCStreamOutputType,
-};
 use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 use tokio::time::MissedTickBehavior;
@@ -29,11 +25,10 @@ use crate::export;
 use crate::i18n::{self, short_date, tr, Lang};
 use crate::model::RecordingStatus;
 use crate::paths::Paths;
-use crate::platform::macos::permissions;
+use crate::platform::{permissions, system_audio};
 
 const MIC_FILE: &str = "mic-raw.wav";
 const SYSTEM_FILE: &str = "system.wav";
-const SYSTEM_RATE: u32 = 16_000;
 /// Active time after which a recording stops by itself.
 const MAX_ACTIVE: Duration = Duration::from_secs(4 * 3600);
 /// Shorter recordings are discarded.
@@ -88,7 +83,7 @@ type SharedClock = Arc<Mutex<Clock>>;
 // ---------- tracks ----------
 
 /// What a capture callback sends its writer thread.
-enum Chunk {
+pub(crate) enum Chunk {
     Samples(Vec<f32>),
     /// Capture stopped: finish the file.
     End,
@@ -96,9 +91,9 @@ enum Chunk {
 
 /// What a track's threads share with the recorder.
 #[derive(Default)]
-struct TrackState {
+pub(crate) struct TrackState {
     /// Capturing right now.
-    on: AtomicBool,
+    pub(crate) on: AtomicBool,
     /// `TrackWriter::level` as `f32` bits.
     level: AtomicU32,
 }
@@ -357,63 +352,7 @@ fn mic_owner(
 
 // ---------- system audio ----------
 
-/// The `f32` samples of a ScreenCaptureKit audio buffer (mono Float32 PCM).
-fn audio_samples(sample: &CMSampleBuffer) -> Option<Vec<f32>> {
-    let list = sample.audio_buffer_list()?;
-    let buf = list.get(0)?;
-    Some(buf.data().chunks_exact(4).map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]])).collect())
-}
-
-/// Starts capturing the first display's audio (2×2 video, 16 kHz mono, Co-pet's own sound
-/// excluded). A stream failure turns the track off and raises the returned flag; the mic
-/// continues.
-fn build_system(
-    app: &AppHandle,
-    chunks: &mpsc::Sender<Chunk>,
-    state: &Arc<TrackState>,
-) -> Result<(SCStream, Arc<AtomicBool>), String> {
-    let content = SCShareableContent::get().map_err(|e| e.to_string())?;
-    let display = content.displays().into_iter().next().ok_or("no display")?;
-    let filter = SCContentFilter::create().with_display(&display).with_excluding_windows(&[]).build();
-    let config = SCStreamConfiguration::new()
-        .with_width(2)
-        .with_height(2)
-        .with_captures_audio(true)
-        .with_sample_rate(SYSTEM_RATE as i32)
-        .with_channel_count(1)
-        .with_excludes_current_process_audio(true);
-    let failed = Arc::new(AtomicBool::new(false));
-    let (app, track, flag) = (app.clone(), state.clone(), failed.clone());
-    let mut stream = SCStream::new_with_delegate(
-        &filter,
-        &config,
-        ErrorHandler::new(move |e| {
-            eprintln!("[recorder] system audio stopped: {e}");
-            flag.store(true, Relaxed);
-            track.on.store(false, Relaxed);
-            emit_status(&app);
-        }),
-    );
-    let chunks = chunks.clone();
-    stream
-        .add_output_handler(
-            move |sample: CMSampleBuffer, kind: SCStreamOutputType| {
-                if kind == SCStreamOutputType::Audio {
-                    if let Some(samples) = audio_samples(&sample) {
-                        let _ = chunks.send(Chunk::Samples(samples));
-                    }
-                }
-            },
-            SCStreamOutputType::Audio,
-        )
-        .ok_or("audio output rejected")?;
-    // Before starting: a failure reported right away must win.
-    state.on.store(true, Relaxed);
-    stream.start_capture().map_err(|e| e.to_string())?;
-    Ok((stream, failed))
-}
-
-/// Owns the `SCStream` until `stop`.
+/// Owns the system audio stream until `stop`.
 fn system_owner(
     app: AppHandle,
     chunks: mpsc::Sender<Chunk>,
@@ -421,20 +360,19 @@ fn system_owner(
     state: Arc<TrackState>,
     ready: oneshot::Sender<Result<u32, String>>,
 ) {
-    let (stream, failed) = match build_system(&app, &chunks, &state) {
+    let on_failure = move || emit_status(&app);
+    let (stream, failed) = match system_audio::build(&chunks, &state, on_failure) {
         Ok(v) => v,
         Err(e) => {
             let _ = ready.send(Err(e));
             return;
         }
     };
-    let _ = ready.send(Ok(SYSTEM_RATE));
+    let _ = ready.send(Ok(system_audio::RATE));
     let _ = stop.recv();
     // A failed stream has stopped already.
     if !failed.load(Relaxed) {
-        if let Err(e) = stream.stop_capture() {
-            eprintln!("[recorder] stopping system audio: {e}");
-        }
+        stream.stop();
     }
 }
 

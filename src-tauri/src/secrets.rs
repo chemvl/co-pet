@@ -1,4 +1,4 @@
-//! macOS keychain: generic passwords under the service `com.copet.app`. Holds the Notion and
+//! OS secret store: macOS keychain, Windows DPAPI files. Holds the Notion and
 //! Asana tokens (`notion`, `asana`: JSON `ProviderToken`), the AI provider keys (`ai.anthropic`,
 //! `ai.openai`, `ai.gemini`: the raw key), and from M8 the Supabase session and sync keys.
 //! Values never go to SQLite or the logs.
@@ -10,18 +10,15 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-use security_framework::passwords::{delete_generic_password, get_generic_password, set_generic_password};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
+use crate::platform::secret_store;
 
-const SERVICE: &str = "com.copet.app";
 /// account → value (`None`: no entry). Failed reads (a denied prompt) aren't cached. The lock is
 /// held across keychain calls so two threads never prompt for the same entry at once.
 static CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> = LazyLock::new(Default::default);
-/// `errSecItemNotFound`.
-const ITEM_NOT_FOUND: i32 = -25300;
 
 /// The keychain value of the `notion` and `asana` accounts. No `Debug`, so it can't be logged.
 #[derive(Clone, Serialize, Deserialize)]
@@ -47,11 +44,11 @@ pub fn get(account: &str) -> AppResult<Option<String>> {
     if let Some(v) = cache.get(account) {
         return Ok(v.clone());
     }
-    let v = match get_generic_password(SERVICE, account) {
-        Ok(bytes) => Some(
+    let v = match secret_store::get(account) {
+        Ok(Some(bytes)) => Some(
             String::from_utf8(bytes).map_err(|_| AppError::msg(format!("keychain {account}: not UTF-8")))?,
         ),
-        Err(e) if e.code() == ITEM_NOT_FOUND => None,
+        Ok(None) => None,
         Err(e) => return Err(AppError::msg(format!("keychain read {account}: {e}"))),
     };
     cache.insert(account.to_owned(), v.clone());
@@ -61,7 +58,7 @@ pub fn get(account: &str) -> AppResult<Option<String>> {
 /// Creates or overwrites the entry.
 pub fn set(account: &str, value: &str) -> AppResult<()> {
     let mut cache = cache();
-    set_generic_password(SERVICE, account, value.as_bytes())
+    secret_store::set(account, value.as_bytes())
         .map_err(|e| AppError::msg(format!("keychain write {account}: {e}")))?;
     cache.insert(account.to_owned(), Some(value.to_owned()));
     Ok(())
@@ -70,8 +67,8 @@ pub fn set(account: &str, value: &str) -> AppResult<()> {
 /// A missing entry is not an error.
 pub fn delete(account: &str) -> AppResult<()> {
     let mut cache = cache();
-    match delete_generic_password(SERVICE, account) {
-        Err(e) if e.code() != ITEM_NOT_FOUND => {
+    match secret_store::delete(account) {
+        Err(e) => {
             // The entry may or may not be gone: read it again next time.
             cache.remove(account);
             Err(AppError::msg(format!("keychain delete {account}: {e}")))

@@ -6,8 +6,8 @@ use tauri::AppHandle;
 
 use super::{clipboard, failed, skipped};
 use crate::model::CaptureResult;
-use crate::platform::macos::pasteboard::{self, Board};
-use crate::platform::macos::{keys, on_main, permissions};
+use crate::platform::pasteboard::{self, Board};
+use crate::platform::{keys, on_main, permissions};
 
 const POLL: Duration = Duration::from_millis(20);
 const COPY_TIMEOUT: Duration = Duration::from_millis(500);

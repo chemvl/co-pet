@@ -21,8 +21,8 @@ use crate::i18n::{self, Lang};
 use crate::library::{self, StoredFile};
 use crate::model::{CaptureResult, NewItem};
 use crate::paths::Paths;
-use crate::platform::macos::frontmost::FrontApp;
-use crate::platform::macos::pasteboard::PbContent;
+use crate::platform::frontmost::FrontApp;
+use crate::platform::pasteboard::PbContent;
 
 const TITLE_MAX_CHARS: usize = 80;
 

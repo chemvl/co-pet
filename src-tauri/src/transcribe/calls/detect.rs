@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::platform::macos::mic_users::MicUser;
+use crate::platform::mic_users::MicUser;
 
 pub const ZOOM_BUNDLE: &str = "us.zoom.xos";
 /// Process names that run only while Zoom is in a meeting.

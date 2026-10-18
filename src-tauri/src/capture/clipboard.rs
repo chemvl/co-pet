@@ -5,8 +5,8 @@ use tauri::AppHandle;
 use super::{capture_blocking, failed, input_from, skipped, CaptureSource};
 use crate::db::settings;
 use crate::model::CaptureResult;
-use crate::platform::macos::pasteboard::{Board, PbContent};
-use crate::platform::macos::{frontmost, on_main, pasteboard};
+use crate::platform::pasteboard::{Board, PbContent};
+use crate::platform::{frontmost, on_main, pasteboard};
 
 /// `source_kind`: `clipboard` or `selection`.
 pub async fn run(app: &AppHandle, source_kind: &'static str) -> CaptureResult {

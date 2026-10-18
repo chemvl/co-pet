@@ -12,8 +12,8 @@ use tauri::{AppHandle, Manager};
 use crate::db::{diary, items, now_ms, settings, tasks, Db};
 use crate::error::{AppError, AppResult};
 use crate::events::{self, DiaryReady, WhatsNextEvent};
-use crate::platform::macos::fullscreen::Visibility;
-use crate::platform::macos::idle::{self, Sleep};
+use crate::platform::fullscreen::Visibility;
+use crate::platform::idle::{self, Sleep};
 use crate::transcribe::recorder::Recorder;
 
 const TICK: Duration = Duration::from_secs(30);

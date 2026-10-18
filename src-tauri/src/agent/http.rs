@@ -206,13 +206,13 @@ async fn supervise(
 }
 
 fn spawn(exe: &Path, port: u16, sock: &Path) -> std::io::Result<tokio::process::Child> {
-    Command::new(exe)
-        .args(["--http", "--port", &port.to_string()])
+    let mut cmd = Command::new(exe);
+    cmd.args(["--http", "--port", &port.to_string()])
         .env("COPET_SOCKET", sock)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+    crate::platform::process::spawn_child(&mut cmd)
 }
 
 #[cfg(test)]

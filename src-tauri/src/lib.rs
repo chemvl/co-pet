@@ -36,7 +36,7 @@ use crate::db::Db;
 use crate::paths::Paths;
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Registered first so a second launch never gets as far as setup.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             let opened = if settings_bool(app, "onboarding.completed") {
@@ -47,9 +47,11 @@ pub fn run() {
             if let Err(e) = opened {
                 eprintln!("[app] second launch: {e}");
             }
-        }))
+        }));
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    builder
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_nspanel::init())
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -57,16 +59,16 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(hotkeys::Hotkeys::default())
-        .manage(platform::macos::fullscreen::Visibility::default())
-        .manage(platform::macos::idle::Sleep::default())
-        .manage(platform::macos::pointer::PointerState::default())
+        .manage(platform::fullscreen::Visibility::default())
+        .manage(platform::idle::Sleep::default())
+        .manage(platform::pointer::PointerState::default())
         .manage(windows::PetPlacement::default())
         .manage(export::oauth::OAuthPending::default())
         .manage(account::auth::GooglePending::default())
         .manage(account::keys::PendingKey::default())
         .setup(|app| {
-            // No Dock icon: the pet and the menu bar icon are the entry points.
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // Not in the task switcher: the pet and the menu bar icon are the entry points.
+            platform::pet_window::set_in_task_switcher(app.handle(), false)?;
             let handle = app.handle().clone();
             let paths = Paths::resolve(&handle)?;
             paths.ensure()?;
@@ -77,6 +79,7 @@ pub fn run() {
             app.manage(ai::KeyCache::default());
             app.manage(llm::download::Downloader::default());
             app.manage(llm::LlmServer::default());
+            #[cfg(target_os = "macos")]
             llm::reap_orphans(&handle);
             system::quit_on_signals(&handle);
             app.state::<llm::download::Downloader>().resume_if_needed(&handle);
@@ -88,8 +91,8 @@ pub fn run() {
             app.manage(updater::Updates::default());
             updater::start(&handle);
             hotkeys::init(&handle);
-            platform::macos::fullscreen::start(&handle);
-            platform::macos::idle::start(&handle);
+            platform::fullscreen::start(&handle);
+            platform::idle::start(&handle);
             next::start(&handle);
             export::queue::start(&handle);
             export::status::start(&handle);

@@ -1,23 +1,11 @@
-//! Displays in one coordinate space: global logical points with a top-left origin at the primary
-//! (menu bar) display, y growing downwards. AppKit uses a bottom-left origin; the conversions live
-//! here and nowhere else.
+//! AppKit half of `platform::screens`. AppKit uses a bottom-left origin; these functions convert
+//! to global top-left points.
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSEvent, NSScreen, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 use crate::model::Rect;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Screen {
-    /// `name:WxH@x,y`; unique within one monitor setup.
-    pub id: String,
-    /// `NSScreen.localizedName`.
-    pub name: String,
-    pub frame: Rect,
-    /// `NSScreen.visibleFrame`: the frame minus the menu bar and the Dock.
-    pub visible: Rect,
-    pub scale: f64,
-}
+use crate::platform::screens::Screen;
 
 /// Height of the primary display, which anchors the AppKit ↔ top-left flip.
 pub(crate) fn primary_height(mtm: MainThreadMarker) -> f64 {
@@ -62,13 +50,6 @@ pub fn screens(mtm: MainThreadMarker) -> Vec<Screen> {
         .collect()
 }
 
-/// Sorted screen ids joined by `|`: the key under which `pet.positions` remembers a setup.
-pub fn setup_key(screens: &[Screen]) -> String {
-    let mut ids: Vec<&str> = screens.iter().map(|s| s.id.as_str()).collect();
-    ids.sort_unstable();
-    ids.join("|")
-}
-
 /// The cursor in global top-left points.
 pub fn mouse_location(mtm: MainThreadMarker) -> (f64, f64) {
     let p = NSEvent::mouseLocation();
@@ -78,10 +59,6 @@ pub fn mouse_location(mtm: MainThreadMarker) -> (f64, f64) {
 /// An AppKit screen point (bottom-left origin) in global top-left points.
 pub fn point_to_top_left(mtm: MainThreadMarker, p: NSPoint) -> (f64, f64) {
     (p.x, primary_height(mtm) - p.y)
-}
-
-pub fn contains(r: &Rect, x: f64, y: f64) -> bool {
-    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
 }
 
 /// The window's frame in global top-left points.

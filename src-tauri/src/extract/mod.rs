@@ -1,7 +1,6 @@
 //! Extraction, run by the triage worker before rules: OCR + thumbnail for images, link
 //! previews for URLs, text from documents. Never panics; failures yield status `failed`.
 mod files;
-mod ocr;
 mod web;
 
 use crate::library;
@@ -48,7 +47,7 @@ pub async fn extract(paths: &Paths, item: &ItemRow, local_only: bool) -> Extract
             let paths = paths.clone();
             let res = blocking(move || {
                 let thumb = library::make_thumb(&paths, &rel);
-                (thumb, ocr::recognize(&paths.abs(&rel)))
+                (thumb, crate::platform::ocr::recognize(&paths.abs(&rel)))
             })
             .await;
             match res {

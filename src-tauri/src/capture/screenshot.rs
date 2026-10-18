@@ -5,7 +5,7 @@ use super::{capture_blocking, failed, skipped, CaptureInput, CaptureSource};
 use crate::db::new_id;
 use crate::model::CaptureResult;
 use crate::paths::Paths;
-use crate::platform::macos::permissions;
+use crate::platform::{permissions, screenshot};
 
 pub async fn run(app: &AppHandle) -> CaptureResult {
     if !permissions::screen_recording_granted() {
@@ -16,19 +16,11 @@ pub async fn run(app: &AppHandle) -> CaptureResult {
         return failed(app, e.to_string());
     }
     let shot = tmp.join(format!("shot-{}.png", new_id()));
-    let status = tokio::process::Command::new("/usr/sbin/screencapture")
-        .args(["-i", "-x", "-t", "png"])
-        .arg(&shot)
-        .status()
-        .await;
-    if let Err(e) = status {
-        return failed(app, format!("screencapture: {e}"));
-    }
-    // Esc leaves no file (or an empty one): nothing to save, nothing to say.
-    let taken = tokio::fs::metadata(&shot).await.is_ok_and(|m| m.len() > 0);
-    if !taken {
-        let _ = tokio::fs::remove_file(&shot).await;
-        return skipped(None, &[]);
+    match screenshot::interactive(app, &shot).await {
+        Err(e) => return failed(app, e.to_string()),
+        // Esc leaves no file (or an empty one): nothing to save, nothing to say.
+        Ok(false) => return skipped(None, &[]),
+        Ok(true) => {}
     }
     capture_blocking(app, CaptureInput::Screenshot { path: shot }, CaptureSource::new("screenshot", None)).await
 }

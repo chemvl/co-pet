@@ -17,9 +17,9 @@ use crate::error::AppError;
 use crate::events;
 use crate::i18n::{self, tr, Lang};
 use crate::model::{CallDetected, CallDetectionStatus, CallEnded, CallResumed};
-use crate::platform::macos::fullscreen::Visibility;
-use crate::platform::macos::mic_users::{self, MicUsers};
-use crate::platform::macos::window_titles::{self, TitleSource};
+use crate::platform::fullscreen::Visibility;
+use crate::platform::mic_users::{self, MicUsers};
+use crate::platform::window_titles::{self, TitleSource};
 use crate::transcribe::recorder::Recorder;
 use detect::{
     Action, CallApp, Ctx, Mode, Snapshot, Watch, CHECK_EVERY_MS, ZOOM_BUNDLE, ZOOM_MEETING_PROCESSES,
@@ -298,6 +298,7 @@ pub fn status(app: &AppHandle) -> CallDetectionStatus {
     let titles = match window_titles::title_source() {
         TitleSource::ScreenRecording => "screenRecording",
         TitleSource::Accessibility => "accessibility",
+        TitleSource::Native => "native",
         TitleSource::None => "none",
     };
     CallDetectionStatus {

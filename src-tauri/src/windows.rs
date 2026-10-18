@@ -1,52 +1,28 @@
-//! App windows. The pet lives in one transparent, non-activating panel that covers the work area
+//! App windows. The pet lives in one transparent, non-activating window that covers the work area
 //! of the monitor it is on; the frontend draws the pet and its panels inside it and reports hit
-//! regions so everything else clicks through (see `platform::macos::pointer`).
+//! regions so everything else clicks through (see `platform::pointer`).
 use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
 
-use objc2::{sel, MainThreadMarker};
-use objc2_app_kit::{NSApplication, NSWindow};
-use objc2_foundation::NSObjectProtocol;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tauri::{
-    ActivationPolicy, AppHandle, Emitter, LogicalPosition, Manager, TitleBarStyle, WebviewUrl,
-    WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry,
-};
-use tauri_nspanel::{
-    CollectionBehavior, ManagerExt, PanelHandle, PanelLevel, StyleMask, WebviewWindowExt,
-};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry};
 
 use crate::db::settings;
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::{Placement, Rect};
-use crate::platform::macos::pointer::{self, PointerState};
-use crate::platform::macos::screens::{self, Screen};
-use crate::platform::macos::{on_main, on_main_sync};
+use crate::platform::pet_window::{self, bring_to_front, set_in_task_switcher};
+use crate::platform::pointer::{self, PointerState};
+use crate::platform::screens::{self, Screen};
+use crate::platform::{on_main_sync, MainThread};
 
 pub const PET: &str = "pet";
 pub const HOME: &str = "home";
 pub const ONBOARDING: &str = "onboarding";
-/// Traffic lights centred in the 44 px custom title bar (Home and Onboarding).
-const TRAFFIC_LIGHTS: LogicalPosition<f64> = LogicalPosition::new(16.0, 24.0);
 const POSITIONS: &str = "pet.positions";
 const EDGES: [&str; 3] = ["left", "right", "bottom"];
 const DEFAULT_EDGE: &str = "right";
 const DEFAULT_OFFSET: f64 = 0.6;
-
-/// The macro brings its own imports, so it gets a module of its own.
-mod pet_panel {
-    tauri_nspanel::tauri_panel! {
-        panel!(PetPanel {
-            config: {
-                can_become_key_window: true,
-                is_floating_panel: true
-            }
-        })
-    }
-}
-use pet_panel::PetPanel;
 
 /// Where the pet is now. Written on the main thread; read by commands.
 #[derive(Default)]
@@ -78,52 +54,35 @@ pub fn pet_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(PET)
 }
 
-pub(crate) fn pet_panel(app: &AppHandle) -> Option<PanelHandle<Wry>> {
-    app.get_webview_panel(PET).ok()
-}
-
-/// Creates the pet panel (once) on the pet's monitor and starts the pointer loop.
+/// Creates the pet window (once) on the pet's monitor and starts the pointer loop.
 pub fn create_pet_window(app: &AppHandle) -> AppResult<()> {
     if pet_window(app).is_some() {
         return Ok(());
     }
     let handle = app.clone();
-    on_main_sync(app, move |mtm| build_pet_window(&handle, mtm))?
+    on_main_sync(app, move |mt| build_pet_window(&handle, mt))?
 }
 
-fn build_pet_window(app: &AppHandle, mtm: MainThreadMarker) -> AppResult<()> {
-    let window = WebviewWindowBuilder::new(app, PET, WebviewUrl::App("pet.html".into()))
+fn build_pet_window(app: &AppHandle, mt: MainThread) -> AppResult<()> {
+    let builder = WebviewWindowBuilder::new(app, PET, WebviewUrl::App("pet.html".into()))
         .title("Co-pet")
         .transparent(true)
         .decorations(false)
         .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .visible_on_all_workspaces(true)
         .resizable(false)
         .focused(false)
-        // The app is never active, so the first click must reach the page.
-        .accept_first_mouse(true)
         .visible(false)
-        // Drops go to the native drop target (platform::macos::drop_target), never to the page.
+        // Drops go to the native drop target (platform::drop_target), never to the page.
         .disable_drag_drop_handler()
-        .on_navigation(is_app_url)
-        .build()?;
-
-    let panel = window.to_panel::<PetPanel>()?;
-    panel.set_level(PanelLevel::Floating.into());
-    panel
-        .add_style_mask(StyleMask::empty().nonactivating_panel().into())
-        .map_err(|e| AppError::msg(format!("pet panel style: {e}")))?;
-    panel.set_collection_behavior(
-        CollectionBehavior::new().can_join_all_spaces().stationary().ignores_cycle().into(),
-    );
-    panel.as_panel().setIgnoresMouseEvents(true);
-    crate::platform::macos::drop_target::install(app, mtm, panel.as_panel());
+        .on_navigation(is_app_url);
+    let window = pet_window::builder(builder).build()?;
+    pet_window::configure(app, mt, &window)?;
     app.state::<PointerState>().reset_for_new_window();
 
-    let current = resolve(app, &screens::screens(mtm))?;
-    screens::set_window_frame(mtm, panel.as_panel(), current.screen.visible);
+    let current = resolve(app, &screens::screens(mt))?;
+    pet_window::set_frame(mt, &window, current.screen.visible);
     eprintln!(
         "[pet] placed on {} ({}), work area {:?}, {} {:.2}",
         current.screen.name,
@@ -133,8 +92,8 @@ fn build_pet_window(app: &AppHandle, mtm: MainThreadMarker) -> AppResult<()> {
         current.placement.offset
     );
     *app.state::<PetPlacement>().lock() = Some(current);
-    // orderFrontRegardless: visible above other apps without becoming key.
-    panel.show();
+    // Visible above other apps without becoming key.
+    pet_window::show(mt, &window);
     pointer::start(app);
     Ok(())
 }
@@ -163,17 +122,17 @@ fn resolve(app: &AppHandle, all: &[Screen]) -> AppResult<Current> {
     Ok(Current { placement: placement_for(screen, edge, offset), screen: screen.clone(), setup_key })
 }
 
-fn apply(app: &AppHandle, mtm: MainThreadMarker, panel: &PanelHandle<Wry>, next: Current) {
-    screens::set_window_frame(mtm, panel.as_panel(), next.screen.visible);
+fn apply(app: &AppHandle, mt: MainThread, window: &WebviewWindow, next: Current) {
+    pet_window::set_frame(mt, window, next.screen.visible);
     events::pet_placement(app, next.placement.clone());
     *app.state::<PetPlacement>().lock() = Some(next);
 }
 
 /// Pointer-loop poll: a changed monitor set re-resolves the placement; on the same setup the pet
 /// follows its monitor's work area (Dock or menu bar changes).
-pub(crate) fn refresh_screens(app: &AppHandle, mtm: MainThreadMarker) {
-    let Some(panel) = pet_panel(app) else { return };
-    let all = screens::screens(mtm);
+pub(crate) fn refresh_screens(app: &AppHandle, mt: MainThread) {
+    let Some(window) = pet_window(app) else { return };
+    let all = screens::screens(mt);
     let key = screens::setup_key(&all);
     let same_setup = {
         let state = app.state::<PetPlacement>();
@@ -201,14 +160,14 @@ pub(crate) fn refresh_screens(app: &AppHandle, mtm: MainThreadMarker) {
         },
     };
     eprintln!("[pet] monitors changed; now on {} {:?}", next.screen.id, next.screen.visible);
-    apply(app, mtm, &panel, next);
+    apply(app, mt, &window, next);
 }
 
 /// While drag-moving, the window jumps to the monitor under the cursor (edge and offset kept
 /// until the frontend commits).
-pub(crate) fn follow_pointer_screen(app: &AppHandle, mtm: MainThreadMarker, x: f64, y: f64) {
-    let Some(panel) = pet_panel(app) else { return };
-    let all = screens::screens(mtm);
+pub(crate) fn follow_pointer_screen(app: &AppHandle, mt: MainThread, x: f64, y: f64) {
+    let Some(window) = pet_window(app) else { return };
+    let all = screens::screens(mt);
     let Some(target) = all.iter().find(|s| screens::contains(&s.frame, x, y)) else { return };
     let next = {
         let state = app.state::<PetPlacement>();
@@ -223,7 +182,7 @@ pub(crate) fn follow_pointer_screen(app: &AppHandle, mtm: MainThreadMarker, x: f
             setup_key: c.setup_key.clone(),
         }
     };
-    apply(app, mtm, &panel, next);
+    apply(app, mt, &window, next);
 }
 
 pub fn get_placement(app: &AppHandle) -> AppResult<Placement> {
@@ -238,6 +197,11 @@ pub fn get_placement(app: &AppHandle) -> AppResult<Placement> {
 pub(crate) fn pet_screen_frame(app: &AppHandle) -> Option<Rect> {
     pet_window(app)?;
     app.state::<PetPlacement>().lock().as_ref().map(|c| c.screen.frame)
+}
+
+/// The monitor the pet lives on.
+pub(crate) fn current_screen(app: &AppHandle) -> Option<Screen> {
+    app.state::<PetPlacement>().lock().as_ref().map(|c| c.screen.clone())
 }
 
 /// Saves the snapped position under the current monitor setup and emits `pet-placement`.
@@ -262,32 +226,26 @@ pub fn commit_pet_position(app: &AppHandle, edge: &str, offset: f64) -> AppResul
     Ok(())
 }
 
-/// Makes the panel key (typing goes to the pet) without activating Co-pet.
+/// Gives the pet keyboard focus (typing goes to the pet) without activating Co-pet.
 pub fn focus_pet_panel(app: &AppHandle) -> AppResult<()> {
-    let panel = pet_panel(app).ok_or_else(|| AppError::msg("no pet window"))?;
-    on_main_sync(app, move |_| panel.show_and_make_key())
+    let window = pet_window(app).ok_or_else(|| AppError::msg("no pet window"))?;
+    pet_window::focus(app, &window)
 }
 
-/// Gives keyboard focus back to the app the user was typing in. `resignKeyWindow` must not be
-/// sent directly (AppKit then picks an arbitrary next key window and activates its app); ordering
-/// the key panel out returns key to the active app, and ordering it back in keeps it visible.
+/// Gives keyboard focus back to the app the user was typing in.
 pub fn resign_pet_panel(app: &AppHandle) -> AppResult<()> {
-    let panel = pet_panel(app).ok_or_else(|| AppError::msg("no pet window"))?;
-    on_main_sync(app, move |_| {
-        if panel.as_panel().isKeyWindow() {
-            panel.hide();
-            panel.show();
-        }
-    })
+    let window = pet_window(app).ok_or_else(|| AppError::msg("no pet window"))?;
+    pet_window::resign(app, &window)
 }
 
 /// Opens Home at `route` (e.g. `settings/general`; default the inbox), or focuses it and emits
-/// `navigate`. Co-pet shows in the Dock and Cmd+Tab while Home or Onboarding is open.
+/// `navigate`. Co-pet shows in the task switcher (Dock and Cmd+Tab on macOS) while Home or
+/// Onboarding is open.
 pub fn open_home(app: &AppHandle, route: Option<String>) -> AppResult<()> {
     let route = route
         .map(|r| r.trim_start_matches(['#', '/']).to_string())
         .filter(|r| !r.is_empty());
-    app.set_activation_policy(ActivationPolicy::Regular)?;
+    set_in_task_switcher(app, true)?;
     if let Some(window) = app.get_webview_window(HOME) {
         window.unminimize()?;
         window.show()?;
@@ -311,7 +269,7 @@ pub fn open_home(app: &AppHandle, route: Option<String>) -> AppResult<()> {
 
 /// Opens (or focuses) the onboarding window.
 pub fn open_onboarding(app: &AppHandle) -> AppResult<()> {
-    app.set_activation_policy(ActivationPolicy::Regular)?;
+    set_in_task_switcher(app, true)?;
     if let Some(window) = app.get_webview_window(ONBOARDING) {
         window.unminimize()?;
         window.show()?;
@@ -330,73 +288,22 @@ pub fn open_onboarding(app: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-/// When the deferred activation runs, and when it is retried if Co-pet still isn't active.
-const FRONT_DELAYS: [Duration; 2] = [Duration::from_millis(80), Duration::from_millis(250)];
-
-/// Activates Co-pet and brings `window` to front on later main-loop turns. Opened from the
-/// menu-bar status menu, the immediate `set_focus` runs while the menu is still tracking and the
-/// menu's close leaves the previous app frontmost; activating after the menu has closed sticks.
-/// The first try uses the cooperative `activate` (macOS 14+), the retry forces it.
-fn bring_to_front(window: &WebviewWindow) {
-    let window = window.clone();
-    tauri::async_runtime::spawn(async move {
-        for (attempt, delay) in FRONT_DELAYS.into_iter().enumerate() {
-            tokio::time::sleep(delay).await;
-            let target = window.clone();
-            let app = window.app_handle().clone();
-            match on_main(&app, move |mtm| front_now(mtm, &target, attempt)).await {
-                Ok(false) => continue,
-                Ok(true) => break,
-                Err(e) => {
-                    eprintln!("[windows] bring to front: {e}");
-                    break;
-                }
-            }
-        }
-    });
-}
-
-/// One activation attempt; true once Co-pet is active with `window` key (or the window is gone).
-fn front_now(mtm: MainThreadMarker, window: &WebviewWindow, attempt: usize) -> bool {
-    let Ok(ptr) = window.ns_window() else { return true };
-    // SAFETY: tauri's NSWindow for a live window, used on the main thread.
-    let ns: &NSWindow = unsafe { &*ptr.cast::<NSWindow>() };
-    let nsapp = NSApplication::sharedApplication(mtm);
-    if nsapp.isActive() && ns.isKeyWindow() {
-        return true;
-    }
-    #[cfg(debug_assertions)]
-    eprintln!("[windows] {}: activating (attempt {}, active={})", window.label(), attempt + 1, nsapp.isActive());
-    if attempt == 0 && nsapp.respondsToSelector(sel!(activate)) {
-        nsapp.activate();
-    } else {
-        #[allow(deprecated)]
-        nsapp.activateIgnoringOtherApps(true);
-        ns.orderFrontRegardless();
-    }
-    ns.makeKeyAndOrderFront(None);
-    false
-}
-
-/// A titled window whose content runs under a transparent title bar: native traffic lights over
-/// the page's own 44 px title bar.
+/// A titled window whose content runs under the page's own 44 px title bar (see
+/// `platform::pet_window::overlay`).
 fn overlay_window<'a>(app: &'a AppHandle, label: &str, url: &str) -> WebviewWindowBuilder<'a, Wry, AppHandle> {
-    WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
-        .on_navigation(is_app_url)
-        .title("Co-pet")
-        .title_bar_style(TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(TRAFFIC_LIGHTS)
-        .center()
+    pet_window::overlay(
+        WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into())).on_navigation(is_app_url).title("Co-pet"),
+    )
+    .center()
 }
 
-/// When the last of Home/Onboarding closes, Co-pet leaves the Dock again.
+/// When the last of Home/Onboarding closes, Co-pet leaves the task switcher again.
 fn track_activation_policy(window: &WebviewWindow) {
     let app = window.app_handle().clone();
     let other = if window.label() == HOME { ONBOARDING } else { HOME };
     window.on_window_event(move |event| {
         if matches!(event, WindowEvent::Destroyed) && app.get_webview_window(other).is_none() {
-            if let Err(e) = app.set_activation_policy(ActivationPolicy::Accessory) {
+            if let Err(e) = set_in_task_switcher(&app, false) {
                 eprintln!("[windows] activation policy: {e}");
             }
         }

@@ -86,6 +86,7 @@ fn free_port() -> AppResult<u16> {
 
 /// Kills `llama-server` processes an earlier Co-pet left behind when it died without running its
 /// exit path (SIGKILL, crash): children of launchd running this app's own `llama-server`.
+#[cfg(target_os = "macos")]
 pub fn reap_orphans(app: &AppHandle) {
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
     let Ok(exe) = server_dir(app).and_then(|d| Ok(d.join("llama-server").canonicalize()?)) else {
@@ -148,8 +149,8 @@ impl LlmServer {
         }
         let port = free_port()?;
         let key = uuid::Uuid::new_v4().simple().to_string();
-        let mut child = Command::new(&exe)
-            .arg("-m")
+        let mut cmd = Command::new(&exe);
+        cmd.arg("-m")
             .arg(model)
             .args(["--host", "127.0.0.1", "--port", &port.to_string(), "--api-key", &key])
             .args(["-c", "8192", "-ngl", "99", "--parallel", "1", "--no-webui"])
@@ -158,8 +159,8 @@ impl LlmServer {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .spawn()?;
+            .kill_on_drop(true);
+        let mut child = crate::platform::process::spawn_child(&mut cmd)?;
 
         let health = format!("http://127.0.0.1:{port}/health");
         let deadline = Instant::now() + HEALTH_TIMEOUT;

@@ -1,4 +1,4 @@
-//! Drop on the pet (Step 6.2). The native drop target (`platform::macos::drop_target`) accepts the
+//! Drop on the pet (Step 6.2). The native drop target (`platform::drop_target`) accepts the
 //! drag synchronously, reads the drag pasteboard with [`read`] inside `performDragOperation`, and
 //! hands the result to [`spawn`], which captures off the main thread and emits `capture-result`
 //! to the pet window. WebKit never sees the drop.
@@ -8,8 +8,8 @@ use super::{capture_blocking, input_from, CaptureSource};
 use crate::db::{items, Db};
 use crate::events;
 use crate::model::CaptureResult;
-use crate::platform::macos::frontmost::FrontApp;
-use crate::platform::macos::pasteboard::{self, Board, PbContent};
+use crate::platform::frontmost::FrontApp;
+use crate::platform::pasteboard::{self, Board, PbContent};
 use crate::transcribe::worker::is_media;
 
 /// What was dropped, read while the drag session is still alive.

@@ -1,6 +1,4 @@
-//! The single reader/writer for the drag pasteboard and the general pasteboard, shared by drop,
-//! clipboard, Send selection, copy and paste. Call `read`/`write`/`change_count` on the main thread;
-//! elsewhere use `read_on_main`/`write_on_main`.
+//! NSPasteboard half of `platform::pasteboard`.
 use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -16,48 +14,10 @@ use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSString, NSURL}
 use tauri::AppHandle;
 
 use crate::error::{AppError, AppResult};
-
-pub const TYPE_URL: &str = "public.url";
-pub const TYPE_URL_NAME: &str = "public.url-name";
-pub const TYPE_PNG: &str = "public.png";
-pub const TYPE_TIFF: &str = "public.tiff";
-pub const TYPE_HTML: &str = "public.html";
-pub const TYPE_PLAIN: &str = "public.utf8-plain-text";
-/// nspasteboard.org markers set by password managers and other privacy-aware apps.
-pub const TYPE_CONCEALED: &str = "org.nspasteboard.ConcealedType";
-pub const TYPE_TRANSIENT: &str = "org.nspasteboard.TransientType";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Board {
-    General,
-    Drag,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PbContent {
-    Files(Vec<PathBuf>),
-    Url { url: String, title: Option<String> },
-    /// PNG bytes (TIFF is converted).
-    Image(Vec<u8>),
-    Text { plain: String, html: Option<String> },
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // fields are read by capture (Step 6)
-pub struct PbRead {
-    /// The highest-precedence content, or `None` when nothing usable is on the board.
-    pub content: Option<PbContent>,
-    /// Every type on the board (UTIs), including privacy markers.
-    pub types: Vec<String>,
-    pub change_count: isize,
-}
-
-impl PbRead {
-    /// The writer marked the contents as concealed or transient (password managers).
-    pub fn concealed(&self) -> bool {
-        self.types.iter().any(|t| t == TYPE_CONCEALED || t == TYPE_TRANSIENT)
-    }
-}
+use crate::platform::pasteboard::{
+    text_content, Board, PbContent, PbRead, TYPE_CONCEALED, TYPE_HTML, TYPE_PLAIN, TYPE_TIFF, TYPE_TRANSIENT,
+    TYPE_PNG, TYPE_URL, TYPE_URL_NAME,
+};
 
 fn board(b: Board) -> Retained<NSPasteboard> {
     match b {
@@ -75,11 +35,6 @@ pub fn change_count(b: Board) -> isize {
 /// text. Plain text that is a single http(s) URL becomes `Url`.
 pub fn read(b: Board) -> PbRead {
     read_from(&board(b))
-}
-
-#[allow(dead_code)] // contract helper; capture reads the board and the frontmost app in one hop
-pub async fn read_on_main(app: &AppHandle, b: Board) -> AppResult<PbRead> {
-    super::on_main(app, move |_| read(b)).await
 }
 
 /// The board's image as PNG (TIFF converted), whatever `read` picked. Browser image drags carry
@@ -101,7 +56,7 @@ pub async fn write_on_main(
     data: BTreeMap<String, String>,
     png: Option<Vec<u8>>,
 ) -> AppResult<()> {
-    super::on_main(app, move |_| write(&files, &data, png.as_deref())).await?
+    crate::platform::on_main(app, move |_| write(&files, &data, png.as_deref())).await?
 }
 
 /// `text` as plain text marked concealed and transient (nspasteboard.org), so Save clipboard and
@@ -139,21 +94,9 @@ fn read_from(pb: &NSPasteboard) -> PbRead {
         }
         let plain = string(pb, TYPE_PLAIN).filter(|p| !p.trim().is_empty());
         let html = if has(TYPE_HTML) { string(pb, TYPE_HTML).filter(|h| !h.trim().is_empty()) } else { None };
-        plain.map(|plain| text_or_url(plain, html))
+        plain.map(|plain| text_content(plain, html))
     };
     PbRead { content, types, change_count }
-}
-
-/// A plain text that is exactly one http(s) URL is a link, not a note.
-fn text_or_url(plain: String, html: Option<String>) -> PbContent {
-    let trimmed = plain.trim();
-    let single_url = !trimmed.contains(char::is_whitespace)
-        && url::Url::parse(trimmed).is_ok_and(|u| matches!(u.scheme(), "http" | "https"));
-    if single_url {
-        PbContent::Url { url: trimmed.to_string(), title: None }
-    } else {
-        PbContent::Text { plain, html }
-    }
 }
 
 fn image_from(pb: &NSPasteboard) -> Option<Vec<u8>> {

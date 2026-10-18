@@ -74,24 +74,30 @@ fn spawn_quit(app: AppHandle) {
 /// SIGTERM (`kill`, launchd), SIGINT and SIGHUP exit through `quit` instead of ending the
 /// process outright, which would orphan `llama-server`.
 pub fn quit_on_signals(app: &AppHandle) {
-    use tokio::signal::unix::{signal, SignalKind};
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let (Ok(mut term), Ok(mut int), Ok(mut hup)) = (
-            signal(SignalKind::terminate()),
-            signal(SignalKind::interrupt()),
-            signal(SignalKind::hangup()),
-        ) else {
-            eprintln!("[system] could not install signal handlers");
-            return;
-        };
-        tokio::select! {
-            _ = term.recv() => {}
-            _ = int.recv() => {}
-            _ = hup.recv() => {}
-        }
+        signals().await;
         quit(&app).await;
     });
+}
+
+/// Resolves on the first quit signal; never when the handlers can't be installed.
+#[cfg(unix)]
+async fn signals() {
+    use tokio::signal::unix::{signal, SignalKind};
+    let (Ok(mut term), Ok(mut int), Ok(mut hup)) = (
+        signal(SignalKind::terminate()),
+        signal(SignalKind::interrupt()),
+        signal(SignalKind::hangup()),
+    ) else {
+        eprintln!("[system] could not install signal handlers");
+        return std::future::pending().await;
+    };
+    tokio::select! {
+        _ = term.recv() => {}
+        _ = int.recv() => {}
+        _ = hup.recv() => {}
+    }
 }
 
 /// Matches the login item to `general.openAtLogin`. Debug builds only log: a login item pointing

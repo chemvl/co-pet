@@ -13,7 +13,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use crate::db::settings;
 use crate::error::{AppError, AppResult};
 use crate::events::{self, Hotkey};
-use crate::platform::macos::fullscreen;
+use crate::platform::fullscreen;
 use crate::windows;
 
 const KEY: &str = "hotkeys";

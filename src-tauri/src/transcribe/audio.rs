@@ -1,11 +1,10 @@
 //! Audio on disk: a 16-bit mono WAV writer for recording tracks that fills silence gaps by wall
 //! clock and meters its level, linear resampling, WAV header repair after a crash, conversion
-//! through macOS's `afconvert`, decoding imported files and mixing tracks.
+//! through the OS's native converter, decoding imported files and mixing tracks.
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 
 use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
@@ -159,52 +158,22 @@ pub fn fix_wav_header(path: &Path) -> AppResult<u64> {
     Ok(data / 2)
 }
 
-/// What [`afconvert`] produces.
-#[derive(Clone, Copy, Debug)]
-pub enum Target {
-    /// 16-bit mono WAV at 16 kHz, the speech engines' input.
-    Wav16k,
-    /// 32 kbps mono AAC in an `.m4a`, the archived audio.
-    Aac,
-}
-
-/// Runs `/usr/bin/afconvert` (blocking; call it inside `spawn_blocking`). A non-zero exit or a
-/// missing output is `audioConvert`.
-pub fn afconvert(input: &Path, output: &Path, to: Target) -> AppResult<()> {
-    let args: &[&str] = match to {
-        Target::Wav16k => &["-f", "WAVE", "-d", "LEI16@16000", "-c", "1"],
-        Target::Aac => &["-f", "m4af", "-d", "aac", "-b", "32000", "-c", "1"],
-    };
-    match Command::new("/usr/bin/afconvert").args(args).arg(input).arg(output).output() {
-        Ok(out) if out.status.success() && output.is_file() => Ok(()),
-        Ok(out) => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            eprintln!("[transcribe] afconvert {} ({}): {}", input.display(), out.status, stderr.trim());
-            Err(AppError::Code("audioConvert"))
-        }
-        Err(e) => {
-            eprintln!("[transcribe] afconvert {}: {e}", input.display());
-            Err(AppError::Code("audioConvert"))
-        }
-    }
-}
-
 /// Audio conversion behind a trait so the worker can run with a fake in tests.
 pub trait Convert {
     fn wav16k(&self, i: &Path, o: &Path) -> AppResult<()>;
     fn aac(&self, i: &Path, o: &Path) -> AppResult<()>;
 }
 
-/// [`Convert`] through [`afconvert`].
-pub struct Afconvert;
+/// [`Convert`] through the OS's native converter (`crate::platform::audio_convert`).
+pub struct NativeConvert;
 
-impl Convert for Afconvert {
+impl Convert for NativeConvert {
     fn wav16k(&self, i: &Path, o: &Path) -> AppResult<()> {
-        afconvert(i, o, Target::Wav16k)
+        crate::platform::audio_convert::wav16k(i, o)
     }
 
     fn aac(&self, i: &Path, o: &Path) -> AppResult<()> {
-        afconvert(i, o, Target::Aac)
+        crate::platform::audio_convert::aac(i, o)
     }
 }
 
@@ -435,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn afconvert_resamples_and_round_trips_through_aac() {
+    fn native_convert_resamples_and_round_trips_through_aac() {
         let dir = tempfile::tempdir().unwrap();
         let (input, wav16k, m4a, back) = (
             dir.path().join("in.wav"),
@@ -444,20 +413,20 @@ mod tests {
             dir.path().join("back.wav"),
         );
         stereo_wav(&input);
-        Afconvert.wav16k(&input, &wav16k).unwrap();
+        NativeConvert.wav16k(&input, &wav16k).unwrap();
         let reader = WavReader::open(&wav16k).unwrap();
         assert_eq!((reader.spec().channels, reader.spec().sample_rate), (1, 16_000));
         let n = read_wav_f32(&wav16k).unwrap().len() as i64;
         assert!((n - 16_000).abs() <= 160, "{n} samples");
 
-        Afconvert.aac(&wav16k, &m4a).unwrap();
+        NativeConvert.aac(&wav16k, &m4a).unwrap();
         let ms = decode_to_wav(&m4a, &back).unwrap();
         // symphonia keeps AAC's encoder priming and last-frame padding (isomp4 is not gapless).
         assert!((1000..=1200).contains(&ms), "AAC decodes back to about a second: {ms} ms");
 
         let missing = dir.path().join("missing.wav");
         let out = dir.path().join("never.wav");
-        assert!(matches!(Afconvert.wav16k(&missing, &out), Err(AppError::Code("audioConvert"))));
+        assert!(matches!(NativeConvert.wav16k(&missing, &out), Err(AppError::Code("audioConvert"))));
         assert!(!out.exists());
     }
 }

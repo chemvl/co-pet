@@ -1,20 +1,18 @@
-//! Call detection signals besides the microphone: window titles of given processes (Zoom's
-//! meeting window, a browser's Meet tab), the running apps' bundle ids, and whether a process with
-//! a given name runs (Zoom's meeting helper). Also the `CGWindowListCopyWindowInfo` reader that
-//! the full-screen check shares.
+//! macOS half of `platform::window_titles`, plus the `CGWindowListCopyWindowInfo` reader that the
+//! full-screen check shares.
 //!
 //! Titles come from the window server when Screen Recording is granted, else from Accessibility.
 //! They are matched in memory by the caller and never logged.
-use std::ffi::{c_void, OsStr};
+use std::ffi::c_void;
 
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSRect, NSString};
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 use super::permissions;
 use crate::model::Rect;
+use crate::platform::window_titles::TitleSource;
 
 /// `kCGWindowListOptionAll`: every window, including those on other Spaces and minimised ones.
 const LIST_ALL: u32 = 0;
@@ -57,14 +55,6 @@ pub struct WindowInfo {
     pub bounds: Option<Rect>,
 }
 
-/// Where window titles can come from on this Mac right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TitleSource {
-    ScreenRecording,
-    Accessibility,
-    None,
-}
-
 pub fn title_source() -> TitleSource {
     if permissions::screen_recording_granted() {
         TitleSource::ScreenRecording
@@ -84,7 +74,7 @@ pub fn titles_for(pids: &[i32]) -> Vec<(i32, String)> {
             .iter()
             .flat_map(|&pid| ax_titles(pid).into_iter().map(move |t| (pid, t)))
             .collect(),
-        TitleSource::None => Vec::new(),
+        TitleSource::Native | TitleSource::None => Vec::new(),
     }
 }
 
@@ -182,13 +172,6 @@ pub fn running_apps() -> Vec<(i32, String)> {
         .iter()
         .filter_map(|app| Some((app.processIdentifier(), app.bundleIdentifier()?.to_string())))
         .collect()
-}
-
-/// Whether a process whose name is exactly one of `names` runs.
-pub fn process_running(names: &[&str]) -> bool {
-    let mut sys = System::new();
-    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
-    sys.processes().values().any(|p| names.iter().any(|n| p.name() == OsStr::new(n)))
 }
 
 #[cfg(test)]

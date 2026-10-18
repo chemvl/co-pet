@@ -18,7 +18,7 @@ use crate::events::{self, PetReaction};
 use crate::i18n::{self, short_date, tr, Lang};
 use crate::ai::ChatOpts;
 use crate::model::{ActionItem, Actor, NewTask, TaskChange, TaskPatch, TaskSummary};
-use crate::platform::macos::pasteboard::{self, TYPE_PLAIN};
+use crate::platform::pasteboard::{self, TYPE_PLAIN};
 use crate::triage::secrets;
 
 /// Summary languages a user may ask for.

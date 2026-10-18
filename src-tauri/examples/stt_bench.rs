@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use copet_lib::transcribe::diarize::{Diarizer, SherpaDiarizer};
 use copet_lib::transcribe::stt::{SpeechToText, WhisperStt};
+use copet_lib::transcribe::audio::Convert;
 use copet_lib::transcribe::{assemble, audio, models, wer};
 
 const USAGE: &str = "usage: stt_bench [--models <dir>] [--lang auto|en|vi|zh|vi+en] [--greedy] [--diarize] <files…>";
@@ -74,7 +75,7 @@ fn bench(
     let raw = tmp.path().join("raw.wav");
     let wav = tmp.path().join("16k.wav");
     audio::decode_to_wav(file, &raw).map_err(|e| format!("decode: {e}"))?;
-    audio::afconvert(&raw, &wav, audio::Target::Wav16k).map_err(|e| format!("afconvert: {e}"))?;
+    audio::NativeConvert.wav16k(&raw, &wav).map_err(|e| format!("convert: {e}"))?;
     let samples = audio::read_wav_f32(&wav).map_err(|e| format!("read: {e}"))?;
     let audio_secs = samples.len() as f64 / 16_000.0;
 

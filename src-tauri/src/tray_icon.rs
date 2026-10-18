@@ -13,7 +13,7 @@ use crate::db::settings;
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::i18n::{self, tr};
-use crate::platform::macos::fullscreen;
+use crate::platform::fullscreen;
 use crate::model::UpdateState;
 use crate::{system, updater, windows};
 

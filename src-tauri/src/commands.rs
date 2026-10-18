@@ -56,14 +56,14 @@ pub fn counts(db: State<'_, Db>) -> AppResult<crate::model::Counts> {
 
 #[tauri::command]
 pub fn set_hit_regions(
-    pointer: State<'_, crate::platform::macos::pointer::PointerState>,
+    pointer: State<'_, crate::platform::pointer::PointerState>,
     regions: Vec<crate::model::HitRegion>,
 ) {
     pointer.set_regions(regions);
 }
 
 #[tauri::command]
-pub fn set_pet_moving(pointer: State<'_, crate::platform::macos::pointer::PointerState>, moving: bool) {
+pub fn set_pet_moving(pointer: State<'_, crate::platform::pointer::PointerState>, moving: bool) {
     pointer.set_moving(moving);
 }
 
@@ -131,18 +131,18 @@ pub async fn paste_items(app: AppHandle, ids: Vec<String>) -> AppResult<&'static
 
 #[tauri::command]
 pub fn request_permission(kind: String) -> AppResult<()> {
-    crate::platform::macos::permissions::request(&kind)
+    crate::platform::permissions::request(&kind)
 }
 
 #[tauri::command]
 pub fn permissions_status() -> crate::model::PermissionsStatus {
-    crate::platform::macos::permissions::status()
+    crate::platform::permissions::status()
 }
 
 /// Event calendars on this Mac, or `[]` without full calendar access.
 #[tauri::command]
 pub async fn list_calendars() -> AppResult<Vec<crate::model::CalendarInfo>> {
-    tauri::async_runtime::spawn_blocking(crate::platform::macos::calendar::calendars)
+    tauri::async_runtime::spawn_blocking(crate::platform::calendar::calendars)
         .await
         .map_err(|e| crate::error::AppError::msg(e.to_string()))
 }
@@ -468,11 +468,11 @@ pub fn quit_app(app: AppHandle) {
 
 #[tauri::command]
 pub fn pet_status(app: AppHandle) -> crate::model::PetStatus {
-    let visibility = app.state::<crate::platform::macos::fullscreen::Visibility>().current();
+    let visibility = app.state::<crate::platform::fullscreen::Visibility>().current();
     crate::model::PetStatus {
         hidden: visibility.hidden,
         reason: visibility.reason,
-        sleep: app.state::<crate::platform::macos::idle::Sleep>().current(),
+        sleep: app.state::<crate::platform::idle::Sleep>().current(),
     }
 }
 
@@ -995,7 +995,7 @@ pub async fn save_text_file(app: AppHandle, default_name: String, text: String) 
 /// clipboard managers skip it.
 #[tauri::command]
 pub async fn copy_concealed_text(app: AppHandle, text: String) -> AppResult<()> {
-    crate::platform::macos::pasteboard::write_concealed_text(&app, text).await
+    crate::platform::pasteboard::write_concealed_text(&app, text).await
 }
 
 // ---------- M9: sync ----------

@@ -12,6 +12,8 @@ pub mod pasteboard;
 pub mod permissions;
 pub mod pointer;
 pub mod screens;
+#[allow(dead_code)] // consumed by the call watcher (`transcribe::calls`), a later task; fullscreen uses window_list
+pub mod window_titles;
 
 use objc2::MainThreadMarker;
 use tauri::AppHandle;

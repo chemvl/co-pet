@@ -4,19 +4,15 @@
 //!
 //! On a display with a camera notch a full-screen window starts below the notch
 //! (`safeAreaInsets.top`), so it covers the frame minus that strip rather than the whole frame.
-use std::ffi::c_void;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
-use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
 use objc2::MainThreadMarker;
 use objc2_app_kit::NSScreen;
-use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSRect, NSString};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-use super::{frontmost, on_main, pointer::PointerState};
+use super::{frontmost, on_main, pointer::PointerState, window_titles};
 use crate::db::{now_ms, settings};
 use crate::events::{self, PetVisibility};
 use crate::model::Rect;
@@ -28,15 +24,6 @@ const HIDDEN_UNTIL: &str = "pet.hiddenUntil";
 const LIST_OPTIONS: u32 = (1 << 0) | (1 << 4);
 /// Window bounds and screen frames are both in points; allow rounding.
 const TOLERANCE: f64 = 1.0;
-
-#[link(name = "CoreGraphics", kind = "framework")]
-extern "C" {
-    fn CGWindowListCopyWindowInfo(option: u32, relative_to_window: u32) -> *mut c_void;
-    fn CGRectMakeWithDictionaryRepresentation(dict: *const c_void, rect: *mut NSRect) -> bool;
-    static kCGWindowLayer: *const c_void;
-    static kCGWindowOwnerPID: *const c_void;
-    static kCGWindowBounds: *const c_void;
-}
 
 /// Managed: the last visibility sent to the pet (`None` until the first poll with a pet window).
 #[derive(Default)]
@@ -125,40 +112,17 @@ fn frontmost_fullscreen_on(mtm: MainThreadMarker, frame: Rect) -> bool {
     if front_pid == std::process::id() as i32 {
         return false;
     }
-    // SAFETY: the function follows the Create rule (+1, released by `Retained`); it returns a
-    // CFArray of CFDictionary, toll-free bridged to NSArray/NSDictionary.
-    let raw = unsafe { CGWindowListCopyWindowInfo(LIST_OPTIONS, 0) };
-    let Some(list) = (unsafe { Retained::from_raw(raw.cast::<NSArray<NSDictionary<NSString, AnyObject>>>()) })
-    else {
-        return false;
-    };
-    // SAFETY: the keys are CFString constants, toll-free bridged to NSString.
-    let (layer_key, pid_key, bounds_key) = unsafe {
-        (
-            &*(kCGWindowLayer as *const NSString),
-            &*(kCGWindowOwnerPID as *const NSString),
-            &*(kCGWindowBounds as *const NSString),
-        )
-    };
-    let number = |w: &NSDictionary<NSString, AnyObject>, key: &NSString| {
-        w.objectForKey(key)
-            .and_then(|v| v.downcast::<NSNumber>().ok())
-            .map(|n| n.integerValue())
-    };
     let near = |a: f64, b: f64| (a - b).abs() <= TOLERANCE;
     let notch = notch_height(mtm, frame);
-    list.iter().any(|w| {
-        if number(&w, layer_key) != Some(0) || number(&w, pid_key) != Some(front_pid as isize) {
+    window_titles::window_list(LIST_OPTIONS, &[front_pid], false).iter().any(|w| {
+        if w.layer != 0 {
             return false;
         }
-        let Some(bounds) = w.objectForKey(bounds_key) else { return false };
-        let mut r = NSRect::ZERO;
-        // SAFETY: `kCGWindowBounds` holds a CGRect dictionary representation.
-        let ok = unsafe { CGRectMakeWithDictionaryRepresentation(Retained::as_ptr(&bounds).cast(), &mut r) };
-        let top = r.origin.y - frame.y;
-        ok && near(r.origin.x, frame.x)
-            && near(r.size.width, frame.w)
-            && near(r.origin.y + r.size.height, frame.y + frame.h)
+        let Some(r) = w.bounds else { return false };
+        let top = r.y - frame.y;
+        near(r.x, frame.x)
+            && near(r.w, frame.w)
+            && near(r.y + r.h, frame.y + frame.h)
             && (near(top, 0.0) || (notch > 0.0 && near(top, notch)))
     })
 }

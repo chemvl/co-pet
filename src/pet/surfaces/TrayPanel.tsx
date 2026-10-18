@@ -11,6 +11,7 @@ import { useLang, useT } from '../../shared/i18n';
 import { copyItems, counts as fetchCounts, listItems } from '../../shared/ipc';
 import { useAddedBy, useCategories } from '../../shared/queries';
 import { displayKind } from '../../shared/itemKind';
+import { isWindows } from '../../shared/platform';
 import type { ItemSummary } from '../../shared/types';
 import { armDragOut } from '../dragOut';
 
@@ -91,7 +92,8 @@ export function TrayPanel(p: {
   const targetIds = selected.length > 0 ? selected : items[0] ? [items[0].id] : [];
 
   const onCardClick = (e: MouseEvent, item: ItemSummary) => {
-    if (e.metaKey) {
+    // ⌘-click on macOS, Ctrl-click on Windows.
+    if (isWindows ? e.ctrlKey : e.metaKey) {
       setSelected((sel) => (sel.includes(item.id) ? sel.filter((id) => id !== item.id) : [...sel, item.id]));
       setAnchor(item.id);
     } else if (e.shiftKey && anchor) {
@@ -128,7 +130,7 @@ export function TrayPanel(p: {
       if (targetIds.length === 0) return;
       e.preventDefault();
       p.onPaste(targetIds);
-    } else if (e.key === 'c' && e.metaKey) {
+    } else if (e.key === 'c' && (isWindows ? e.ctrlKey : e.metaKey)) {
       const input = searchRef.current;
       // Let a text selection inside the search field copy as text.
       if (inSearch && input && input.selectionStart !== input.selectionEnd) return;

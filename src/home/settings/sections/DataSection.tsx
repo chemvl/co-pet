@@ -21,7 +21,7 @@ export function DataSection() {
     setExporting(true);
     try {
       const path = await exportAll(dir);
-      const folder = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+      const folder = path.split(isWindows ? /[\\/]/ : '/').filter(Boolean).pop() ?? path;
       toast.show({
         message: t('settings.data.exported', { folder }),
         action: { label: t(isWindows ? 'common.showInExplorer' : 'common.showInFinder'), run: () => void revealItemInDir(path) },

@@ -13,6 +13,7 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 - **Home** — Inbox, item detail, Tasks, Categories & rules editor, Integrations, Agents, Settings, and a command palette (`⌘K`).
 - **Tasks and What's Next** — convert items to tasks; the pet suggests the next task when you come back to your Mac or finish something.
 - **Export** — push tasks to Notion or Asana through a retrying queue.
+- **Transcribe** — records meetings on this Mac and turns them into a transcript, summary and tasks; offers to record Zoom and Google Meet calls (Settings › Transcribe).
 - **MCP server** — AI agents (Claude Code, Cursor, Codex, Gemini CLI, or any MCP client) can search items and manage tasks through the bundled `copet-mcp` sidecar, with per-client write approval and an undoable activity log.
 - **Accounts and sync** — optional sign-in (email code or Google) and end-to-end encrypted sync between your Macs through Supabase.
 

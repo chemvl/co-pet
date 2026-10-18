@@ -21,7 +21,7 @@ enigo = "0.6"
 getrandom = "0.3"
 hex = "0.4.3"
 htmd = "0.5"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "tiff"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "tiff", "bmp"] }
 infer = "0.22"
 pdf-extract = "0.12"
 percent-encoding = "2"

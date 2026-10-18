@@ -10,6 +10,7 @@ mod win;
 use win as os;
 
 pub mod calendar;
+pub mod clip;
 pub mod fullscreen;
 pub mod idle;
 pub mod mic_consent;

@@ -2,20 +2,20 @@
 
 Co-pet is a desktop companion that lives on the edge of your screen as an animated pet and works as a universal inbox. Drop anything on it — a file, a link, a screenshot, a snippet of text — and it sorts it, turns the actionable parts into tasks, tells you the one thing to do next, and hands content back when you need it: drag it out into another app, export it to Notion or Asana, or let your AI agents read it over MCP.
 
-It is local-first: items, tasks and the triage model live on your Mac. Nothing leaves the machine unless you turn on a feature that needs the network, and synced data is end-to-end encrypted.
+It is local-first: items, tasks and the triage model live on your computer. Nothing leaves the machine unless you turn on a feature that needs the network, and synced data is end-to-end encrypted.
 
 Platforms: macOS 13+ on Apple Silicon and Windows 11 x64. UI in English and Vietnamese.
 
 ## What it does
 
-- **Capture** — drop onto the pet, paste, quick note, screen capture, or "send selection" from any app (global hotkeys, default `⌘⇧Space` focus pet, `⌘⇧C` send selection, `⌘⇧S` capture screen, `⌘⇧N` quick note).
+- **Capture** — drop onto the pet, paste, quick note, screen capture, or "send selection" from any app (global hotkeys, default `⌘/Ctrl+Shift+Space` focus pet, `⌘/Ctrl+Shift+C` send selection, `⌘/Ctrl+Shift+S` capture screen, `⌘/Ctrl+Shift+N` quick note).
 - **Triage** — rules first, then a small local model (llama.cpp `llama-server`) files each item into a category. Every decision can be undone. Items that look like secrets are marked sensitive and never sent to the model or to agents.
-- **Home** — Inbox, item detail, Tasks, Categories & rules editor, Integrations, Agents, Settings, and a command palette (`⌘K`).
-- **Tasks and What's Next** — convert items to tasks; the pet suggests the next task when you come back to your Mac or finish something.
+- **Home** — Inbox, item detail, Tasks, Categories & rules editor, Integrations, Agents, Settings, and a command palette (`⌘/Ctrl+K`).
+- **Tasks and What's Next** — convert items to tasks; the pet suggests the next task when you come back to your computer or finish something.
 - **Export** — push tasks to Notion or Asana through a retrying queue.
-- **Transcribe** — records meetings on this Mac and turns them into a transcript, summary and tasks; offers to record Zoom and Google Meet calls (Settings › Transcribe).
+- **Transcribe** — records meetings on this computer and turns them into a transcript, summary and tasks; offers to record Zoom and Google Meet calls (Settings › Transcribe).
 - **MCP server** — AI agents (Claude Code, Cursor, Codex, Gemini CLI, or any MCP client) can search items and manage tasks through the bundled `copet-mcp` sidecar, with per-client write approval and an undoable activity log.
-- **Accounts and sync** — optional sign-in (email code or Google) and end-to-end encrypted sync between your Macs through Supabase.
+- **Accounts and sync** — optional sign-in (email code or Google) and end-to-end encrypted sync between your computers through Supabase.
 
 ## Repository layout
 
@@ -60,7 +60,7 @@ bun run fetch:llama   # downloads the pinned llama.cpp build for this OS (macOS 
 bun run tauri dev
 ```
 
-This builds the `copet-mcp` sidecar, starts Vite, compiles the Rust app and opens it. The first run shows onboarding, which downloads the local triage model (sized for your Mac's memory). Until the model is ready, items are sorted by rules only and the rest land in Unsorted.
+This builds the `copet-mcp` sidecar, starts Vite, compiles the Rust app and opens it. The first run shows onboarding, which downloads the local triage model (sized for your computer's memory). Until the model is ready, items are sorted by rules only and the rest land in Unsorted.
 
 Notes:
 

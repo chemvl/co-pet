@@ -145,11 +145,14 @@ async function get(url: string): Promise<Response> {
   return fetch(url).catch((e) => fail(`fetch ${url}: ${e.message}`));
 }
 const fragmentKey = (p: Platform) => `${prefix}/${v}/${p}.json`;
-const fragmentUrl = (p: Platform) => `https://${env.COPET_UPDATE_HOST}/${fragmentKey(p)}`;
-async function fragmentExists(p: Platform): Promise<boolean> {
-  const r = await get(fragmentUrl(p));
-  if (r.status !== 200 && r.status !== 404) fail(`fetch ${fragmentUrl(p)}: HTTP ${r.status}`);
-  return r.status === 200;
+/** This version's fragment for `p`: parsed on 200, undefined on 404; anything else fails. The query
+ * string bypasses any CDN copy, including a cached 404 from before the upload. */
+async function fetchFragment(p: Platform): Promise<Fragment | undefined> {
+  const url = `https://${env.COPET_UPDATE_HOST}/${fragmentKey(p)}?${Date.now()}`;
+  const r = await get(url);
+  if (r.status === 404) return undefined;
+  if (r.status !== 200) fail(`fetch ${url}: HTTP ${r.status}`);
+  return (await r.json()) as Fragment;
 }
 
 const feed = `https://${env.COPET_UPDATE_HOST}/${prefix}/latest.json`;
@@ -157,7 +160,11 @@ const res = await get(feed);
 if (res.status !== 404) {
   if (!res.ok) fail(`fetch ${feed}: HTTP ${res.status}`);
   const published = (await res.json()) as { version: string };
-  const error = versionError(v, published.version, PLATFORM, await fragmentExists(PLATFORM), await fragmentExists(OTHER));
+  // Fragments matter only when `v` equals the published version.
+  const same = Bun.semver.order(v, published.version) === 0;
+  const hasThis = same && (await fetchFragment(PLATFORM)) !== undefined;
+  const hasOther = same && (await fetchFragment(OTHER)) !== undefined;
+  const error = versionError(v, published.version, PLATFORM, hasThis, hasOther);
   if (error) fail(error);
 }
 
@@ -171,7 +178,10 @@ const bundleOverride =
     ? {
         createUpdaterArtifacts: true,
         windows: {
-          signCommand: `trusted-signing-cli -e ${env.COPET_TS_ENDPOINT} -a ${env.COPET_TS_ACCOUNT} -c ${env.COPET_TS_PROFILE} -d Co-pet %1`,
+          signCommand: {
+            cmd: "trusted-signing-cli",
+            args: ["-e", env.COPET_TS_ENDPOINT, "-a", env.COPET_TS_ACCOUNT, "-c", env.COPET_TS_PROFILE, "-d", "Co-pet", "%1"],
+          },
         },
       }
     : { createUpdaterArtifacts: true, macOS: { signingIdentity: env.APPLE_SIGNING_IDENTITY } };
@@ -243,14 +253,11 @@ function releaseMac(): Fragment {
 const fragment = PLATFORM === "windows-x86_64" ? releaseWindows() : releaseMac();
 const fragmentPath = join(confOverride, "..", `${PLATFORM}.json`);
 writeFileSync(fragmentPath, JSON.stringify(fragment, null, 2));
-put(fragmentKey(PLATFORM), fragmentPath, ["--cache-control", "max-age=300", "--content-type", "application/json"]);
+put(fragmentKey(PLATFORM), fragmentPath, ["--cache-control", "no-store", "--content-type", "application/json"]);
 
 // --- 6. publish, once both platforms' fragments are up
 const fragments: Partial<Record<Platform, Fragment>> = {};
-for (const p of PLATFORMS) {
-  const r = await get(fragmentUrl(p));
-  if (r.status === 200) fragments[p] = (await r.json()) as Fragment;
-}
+for (const p of PLATFORMS) fragments[p] = await fetchFragment(p);
 const latest = latestFeed(v, notes, new Date().toISOString(), fragments);
 if (!latest) {
   console.log(`waiting for ${PLATFORMS.filter((p) => !fragments[p]).join(" and ")} build of ${v}`);

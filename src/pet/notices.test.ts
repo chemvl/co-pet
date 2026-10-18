@@ -143,8 +143,12 @@ describe.each(['en', 'vi'] as const)('call notices (%s)', (lang) => {
 describe('callEndedNotice', () => {
   it('stays up at least a plain notice when the stop is (nearly) due', () => {
     const now = 1_000_000;
-    expect(callEndedNotice(ended('zoom', now + 500), t, now).ms).toBe(NOTICE_MS);
-    expect(callEndedNotice(ended('zoom', now - 2_000), t, now).ms).toBe(NOTICE_MS);
+    const due = callEndedNotice(ended('zoom', now + 300), t, now);
+    expect(due.ms).toBe(NOTICE_MS);
+    expect(due.message).toBe('The Zoom call ended. Recording stops in 1 s.');
+    const overdue = callEndedNotice(ended('zoom', now - 2_000), t, now);
+    expect(overdue.ms).toBe(NOTICE_MS);
+    expect(overdue.message).toBe('The Zoom call ended. Recording stops in 1 s.');
   });
 });
 

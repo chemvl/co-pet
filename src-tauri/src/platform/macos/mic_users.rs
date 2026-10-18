@@ -210,7 +210,8 @@ impl Context {
 
 /// Live CoreAudio listeners; removed on drop.
 pub struct Listening {
-    /// `Box::into_raw` of the context every listener gets as client data; reclaimed in `Drop`.
+    /// `Box::into_raw` of the context every listener gets as client data. Never reclaimed: see
+    /// `Drop`.
     context: *mut Context,
     /// System-object registrations: `DEFAULT_INPUT` and, when supported, `PROCESS_LIST`.
     system: Vec<(u32, ListenerProc)>,
@@ -218,14 +219,14 @@ pub struct Listening {
     processes: Option<Vec<u32>>,
 }
 
-// SAFETY: `context` is owned uniquely by this value (created by `Box::into_raw`, freed only in
-// `Drop`) and `Context` is `Send + Sync`; CoreAudio's listener functions are thread-safe.
+// SAFETY: `context` is never freed and `Context` is `Send + Sync`; CoreAudio's listener functions
+// are thread-safe.
 unsafe impl Send for Listening {}
 
 /// Registers listeners; `on_change` runs on CoreAudio's thread and must only send on a channel.
 pub fn listen(on_change: Box<dyn Fn() + Send + Sync>) -> Listening {
     let context = Box::into_raw(Box::new(Context { on_change, input: Mutex::new(Some(NO_OBJECT)) }));
-    // SAFETY: just allocated; lives until `Drop` removes every listener that points at it.
+    // SAFETY: just allocated and never freed.
     let ctx = unsafe { &*context };
     let mut system = Vec::new();
     if add(SYSTEM_OBJECT, DEFAULT_INPUT, on_default_input, ctx.client_data()) {
@@ -246,7 +247,7 @@ impl Listening {
     pub fn refresh_processes(&mut self) {
         let Some(current) = self.processes.as_mut() else { return };
         let Ok(objects) = process_objects() else { return };
-        // SAFETY: `context` stays valid until `Drop`.
+        // SAFETY: `context` is never freed.
         let data = unsafe { &*self.context }.client_data();
         for &gone in current.iter().filter(|o| !objects.contains(o)) {
             remove(gone, PROCESS_RUNNING_INPUT, on_property, data);
@@ -262,7 +263,7 @@ impl Listening {
 
 impl Drop for Listening {
     fn drop(&mut self) {
-        // SAFETY: `context` stays valid until the end of this function.
+        // SAFETY: `context` is never freed.
         let ctx = unsafe { &*self.context };
         let data = ctx.client_data();
         // `DEFAULT_INPUT` first, so no new callback re-targets the device listener meanwhile.
@@ -277,13 +278,14 @@ impl Drop for Listening {
         for &object in self.processes.iter().flatten() {
             remove(object, PROCESS_RUNNING_INPUT, on_property, data);
         }
-        // SAFETY: created by `Box::into_raw` in `listen`; no listener references it any more.
-        drop(unsafe { Box::from_raw(self.context) });
+        // The context is never freed: CoreAudio doesn't promise that removing a listener waits
+        // for a callback already running on its thread, which may still read it. One small
+        // context leaks per `transcribe.autoRecord` switch to `off`.
     }
 }
 
 fn add(object: u32, selector: u32, proc: ListenerProc, data: *mut c_void) -> bool {
-    // SAFETY: valid address; `data` points at a live `Context` until the matching `remove`.
+    // SAFETY: valid address; `data` points at a leaked, never-freed `Context`.
     unsafe { AudioObjectAddPropertyListener(object, &address(selector), proc, data) == 0 }
 }
 
@@ -299,7 +301,7 @@ unsafe extern "C" fn on_property(
     _addresses: *const AudioObjectPropertyAddress,
     data: *mut c_void,
 ) -> i32 {
-    // SAFETY: `data` is the `Context` registered with this listener, alive until it is removed.
+    // SAFETY: `data` is the leaked `Context` registered with this listener; it is never freed.
     let ctx = unsafe { &*data.cast::<Context>() };
     ctx.notify();
     0

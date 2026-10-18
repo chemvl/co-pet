@@ -322,8 +322,8 @@ impl Watch {
         }
     }
 
-    /// The user stopped this recording by hand: drop any link to it (no auto-stop, no re-offer
-    /// for that call).
+    /// Recording `meeting_id` ended: drop any link to it (no auto-stop, no re-offer for that
+    /// call).
     pub fn unlink_meeting(&mut self, meeting_id: &str) {
         if let Some(call) = self.call_mut() {
             if call.linked.as_ref().is_some_and(|l| l.meeting_id == meeting_id) {
@@ -392,7 +392,15 @@ impl Ending {
                 actions.push(Action::Stop { meeting_id: link.meeting_id.clone() });
                 return State::Idle;
             }
-        } else if s.now >= stop_at {
+        } else {
+            // Auto-stop was switched off during an announced countdown: its notice no longer holds.
+            if self.announced && call.linked.is_some() {
+                actions.push(Action::Resumed { call_id: call.id.clone() });
+                self.announced = false;
+            }
+            if s.now < stop_at {
+                return State::Ending(self);
+            }
             if !self.kept && s.co_pet_recording {
                 actions.push(Action::EndedManual { call_id: call.id.clone(), app: call.app });
             }
@@ -650,6 +658,19 @@ mod tests {
     }
 
     #[test]
+    fn call_ended_while_hidden_is_never_offered() {
+        let hidden = Ctx { mode: Mode::Ask, auto_stop: true, offers_allowed: false };
+        let mut w = Watch::default();
+        assert_eq!(w.step(&meet_call(0), &hidden), vec![]);
+        assert_eq!(w.step(&meet_call(8_000), &hidden), vec![]);
+        assert_eq!(w.step(&quiet(13_000), &hidden), vec![]);
+        // Visible again during the end grace: the call is over, nothing is offered.
+        assert_eq!(w.step(&quiet(18_000), &ctx(Mode::Ask)), vec![]);
+        assert_eq!(w.step(&quiet(33_000), &ctx(Mode::Ask)), vec![]);
+        assert_eq!(w.active(), None);
+    }
+
+    #[test]
     fn no_offer_while_recording() {
         let mut w = Watch::default();
         assert_eq!(w.step(&recording(meet_call(0)), &ctx(Mode::Auto)), vec![]);
@@ -803,7 +824,7 @@ mod tests {
             vec![Action::EndedManual { call_id: id, app: CallApp::Meet }]
         );
 
-        // Turned off during the countdown: no `Stop` at the deadline.
+        // Turned off during the countdown: its notice is withdrawn, no `Stop` at the deadline.
         let mut w = Watch::default();
         let id = meet_linked(&mut w, true);
         assert!(matches!(
@@ -813,7 +834,7 @@ mod tests {
         assert_eq!(w.next_deadline(), Some(33_000));
         assert_eq!(
             w.step(&recording(quiet(33_000)), &off),
-            vec![Action::EndedManual { call_id: id, app: CallApp::Meet }]
+            vec![Action::Resumed { call_id: id.clone() }, Action::EndedManual { call_id: id, app: CallApp::Meet }]
         );
         assert_eq!(w.active(), None);
 
@@ -822,6 +843,27 @@ mod tests {
         meet_linked(&mut w, false);
         assert_eq!(w.step(&recording(quiet(13_000)), &ctx(Mode::Ask)), vec![]);
         assert_eq!(w.next_deadline(), None);
+    }
+
+    #[test]
+    fn auto_stop_turned_off_during_countdown_withdraws_it_once() {
+        let off = Ctx { mode: Mode::Ask, auto_stop: false, offers_allowed: true };
+        let mut w = Watch::default();
+        let id = meet_linked(&mut w, true);
+        assert!(matches!(
+            w.step(&recording(quiet(13_000)), &ctx(Mode::Ask)).as_slice(),
+            [Action::EndedStopping { stop_at: 33_000, .. }]
+        ));
+        assert_eq!(w.step(&recording(quiet(18_000)), &off), vec![Action::Resumed { call_id: id.clone() }]);
+        assert_eq!(w.step(&recording(quiet(23_000)), &off), vec![]);
+        // The call coming back has no countdown left to withdraw.
+        assert_eq!(w.step(&recording(meet_call(28_000)), &off), vec![]);
+        assert_eq!(w.step(&recording(quiet(33_000)), &off), vec![]);
+        assert_eq!(
+            w.step(&recording(quiet(53_000)), &off),
+            vec![Action::EndedManual { call_id: id, app: CallApp::Meet }]
+        );
+        assert_eq!(w.active(), None);
     }
 
     #[test]

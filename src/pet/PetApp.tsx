@@ -13,7 +13,8 @@ import { categoryColor, categoryIcon, categoryLabelOf } from '../shared/categori
 import { errorMessage, errorText } from '../shared/errors';
 import { useT, type I18nKey, type TParams } from '../shared/i18n';
 import {
-  callKeepRecording, captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
+  callDetectionStatus, callKeepRecording, captureClipboard, captureNote, captureScreenshot, captureSelection,
+  commitPetPosition,
   counts as fetchCounts, focusPetPanel, getPlacement, nextAction, on, openHome, pasteItems, pauseRecording, petStatus,
   quitApp, requestPermission, resignPetPanel, resumeRecording, setHitRegions, setPetMoving, setRecordingLanguage,
   startRecording, stopRecording, transcribeItem, whatsNext,
@@ -420,7 +421,10 @@ export function PetApp() {
   };
 
   // ---------- Rust events ----------
-  /** A call detected while the pet was hidden: offered (or, waiting for consent, started) once it is back. */
+  /**
+   * A call detected while the pet was hidden: offered (or, waiting for consent, started) once it
+   * is back, if the call is still on.
+   */
   const pendingCall = useRef<CallDetected | null>(null);
 
   const applyVisibility = (isHidden: boolean) => {
@@ -428,6 +432,10 @@ export function PetApp() {
     setHidden(isHidden);
     machine.setHidden(isHidden);
     if (isHidden) {
+      // An offer on screen (or queued) waits for the pet's return instead of being lost.
+      const shown = live.current.surface === 'notice' ? live.current.notice : null;
+      const offered = shown?.record ?? pendingNotice.current?.record;
+      if (offered && lastCall.current?.callId === offered.callId) pendingCall.current = lastCall.current;
       live.current.surface = null;
       shownCard.current = null;
       pendingNotice.current = null;
@@ -436,7 +444,13 @@ export function PetApp() {
     } else if (pendingCall.current) {
       const call = pendingCall.current;
       pendingCall.current = null;
-      onCallDetected(call);
+      // A call that ended meanwhile (no event when nothing recorded it) is not offered.
+      callDetectionStatus().then(
+        (status) => {
+          if (status.active?.callId === call.callId) handlers.current.onCallDetected(call);
+        },
+        (e: unknown) => console.error('[pet] call detection status', e),
+      );
     }
   };
 

@@ -225,16 +225,9 @@ pub fn resume_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<R
     rec.resume(&app)
 }
 
-/// Returns the meeting id. A recording linked to a call no longer stops with it.
+/// Returns the meeting id.
 #[tauri::command]
-pub async fn stop_recording(
-    app: AppHandle,
-    rec: State<'_, Recorder>,
-    watch: State<'_, crate::transcribe::calls::CallWatch>,
-) -> AppResult<String> {
-    if let Some(meeting_id) = rec.status().meeting_id {
-        watch.unlink_meeting(&meeting_id);
-    }
+pub async fn stop_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<String> {
     rec.stop(&app).await
 }
 

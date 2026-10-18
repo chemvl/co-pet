@@ -17,6 +17,7 @@ use crate::error::AppError;
 use crate::events;
 use crate::i18n::{self, tr, Lang};
 use crate::model::{CallDetected, CallDetectionStatus, CallEnded, CallResumed};
+use crate::platform::macos::fullscreen::Visibility;
 use crate::platform::macos::mic_users::{self, MicUsers};
 use crate::platform::macos::window_titles::{self, TitleSource};
 use crate::transcribe::recorder::Recorder;
@@ -65,8 +66,8 @@ impl CallWatch {
         self.wake.notify_one();
     }
 
-    /// The user stopped recording `meeting_id` by hand: its call neither stops it again nor
-    /// offers it again.
+    /// Recording `meeting_id` ended (stopped by hand, at max length, or with its call): its call
+    /// neither stops it again nor offers it again.
     pub fn unlink_meeting(&self, meeting_id: &str) {
         self.watch().unlink_meeting(meeting_id);
         self.wake.notify_one();
@@ -223,11 +224,13 @@ fn auto_stop(app: &AppHandle) -> bool {
 }
 
 /// The live settings for a step. An unreadable setting never stops a recording or shows an offer.
+/// Offers wait while the pet is paused, hidden by the user or hidden by a full-screen window.
 fn read_ctx(app: &AppHandle) -> Ctx {
-    let offers_allowed = crate::next::pet_shown(&app.state::<Db>().conn(), now_ms()).unwrap_or_else(|e| {
+    let pet_shown = crate::next::pet_shown(&app.state::<Db>().conn(), now_ms()).unwrap_or_else(|e| {
         eprintln!("[calls] read pet visibility: {e}");
         false
     });
+    let offers_allowed = pet_shown && !app.state::<Visibility>().current().hidden;
     Ctx { mode: mode(app), auto_stop: auto_stop(app), offers_allowed }
 }
 

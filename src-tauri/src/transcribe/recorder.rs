@@ -20,6 +20,7 @@ use tokio::sync::oneshot;
 use tokio::time::MissedTickBehavior;
 
 use super::audio::{linear_resample, TrackWriter};
+use super::calls::CallWatch;
 use super::worker::TranscribeQueue;
 use crate::db::{meetings, now_ms, settings, Db};
 use crate::error::{AppError, AppResult};
@@ -724,6 +725,10 @@ impl Recorder {
             }
         };
         let (id, dir) = (session.meeting_id.clone(), session.dir.clone());
+        // However it ended (by hand, at max length, with its call), its call no longer stops it.
+        if let Some(watch) = app.try_state::<CallWatch>() {
+            watch.unlink_meeting(&id);
+        }
         let finished = tauri::async_runtime::spawn_blocking(move || session.finish())
             .await
             .map_err(|e| AppError::msg(e.to_string()));

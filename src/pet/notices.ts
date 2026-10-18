@@ -90,7 +90,7 @@ export function callEndedNotice(e: CallEnded, t: TFunction, now: number): Notice
   }
   const left = e.stopAtMs - now;
   return {
-    message: t('notice.callEnded.stopping', { app, s: Math.max(0, Math.round(left / 1000)) }),
+    message: t('notice.callEnded.stopping', { app, s: Math.max(1, Math.round(left / 1000)) }),
     keepRecording: { callId: e.callId },
     ms: Math.max(left, NOTICE_MS),
   };

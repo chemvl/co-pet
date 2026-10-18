@@ -6,6 +6,8 @@ pub mod frontmost;
 pub mod fullscreen;
 pub mod idle;
 pub mod keys;
+#[allow(dead_code)] // consumed by the call watcher (`transcribe::calls`), the next task
+pub mod mic_users;
 pub mod pasteboard;
 pub mod permissions;
 pub mod pointer;

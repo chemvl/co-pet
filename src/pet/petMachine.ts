@@ -18,7 +18,7 @@ export type Fx =
 export interface PetOutput {
   body: Body;
   fx: Fx;
-  /** fidget variant (0 blink, 1 ear flick, 2 tail, 3 wink); 0 otherwise */
+  /** fidget variant (0 blink, 1 ear flick, 2 tail, 3 wink, 4 still idle's blink); 0 otherwise */
   variant: number;
   /** increments every time a reaction starts, so the renderer can restart its animation */
   seq: number;
@@ -50,9 +50,12 @@ export const TRIGGERS: Readonly<Record<Trigger, { priority: Priority; ms: number
   glance: { priority: 3, ms: 400 },
 };
 
-/** Length of a reaction; the wink (fidget variant 3) is shorter than the other fidgets. */
+/** Length of a reaction; the wink (fidget variant 3) and the still idle's blink (variant 4) are
+ *  shorter than the other fidgets. */
 export function triggerMs(trigger: Trigger, variant = 0): number {
-  return trigger === 'fidget' && variant === 3 ? 800 : TRIGGERS[trigger].ms;
+  if (trigger === 'fidget' && variant === 3) return 800;
+  if (trigger === 'fidget' && variant === IDLE_BLINK_VARIANT) return IDLE_BLINK_MS;
+  return TRIGGERS[trigger].ms;
 }
 
 export const QUEUE_TTL_MS = 2000;
@@ -60,6 +63,10 @@ export const LOOP_DELAY_MS = 400;
 export const WAKE_HOLD_MS = 60_000;
 export const FIDGET_MIN_MS = 30_000;
 export const FIDGET_MAX_MS = 90_000;
+/** `stillIdle`: one blink every 4 s, eyes shut for 150 ms (plan contingency "Idle CPU over budget"). */
+export const IDLE_BLINK_EVERY_MS = 4000;
+export const IDLE_BLINK_MS = 150;
+export const IDLE_BLINK_VARIANT = 4;
 
 export interface MachineDeps {
   now(): number;
@@ -70,6 +77,9 @@ export interface MachineDeps {
   /** Called at 50% of `poof`: apply the pending style, skin or size. */
   onSwap?(): void;
   random?(): number;
+  /** Idle holds still and blinks every 4 s instead of the random 30–90 s fidgets. The Windows
+   *  desktop pet: any running CSS animation makes WebView2 recomposite the whole pet window. */
+  stillIdle?: boolean;
 }
 
 export interface PetMachine {
@@ -166,11 +176,14 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
       cancelFidget = noop;
       return;
     }
-    const delay = FIDGET_MIN_MS + random() * (FIDGET_MAX_MS - FIDGET_MIN_MS);
+    // Still idle: eyes open 3.85 s, then the 150 ms blink, so a blink starts every 4 s.
+    const delay = deps.stillIdle
+      ? IDLE_BLINK_EVERY_MS - IDLE_BLINK_MS
+      : FIDGET_MIN_MS + random() * (FIDGET_MAX_MS - FIDGET_MIN_MS);
     cancelFidget = deps.schedule(() => {
       cancelFidget = noop;
       fidgetArmed = false;
-      fire('fidget', { variant: Math.min(2, Math.floor(random() * 3)) });
+      fire('fidget', { variant: deps.stillIdle ? IDLE_BLINK_VARIANT : Math.min(2, Math.floor(random() * 3)) });
       // If the fidget could not play, re-arm for the next interval.
       updateFidgetTimer();
     }, delay);
@@ -283,6 +296,10 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
     // Loop changes never cut a reaction; Resolve picks them up when it ends.
     if (!playing) render();
   }
+
+  // The still idle's blink is part of the idle pose, so it runs from the start; the random fidgets
+  // arm on the first output change.
+  if (deps.stillIdle) updateFidgetTimer();
 
   return {
     fire,

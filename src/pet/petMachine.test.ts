@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPetMachine, type PetMachine, type PetOutput } from './petMachine';
+import { createPetMachine, type MachineDeps, type PetMachine, type PetOutput } from './petMachine';
 
 /** Deterministic clock: timers run in due order as `advance` moves time forward. */
 class FakeClock {
@@ -32,19 +32,21 @@ class FakeClock {
   }
 }
 
-function setup() {
+function setup(opts: Pick<MachineDeps, 'stillIdle'> = {}) {
   const clock = new FakeClock();
   const swaps: number[] = [];
+  const outputs: PetOutput[] = [];
   const machine: PetMachine = createPetMachine({
     now: clock.now,
     schedule: clock.schedule,
-    onChange: () => {},
+    onChange: (out) => outputs.push(out),
     onSwap: () => swaps.push(clock.t),
     // Keeps the fidget timer at 90 s, outside every test's time window.
     random: () => 0.999,
+    ...opts,
   });
   const body = (): PetOutput['body'] => machine.output().body;
-  return { clock, machine, swaps, body };
+  return { clock, machine, swaps, body, outputs };
 }
 
 describe('petMachine interrupt rules', () => {
@@ -299,5 +301,37 @@ describe('petMachine loops', () => {
     expect(swaps).toEqual([100]);
     clock.advance(1000);
     expect(swaps).toEqual([100]);
+  });
+
+  it('still idle blinks every 4 s and makes no other fidget (Windows)', () => {
+    const { clock, machine, body, outputs } = setup({ stillIdle: true });
+    clock.advance(3849);
+    expect(body()).toBe('idle');
+    clock.advance(1);
+    expect(machine.output()).toMatchObject({ body: 'fidget', variant: 4 });
+    clock.advance(149);
+    expect(body()).toBe('fidget');
+    clock.advance(1);
+    expect(body()).toBe('idle');
+    clock.advance(60_000 - 4000);
+    const blinks = outputs.filter((o) => o.body === 'fidget');
+    // Starts at 3850, 7850, … 59850.
+    expect(blinks).toHaveLength(15);
+    expect(blinks.every((o) => o.variant === 4)).toBe(true);
+    expect(outputs.map((o) => o.body).filter((b) => b !== 'fidget' && b !== 'idle')).toEqual([]);
+  });
+
+  it('still idle does not blink asleep or hidden', () => {
+    const { clock, machine, body, outputs } = setup({ stillIdle: true });
+    machine.set('sleep', true);
+    clock.advance(20_000);
+    expect(body()).toBe('sleep');
+    machine.set('sleep', false);
+    machine.setHidden(true);
+    clock.advance(20_000);
+    expect(outputs.some((o) => o.body === 'fidget')).toBe(false);
+    machine.setHidden(false);
+    clock.advance(3850);
+    expect(machine.output()).toMatchObject({ body: 'fidget', variant: 4 });
   });
 });

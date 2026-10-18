@@ -116,7 +116,9 @@ export function PetApp() {
   const limiter = useRef(createSpeechLimiter());
   const speechTimers = useRef<{ delay: number | null; hide: number | null }>({ delay: null, hide: null });
   const sayRef = useRef<(line: SpeechLine, params?: TParams) => void>(() => {});
-  const { machine, output, applied } = usePetLook(wanted, wantedKey, () => sayRef.current('newLook'));
+  // Windows: no `breathe` loop; WebView2 recomposites the whole work-area pet window on every animation
+  // frame (14.7 % of a core idle). The pet holds still and blinks every 4 s instead.
+  const { machine, output, applied } = usePetLook(wanted, wantedKey, () => sayRef.current('newLook'), isWindows);
 
   useEffect(() => machine.setPaused(paused), [machine, paused]);
 
@@ -855,7 +857,7 @@ export function PetApp() {
   }
 
   // ---------- render ----------
-  const pose = poseFor(output.body, output.variant);
+  const pose = poseFor(output.body, output.variant, { breathe: !isWindows });
   const fx = fxForArt(output.fx);
   const art = applied ? (
     <CatArt

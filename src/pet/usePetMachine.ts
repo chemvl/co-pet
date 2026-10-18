@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPetMachine, type PetMachine, type PetOutput } from './petMachine';
 
-export function usePetMachine(onSwap: () => void): { machine: PetMachine; output: PetOutput } {
+/** `stillIdle`: see `MachineDeps.stillIdle`; read once, when the machine is made. */
+export function usePetMachine(onSwap: () => void, stillIdle = false): { machine: PetMachine; output: PetOutput } {
   const swapRef = useRef(onSwap);
   swapRef.current = onSwap;
   const [output, setOutput] = useState<PetOutput>({ body: 'idle', fx: null, variant: 0, seq: 0 });
@@ -15,6 +16,7 @@ export function usePetMachine(onSwap: () => void): { machine: PetMachine; output
       },
       onChange: setOutput,
       onSwap: () => swapRef.current(),
+      stillIdle,
     }),
   );
   useEffect(() => () => machine.dispose(), [machine]);
@@ -22,11 +24,13 @@ export function usePetMachine(onSwap: () => void): { machine: PetMachine; output
 }
 
 /** The machine and the look it shows. When `key` changes after the first look, the pet poofs and
- *  `wanted` swaps in at the poof's midpoint (at once while paused); `onSwapped` runs after the swap. */
+ *  `wanted` swaps in at the poof's midpoint (at once while paused); `onSwapped` runs after the swap.
+ *  `stillIdle`: see `MachineDeps.stillIdle`. */
 export function usePetLook<T>(
   wanted: T | null,
   key: string | null,
   onSwapped?: () => void,
+  stillIdle = false,
 ): { machine: PetMachine; output: PetOutput; applied: T | null } {
   const [applied, setApplied] = useState<T | null>(null);
   const pending = useRef<T | null>(null);
@@ -38,7 +42,7 @@ export function usePetLook<T>(
     setApplied(pending.current);
     pending.current = null;
     onSwappedRef.current?.();
-  });
+  }, stillIdle);
   useEffect(() => {
     if (wanted === null || key === null || key === shownKey.current) return;
     if (shownKey.current === null) {

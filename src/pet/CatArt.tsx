@@ -47,7 +47,9 @@ export interface CatArtProps {
 }
 
 export function CatArt(props: CatArtProps): ReactElement {
-  const { look, skin, parts, motion, mirrored, reducedMotion, fx = null, label } = props;
+  const { look, skin, motion, mirrored, reducedMotion, fx = null, label } = props;
+  // `shut` closes the eyes by drawing them closed, so no animation runs; reduced motion skips it like `blink`.
+  const parts: CatParts = motion === 'shut' && !reducedMotion ? { ...props.parts, eyes: 'closed' } : props.parts;
   const edge = props.edge ?? (mirrored ? 'left' : 'right');
   // Dots and zZ sit on the side away from the screen edge so they show while peeking.
   const fxLeft = edge === 'right';

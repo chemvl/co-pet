@@ -1,7 +1,7 @@
 // Plan Step 5.2 pose table: machine body → cat parts + CSS motion (src/pet/cat.css).
 // One-shot durations equal the trigger lengths in petMachine.
 import type { CatFx } from './CatArt';
-import { triggerMs, type Body, type Fx } from './petMachine';
+import { IDLE_BLINK_VARIANT, triggerMs, type Body, type Fx } from './petMachine';
 
 export type CatEyes = 'open' | 'wide' | 'up' | 'closed' | 'happy' | 'wink';
 
@@ -15,9 +15,10 @@ export interface CatParts {
   zzz: boolean;
 }
 
+/** `shut`: the eyes drawn closed for the whole length, with no CSS animation (the still idle's blink). */
 export type CatMotion =
   | 'breathe' | 'stretch' | 'hop' | 'lean' | 'bounce' | 'offer' | 'flash' | 'shake' | 'tilt'
-  | 'blink' | 'ear' | 'tail' | 'dots' | 'poof';
+  | 'blink' | 'shut' | 'ear' | 'tail' | 'dots' | 'poof';
 
 export interface CatPose {
   parts: CatParts;
@@ -28,6 +29,12 @@ export interface CatPose {
   loop?: boolean;
 }
 
+export interface PoseOptions {
+  /** false: idle and the held sign hold still instead of the `breathe` loop (the Windows desktop pet;
+   *  see `MachineDeps.stillIdle`). Default true. */
+  breathe?: boolean;
+}
+
 const BREATHE_MS = 3000;
 const LEAN_MS = 800;
 const DOTS_MS = 1200;
@@ -35,11 +42,12 @@ const CARRY_MS = 600;
 
 const PLAIN: CatParts = { eyes: 'open', mouth: 'smile', item: false, dots: false, zzz: false };
 
-export function poseFor(body: Body, variant = 0): CatPose {
+export function poseFor(body: Body, variant = 0, opts: PoseOptions = {}): CatPose {
   const parts = (p: Partial<CatParts>): CatParts => ({ ...PLAIN, ...p });
+  const breathe = opts.breathe === false ? { motion: null, ms: 0 } : { motion: 'breathe' as const, ms: BREATHE_MS };
   switch (body) {
     case 'idle':
-      return { parts: PLAIN, motion: 'breathe', ms: BREATHE_MS };
+      return { parts: PLAIN, ...breathe };
     case 'wake':
       return { parts: parts({ eyes: 'wide' }), motion: 'stretch', ms: triggerMs('wake') };
     case 'gesture':
@@ -65,9 +73,10 @@ export function poseFor(body: Body, variant = 0): CatPose {
     case 'glance':
       return { parts: parts({ eyes: 'up' }), motion: 'ear', ms: triggerMs('glance') };
     case 'holdSign':
-      return { parts: parts({ eyes: 'happy', item: true }), motion: 'breathe', ms: BREATHE_MS };
+      return { parts: parts({ eyes: 'happy', item: true }), ...breathe };
     case 'fidget':
       if (variant === 3) return { parts: parts({ eyes: 'wink' }), motion: null, ms: triggerMs('fidget', 3) };
+      if (variant === IDLE_BLINK_VARIANT) return { parts: PLAIN, motion: 'shut', ms: triggerMs('fidget', variant) };
       return {
         parts: PLAIN,
         motion: variant === 1 ? 'ear' : variant === 2 ? 'tail' : 'blink',

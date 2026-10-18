@@ -42,7 +42,7 @@ describe('accountError', () => {
     expect(accountError(t, 'rateLimited')).toBe('Too many attempts. Wait a minute and try again.');
     expect(accountError(vi, 'rateLimited')).toBe('Thử quá nhiều lần. Đợi một phút rồi thử lại.');
     expect(accountError(t, 'otherAccount')).toBe(
-      "This computer's data belongs to another Co-pet account. To switch, use Delete everything in Settings › Data first.",
+      "This Mac's data belongs to another Co-pet account. To switch, use Delete everything in Settings › Data first.",
     );
     expect(accountError(t, 'badRecoveryKey')).toBe("That recovery key doesn't match this account.");
     expect(accountError(t, 'keyExists')).toBe('Sync was just turned on from another computer. Enter that recovery key instead.');

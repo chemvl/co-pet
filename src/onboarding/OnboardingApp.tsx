@@ -24,6 +24,8 @@ const ALL_STEPS: readonly { id: StepId; label: I18nKey; note: I18nKey }[] = [
 ];
 const STEPS = isWindows ? ALL_STEPS.filter((s) => s.id !== 'permissions') : ALL_STEPS;
 const LAST = STEPS.length - 1;
+// Windows starts the model download after the Local AI step, so it lands in the models folder picked there.
+const DOWNLOAD_AFTER: StepId = isWindows ? 'ai' : 'pet';
 
 export function OnboardingApp() {
   const t = useT();
@@ -59,21 +61,22 @@ export function OnboardingApp() {
     setError(null);
     setBusy(true);
     try {
-      if (step === 0) {
+      if (current === 'pet') {
         await set('pet.name', (name ?? savedName).trim() || 'Miso');
         await set('pet.style', petLook);
-        // Start the recommended model as early as possible, once. A model already on disk
-        // (Delete everything keeps models/) only needs selecting.
-        if (!localOnly && ai && ai.state === 'none') {
-          const onDisk =
-            ai.models.find((m) => m.id === ai.recommendedId && m.downloaded) ??
-            ai.models.find((m) => m.downloaded);
-          if (!onDisk) await runAi(() => aiDownload(ai.recommendedId));
-          else if (!activeModel) await runAi(() => aiSelectModel(onDisk.id));
-        }
+      }
+      // Start the chosen (else recommended) model once. A model already on disk (Delete everything
+      // keeps models/) only needs selecting.
+      if (current === DOWNLOAD_AFTER && !localOnly && ai && ai.state === 'none') {
+        const wanted = ai.modelId ?? ai.recommendedId;
+        const onDisk = ai.models.find((m) => m.id === wanted && m.downloaded)
+          ?? (ai.modelId ? undefined : ai.models.find((m) => m.downloaded));
+        if (!onDisk) await runAi(() => aiDownload(wanted));
+        else if (!activeModel) await runAi(() => aiSelectModel(onDisk.id));
       }
       if (step === LAST) {
-        // Rust closes this window, creates the pet and applies autostart.
+        // Rust closes this window, creates the pet and applies autostart; with a data move pending it
+        // restarts first and does that on the next start.
         await finishOnboarding();
         return;
       }

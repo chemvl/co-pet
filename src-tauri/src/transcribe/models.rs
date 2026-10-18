@@ -308,6 +308,21 @@ impl PackDownloader {
         emit(app);
     }
 
+    /// Pauses every running pack download for a models-folder move and waits until each task
+    /// stops writing or renaming. Returns the packs to resume afterwards.
+    pub async fn pause_for_move(&self, app: &AppHandle) -> Vec<Pack> {
+        let mut paused = Vec::new();
+        for p in PACKS {
+            let slot = &self.slots[p.index()];
+            if lock(&slot.inner).cancel.is_some() {
+                paused.push(p);
+            }
+            self.pause(app, p);
+            drop(slot.transfer.lock().await);
+        }
+        paused
+    }
+
     pub fn status(&self, app: &AppHandle) -> SpeechStatus {
         let paths = app.state::<Paths>();
         SpeechStatus {
@@ -369,7 +384,7 @@ mod tests {
     fn pack_ready_needs_every_file() {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::new(dir.path().to_path_buf());
-        std::fs::create_dir_all(&paths.models).unwrap();
+        std::fs::create_dir_all(paths.models()).unwrap();
         let [first, second] = &SPEECH;
         std::fs::write(model_path(&paths, first), b"x").unwrap();
         assert!(!ready(&paths, Pack::Speech));

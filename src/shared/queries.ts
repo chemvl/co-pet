@@ -26,6 +26,7 @@ export const MCP_CLIENTS_KEY = [...AGENTS_KEY, 'clients'] as const;
 export const ACCOUNT_KEY = ['account'] as const;
 export const SYNC_KEY = ['sync'] as const;
 export const UPDATE_KEY = ['update'] as const;
+export const STORAGE_KEY = ['storage'] as const;
 
 export type Settings = Record<string, Json>;
 

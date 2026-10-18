@@ -508,12 +508,54 @@ pub async fn delete_everything(app: AppHandle, confirmation: String) -> AppResul
     crate::data::delete_everything(&app, &confirmation).await
 }
 
+#[tauri::command]
+pub fn storage_locations(paths: State<'_, crate::paths::Paths>) -> crate::model::StorageLocations {
+    crate::storage::view(&paths)
+}
+
+/// Rejects with `invalid`, `folderNotWritable`, `transcribing`, `notEnoughSpace` or `moveFailed`.
+#[tauri::command]
+pub async fn set_models_dir(app: AppHandle, dir: Option<String>) -> AppResult<crate::model::StorageLocations> {
+    crate::storage::set_models_dir(&app, dir).await
+}
+
+/// Rejects with `invalid`, `folderInUse`, `folderNotWritable` or `notEnoughSpace`. Async so
+/// sizing a large library stays off the main thread.
+#[tauri::command]
+pub async fn set_data_dir(app: AppHandle, dir: Option<String>) -> AppResult<crate::model::StorageLocations> {
+    let paths = app.state::<crate::paths::Paths>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crate::storage::set_data_dir(&paths, dir))
+        .await
+        .map_err(|e| crate::error::AppError::msg(e.to_string()))?
+}
+
+#[tauri::command]
+pub fn cancel_data_move(paths: State<'_, crate::paths::Paths>) -> AppResult<crate::model::StorageLocations> {
+    crate::storage::cancel_data_move(&paths)
+}
+
+/// Rejects with `recording`.
+#[tauri::command]
+pub fn restart_app(app: AppHandle) -> AppResult<()> {
+    if app.try_state::<Recorder>().is_some_and(|r| r.is_active()) {
+        return Err(crate::error::AppError::Code("recording"));
+    }
+    // Not `restart`: on the main thread it skips `RunEvent::Exit` (single-instance, llama-server).
+    app.request_restart();
+    Ok(())
+}
+
 // ---------- Step 13: Onboarding ----------
 
-/// Marks onboarding done, shows the pet, applies the login item and closes onboarding.
+/// Marks onboarding done, shows the pet, applies the login item and closes onboarding. With a
+/// data move pending it restarts instead; the next start moves the data and shows the pet.
 #[tauri::command]
 pub fn finish_onboarding(app: AppHandle) -> AppResult<()> {
     crate::db::settings::set(&app, "onboarding.completed", &Value::Bool(true))?;
+    if crate::storage::load(&app.state::<crate::paths::Paths>().base).pending_data_dir.is_some() {
+        app.request_restart();
+        return Ok(());
+    }
     crate::windows::create_pet_window(&app)?;
     crate::system::apply_autostart(&app);
     if let Some(window) = app.get_webview_window(crate::windows::ONBOARDING) {

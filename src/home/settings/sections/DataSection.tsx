@@ -8,6 +8,7 @@ import { deleteEverything, exportAll } from '../../../shared/ipc';
 import { isWindows } from '../../../shared/platform';
 import { useToast } from '../../../shared/Toast';
 import { Group, SettingRow, TypedConfirmDialog } from '../parts';
+import { StorageRows } from '../StorageRows';
 
 export function DataSection() {
   const t = useT();
@@ -24,7 +25,7 @@ export function DataSection() {
       const folder = path.split(isWindows ? /[\\/]/ : '/').filter(Boolean).pop() ?? path;
       toast.show({
         message: t('settings.data.exported', { folder }),
-        action: { label: t(isWindows ? 'common.showInExplorer' : 'common.showInFinder'), run: () => void revealItemInDir(path) },
+        action: { label: t('common.showInFinder'), run: () => void revealItemInDir(path) },
       });
     } catch (e) {
       toast.show({ message: t('settings.data.exportFailed', { reason: errorText(e) }) });
@@ -35,6 +36,11 @@ export function DataSection() {
 
   return (
     <>
+      {isWindows ? (
+        <Group title={t('storage.title')} desc={t('storage.desc')}>
+          <StorageRows mode="settings" />
+        </Group>
+      ) : null}
       <Group title={t('settings.data')}>
         <SettingRow label={t('settings.data.export')} desc={t('settings.data.exportDesc')}>
           <Button size="sm" icon="export" disabled={exporting} onClick={() => void runExport()}>

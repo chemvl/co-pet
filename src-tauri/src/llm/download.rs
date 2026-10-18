@@ -217,6 +217,18 @@ impl Downloader {
         events::ai_status(app, self.status(app));
     }
 
+    /// Pauses the running download for a models-folder move and waits until its task stops
+    /// writing or renaming. Returns the model to resume afterwards.
+    pub async fn pause_for_move(&self, app: &AppHandle) -> Option<&'static str> {
+        let model_id = {
+            let inner = lock(&self.inner);
+            inner.cancel.is_some().then_some(inner.model_id).flatten()
+        };
+        self.pause(app);
+        drop(self.transfer.lock().await);
+        model_id
+    }
+
     pub fn status(&self, app: &AppHandle) -> AiStatus {
         let paths = app.state::<Paths>();
         let (mut model_id, mut state, mut bytes_done, error) = {
@@ -298,7 +310,7 @@ pub async fn fetch_model(
     mut on_progress: impl FnMut(Progress),
 ) -> AppResult<Fetched> {
     let part = models::part_path(paths, spec);
-    tokio::fs::create_dir_all(&paths.models).await?;
+    tokio::fs::create_dir_all(&paths.models()).await?;
     let mut have = file_len(&part);
     if have < spec.bytes {
         let client = reqwest::Client::builder()

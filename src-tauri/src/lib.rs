@@ -27,12 +27,14 @@ mod agent;
 mod account;
 mod sync;
 mod updater;
+mod storage;
 pub mod transcribe;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 use crate::db::Db;
+use crate::error::AppError;
 use crate::paths::Paths;
 
 pub fn run() {
@@ -75,11 +77,28 @@ pub fn run() {
             // Not in the task switcher: the pet and the menu bar icon are the entry points.
             platform::pet_window::set_in_task_switcher(app.handle(), false)?;
             let handle = app.handle().clone();
-            let paths = Paths::resolve(&handle)?;
+            let base = handle.path().app_data_dir()?;
+            let paths = match storage::startup(&base) {
+                Ok(loc) => {
+                    let mut paths = Paths::new(loc.data_dir.clone().unwrap_or_else(|| base.clone()));
+                    paths.base = base.clone();
+                    paths.set_models(loc.models_dir.clone().unwrap_or_else(|| base.join("models")));
+                    paths
+                }
+                Err(AppError::Code("dataFolderMissing")) => {
+                    let missing = storage::load(&base).data_dir.unwrap_or_default();
+                    storage::show_missing_and_quit(&handle, &missing);
+                    // `system::on_run_event` only uses `try_state`, so nothing below is needed.
+                    return Ok(());
+                }
+                Err(e) => return Err(e.into()),
+            };
             paths.ensure()?;
             let db = Db::open(&paths.db)?;
             paths.clear_tmp()?;
             app.manage(paths);
+            // Before any window opens: a moved data folder needs runtime scopes.
+            storage::grant_scopes(&handle, &app.state::<Paths>())?;
             app.manage(db);
             app.manage(ai::KeyCache::default());
             app.manage(llm::download::Downloader::default());
@@ -270,6 +289,11 @@ pub fn run() {
             commands::update_status,
             commands::update_check,
             commands::update_install,
+            commands::storage_locations,
+            commands::set_models_dir,
+            commands::set_data_dir,
+            commands::cancel_data_move,
+            commands::restart_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Co-pet")

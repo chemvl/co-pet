@@ -323,11 +323,7 @@ export function PetApp() {
       (s) => {
         if (!s.mic) showNotice({ message: t('notice.recMicMissing'), permission: 'microphone' });
         else if (!s.system)
-          showNotice(
-            isWindows
-              ? { message: t('notice.recSystemMissingWin') }
-              : { message: t('notice.recSystemMissing'), permission: 'screenRecording' },
-          );
+          showNotice({ message: t('notice.recSystemMissing'), permission: isWindows ? undefined : 'screenRecording' });
         else if (callId !== undefined && lastCall.current?.callId === callId) {
           showNotice(callAutoNotice(lastCall.current, t));
         }

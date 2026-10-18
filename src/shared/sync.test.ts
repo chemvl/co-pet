@@ -44,8 +44,8 @@ describe('localPillLabel', () => {
       expect(localPillLabel(small, s, true)).toBeNull();
       expect(localPillLabel(big, s, false)).toBe('item.onlyThisMac');
     }
-    expect(translate('en', 'item.onlyThisMac')).toBe('Only on this computer');
-    expect(translate('vi', 'item.onlyThisMac')).toBe('Chỉ có trên máy tính này');
+    expect(translate('en', 'item.onlyThisMac')).toBe('Only on this Mac');
+    expect(translate('vi', 'item.onlyThisMac')).toBe('Chỉ trên máy này');
   });
   it('keeps the default otherwise', () => {
     for (const s of [undefined, 'off', 'paused', 'needsKey', 'error', 'signedOut'] as const) {

@@ -483,6 +483,17 @@ export interface UpdateStatus {
   error: string | null;
 }
 
+/** Where the models and the data live (`storage_locations`). `pendingDataDir` moves at the next start;
+ *  `moveError` is the error code of the last failed data move. */
+export interface StorageLocations {
+  dataDir: string;
+  dataDefault: boolean;
+  pendingDataDir: string | null;
+  modelsDir: string;
+  modelsDefault: boolean;
+  moveError: string | null;
+}
+
 export type ExportProvider = 'notion' | 'asana';
 export type ExportState = 'queued' | 'exporting' | 'exported' | 'failed';
 export type ExportErrorCode = 'rateLimited' | 'network' | 'unauthorized' | 'targetMissing' | 'invalid' | 'disconnected';

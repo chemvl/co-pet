@@ -61,6 +61,8 @@ pub struct TranscribeQueue {
     progress: Mutex<Option<(String, f64)>>,
     /// A recording is running: no transcription starts.
     held: AtomicBool,
+    /// The models folder is moving: no transcription or summary starts.
+    models_moving: AtomicBool,
 }
 
 impl TranscribeQueue {
@@ -93,16 +95,33 @@ impl TranscribeQueue {
         self.held.store(false, SeqCst);
     }
 
+    /// Holds the queue for a models-folder move. `false` while a transcription runs (checked
+    /// under the `current` lock, so `begin` either sees the flag or this sees the job).
+    pub fn hold_for_models_move(&self) -> bool {
+        let current = lock(&self.current);
+        if current.is_some() {
+            return false;
+        }
+        self.models_moving.store(true, SeqCst);
+        true
+    }
+
+    /// Ends [`Self::hold_for_models_move`] and wakes the worker.
+    pub fn end_models_move(&self) {
+        self.models_moving.store(false, SeqCst);
+        self.poke();
+    }
+
     /// The running transcription's meeting id and fraction done.
     pub fn progress(&self) -> Option<(String, f64)> {
         lock(&self.progress).clone()
     }
 
-    /// Marks `id` as running unless a recording holds the queue (checked under the `current`
-    /// lock, so `pause_for_recording` either sees the job or the job sees `held`).
+    /// Marks `id` as running unless a recording or a models move holds the queue (checked under
+    /// the `current` lock, so `pause_for_recording` either sees the job or the job sees `held`).
     fn begin(&self, id: &str) -> bool {
         let mut current = lock(&self.current);
-        if self.held.load(SeqCst) {
+        if self.held.load(SeqCst) || self.models_moving.load(SeqCst) {
             return false;
         }
         self.cancel.store(false, SeqCst);
@@ -450,10 +469,11 @@ enum Job {
     Summarize(String),
 }
 
-/// The next job: a transcription, else a summary. `None` while held or with nothing to do.
-/// Without the speech pack queued meetings wait (and show `needsSpeechModel`).
+/// The next job: a transcription, else a summary. `None` while held, during a models move or
+/// with nothing to do. Without the speech pack queued meetings wait (and show `needsSpeechModel`).
 fn next_job(app: &AppHandle) -> AppResult<Option<Job>> {
-    if app.state::<TranscribeQueue>().held.load(SeqCst) {
+    let queue = app.state::<TranscribeQueue>();
+    if queue.held.load(SeqCst) || queue.models_moving.load(SeqCst) {
         return Ok(None);
     }
     let ready = models::ready(&app.state::<Paths>(), Pack::Speech);
@@ -1127,6 +1147,18 @@ mod tests {
         assert!(!queue.begin(&id), "held until the recording ends");
         queue.resume_after_recording();
         assert!(queue.begin(&id));
+    }
+
+    #[test]
+    fn models_move_waits_for_the_running_job() {
+        let queue = TranscribeQueue::default();
+        assert!(queue.begin("m"));
+        assert!(!queue.hold_for_models_move(), "a transcription is running");
+        queue.end();
+        assert!(queue.hold_for_models_move());
+        assert!(!queue.begin("m"), "held while the models move");
+        queue.end_models_move();
+        assert!(queue.begin("m"));
     }
 
     #[test]

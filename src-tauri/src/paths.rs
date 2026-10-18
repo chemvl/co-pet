@@ -1,18 +1,21 @@
-//! App data layout under the Tauri app data folder (`~/Library/Application Support/com.copet.app/`
-//! on macOS, `%APPDATA%\com.copet.app\` on Windows).
+//! App data layout. `base` is the Tauri app data folder (`~/Library/Application Support/com.copet.app/`
+//! on macOS, `%APPDATA%\com.copet.app\` on Windows) and holds `locations.json`, which can point
+//! the data folder (`root`) and the models folder elsewhere (see `storage.rs`).
 use std::path::PathBuf;
-
-use tauri::{AppHandle, Manager};
+use std::sync::{Arc, RwLock};
 
 use crate::error::AppResult;
 
 #[derive(Debug, Clone)]
 pub struct Paths {
+    /// The Tauri app data folder: `locations.json` and the default data and models folders.
+    pub base: PathBuf,
     pub root: PathBuf,
     pub db: PathBuf,
     pub library: PathBuf,
     pub thumbs: PathBuf,
-    pub models: PathBuf,
+    /// Swapped live by a models-folder move; clones share it.
+    models: Arc<RwLock<PathBuf>>,
     pub tmp: PathBuf,
     /// Meeting audio, one folder per meeting (`recordings/<meetingId>/`). Never synced.
     pub recordings: PathBuf,
@@ -24,10 +27,11 @@ pub struct Paths {
 impl Paths {
     pub fn new(root: PathBuf) -> Self {
         Paths {
+            base: root.clone(),
             db: root.join("copet.db"),
             library: root.join("library"),
             thumbs: root.join("library").join("thumbs"),
-            models: root.join("models"),
+            models: Arc::new(RwLock::new(root.join("models"))),
             tmp: root.join("tmp"),
             recordings: root.join("recordings"),
             #[cfg(unix)]
@@ -36,14 +40,24 @@ impl Paths {
         }
     }
 
-    pub fn resolve(app: &AppHandle) -> AppResult<Self> {
-        Ok(Self::new(app.path().app_data_dir()?))
+    /// The folder holding the local models.
+    pub fn models(&self) -> PathBuf {
+        self.models.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    /// Creates every folder that must exist.
+    pub(crate) fn set_models(&self, dir: PathBuf) {
+        *self.models.write().unwrap_or_else(|e| e.into_inner()) = dir;
+    }
+
+    /// Creates every folder that must exist. The models folder is best-effort: an unplugged
+    /// models drive must not stop startup (downloads then fail with the IO error).
     pub fn ensure(&self) -> AppResult<()> {
-        for d in [&self.root, &self.library, &self.thumbs, &self.models, &self.tmp, &self.recordings] {
+        for d in [&self.root, &self.library, &self.thumbs, &self.tmp, &self.recordings] {
             std::fs::create_dir_all(d)?;
+        }
+        let models = self.models();
+        if let Err(e) = std::fs::create_dir_all(&models) {
+            eprintln!("[paths] models folder {}: {e}", models.display());
         }
         Ok(())
     }

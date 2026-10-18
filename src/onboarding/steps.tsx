@@ -7,12 +7,14 @@ import {
   aiErrorReason, downloadPercent, modelMeta, modelName, transferOf, useAiAction,
 } from '../home/settings/ModelCards';
 import { ProgressBar, SpeciesTiles } from '../home/settings/parts';
+import { StorageRows } from '../home/settings/StorageRows';
 import type { SkinId, Species } from '../pet/catalog';
 import { CatArt } from '../pet/CatArt';
 import { poseFor, type CatPose } from '../pet/pose';
 import { formatSize } from '../shared/format';
 import { useLang, useT } from '../shared/i18n';
 import { aiDownload, aiPause, aiSelectModel, permissionsStatus, requestPermission } from '../shared/ipc';
+import { isWindows } from '../shared/platform';
 import { useIntegrations } from '../shared/queries';
 import { AsanaCard } from '../home/integrations/AsanaCard';
 import { NotionCard } from '../home/integrations/NotionCard';
@@ -162,7 +164,7 @@ export function AiStep(props: { look: Species; skin: SkinId; status: AiStatus | 
     if (id === selected) return;
     void run(async () => {
       await aiSelectModel(id);
-      if (!localOnly) await aiDownload(id);
+      if (!localOnly && status?.state !== 'none') await aiDownload(id);
     });
   };
 
@@ -189,6 +191,12 @@ export function AiStep(props: { look: Species; skin: SkinId; status: AiStatus | 
           ))}
         </div>
       </div>
+      {isWindows ? (
+        <div>
+          <span className="ob-k">{t('storage.onboardingTitle')}</span>
+          <StorageRows mode="onboarding" />
+        </div>
+      ) : null}
       <p className="st-info">
         <Icon name={ready ? 'check' : 'idea'} size={20} />
         <span>

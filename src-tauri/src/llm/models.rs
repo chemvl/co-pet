@@ -50,10 +50,10 @@ pub fn recommended_model() -> &'static ModelSpec {
 
 /// Final, verified model file. Only exists after a successful checksum.
 pub fn model_path(paths: &Paths, spec: &ModelSpec) -> PathBuf {
-    paths.models.join(spec.file)
+    paths.models().join(spec.file)
 }
 
 /// In-progress download.
 pub fn part_path(paths: &Paths, spec: &ModelSpec) -> PathBuf {
-    paths.models.join(format!("{}.part", spec.file))
+    paths.models().join(format!("{}.part", spec.file))
 }

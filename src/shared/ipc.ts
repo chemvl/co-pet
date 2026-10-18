@@ -6,7 +6,7 @@ import type {
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskStatus, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, UpdateStatus, RecordingStatus,
-  MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider, CallDetectionStatus,
+  MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider, CallDetectionStatus, StorageLocations,
 } from './types';
 
 // Step 3 — storage
@@ -145,6 +145,18 @@ export const listExcludedApps = () =>
 export const exportAll = (dir: string) => invoke<string>('export_all', { dir });
 export const deleteEverything = (confirmation: string) =>
   invoke<void>('delete_everything', { confirmation });
+/** Where the models and the data live, and any data move waiting for the next start. */
+export const storageLocations = () => invoke<StorageLocations>('storage_locations');
+/** Moves the models into `<dir>\Co-pet models` now (null = the default folder). Rejects with `"invalid"`,
+ *  `"folderNotWritable"`, `"notEnoughSpace"`, `"transcribing"` or `"moveFailed"`. */
+export const setModelsDir = (dir: string | null) => invoke<StorageLocations>('set_models_dir', { dir });
+/** Sets the data to move into `<dir>\Co-pet data` at the next start (null = the default folder).
+ *  Rejects with `"invalid"`, `"folderInUse"`, `"folderNotWritable"` or `"notEnoughSpace"`. */
+export const setDataDir = (dir: string | null) => invoke<StorageLocations>('set_data_dir', { dir });
+/** Drops the pending data move. */
+export const cancelDataMove = () => invoke<StorageLocations>('cancel_data_move');
+/** Restarts Co-pet (a pending data move runs on the way up). Rejects with `"recording"`. */
+export const restartApp = () => invoke<void>('restart_app');
 
 // Step 13 — Onboarding
 export const finishOnboarding = () => invoke<void>('finish_onboarding');

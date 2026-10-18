@@ -95,6 +95,11 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tasksFile.link" => ("Link", "Liên kết"),
         "tasksFile.nameOpen" => ("Co-pet open tasks", "Co-pet việc đang mở"),
         "tasksFile.nameDone" => ("Co-pet done tasks", "Co-pet việc đã xong"),
+        "storage.missingTitle" => ("Data folder not found", "Không tìm thấy thư mục dữ liệu"),
+        "storage.missing" => (
+            "Co-pet can't find its data folder: {path}. Connect that drive, then open Co-pet again.",
+            "Co-pet không tìm thấy thư mục dữ liệu: {path}. Hãy kết nối ổ đĩa đó rồi mở lại Co-pet.",
+        ),
         _ => {
             debug_assert!(false, "unknown i18n key {key}");
             ("", "")

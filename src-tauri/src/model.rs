@@ -366,6 +366,19 @@ pub struct AiStatus {
     pub cloud: CloudStatus,
 }
 
+/// Where the data and the local models live (Settings › Data › Storage). `pending_data_dir`:
+/// the data folder moves there at the next start; `move_error`: the last startup move's code.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageLocations {
+    pub data_dir: String,
+    pub data_default: bool,
+    pub pending_data_dir: Option<String>,
+    pub models_dir: String,
+    pub models_default: bool,
+    pub move_error: Option<String>,
+}
+
 /// A curated cloud model.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -5,7 +5,6 @@ import { useId, useState, type FormEvent, type ReactElement } from 'react';
 import { Button, Icon, StatusPill, Switch } from '../../ds';
 import { errorMessage } from '../../shared/errors';
 import { useT } from '../../shared/i18n';
-import { isWindows } from '../../shared/platform';
 import { aiConfigure, aiRemoveKey, aiServerModels, aiSetKey, aiTest } from '../../shared/ipc';
 import { useAiStatus, useSetSetting, useSetting } from '../../shared/queries';
 import type { AiProvider, CloudProvider, CloudProviderStatus, KeyProvider } from '../../shared/types';
@@ -142,7 +141,7 @@ function KeySetup({ p, keyProvider, onTest, onChange }: SetupProps & { keyProvid
           <StatusPill
             status="local"
             icon="lock"
-            label={t(isWindows ? 'integrations.ai.keySavedWin' : 'integrations.ai.keySaved')}
+            label={t('integrations.ai.keySaved')}
           />
           <Button variant="secondary" size="sm" onClick={() => void onTest()}>
             {t('integrations.ai.test')}
@@ -176,7 +175,7 @@ function KeySetup({ p, keyProvider, onTest, onChange }: SetupProps & { keyProvid
             </Button>
           </div>
           <p className="caption in-muted in-m0">
-            {t(isWindows ? 'integrations.ai.keyHelpWin' : 'integrations.ai.keyHelp', { provider: AI_PROVIDER_NAME[keyProvider] })}
+            {t('integrations.ai.keyHelp', { provider: AI_PROVIDER_NAME[keyProvider] })}
           </p>
         </form>
       )}

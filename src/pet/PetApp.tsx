@@ -13,19 +13,21 @@ import { categoryColor, categoryIcon, categoryLabelOf } from '../shared/categori
 import { errorMessage, errorText } from '../shared/errors';
 import { useT, type I18nKey, type TParams } from '../shared/i18n';
 import {
-  captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
+  callKeepRecording, captureClipboard, captureNote, captureScreenshot, captureSelection, commitPetPosition,
   counts as fetchCounts, focusPetPanel, getPlacement, nextAction, on, openHome, pasteItems, pauseRecording, petStatus,
   quitApp, requestPermission, resignPetPanel, resumeRecording, setHitRegions, setPetMoving, setRecordingLanguage,
   startRecording, stopRecording, transcribeItem, whatsNext,
 } from '../shared/ipc';
 import { useCategories, useRecording, useSetSetting, useSettings } from '../shared/queries';
 import type {
-  CaptureResult, EventPayloads, HitRegion, HotkeyAction, MeetingLanguage, NextCard, NextTrigger, Placement,
-  RecordingStatus,
+  CallDetected, CaptureResult, EventPayloads, HitRegion, HotkeyAction, MeetingLanguage, NextCard, NextTrigger,
+  Placement, RecordingStatus,
 } from '../shared/types';
 import { asPetSize, petLookOf, type PetSize, type SkinId, type Species } from './catalog';
 import { CatArt } from './CatArt';
-import { diaryNotice, noticeFor, type Notice } from './notices';
+import {
+  callAutoNotice, callEndedNotice, callOfferNotice, diaryNotice, noticeFor, recordingEndedNotice, type Notice,
+} from './notices';
 import {
   bubbleRects, bubbleZone, dockBox, edgePoint, petBox, petHitRect, placeAtPointer, placePanel, snapToEdge,
   DOCK_BOX, type Box, type Point, type Size,
@@ -147,8 +149,8 @@ export function PetApp() {
 
   // Latest values for event handlers subscribed once. Handlers also write the
   // fields they change, so back-to-back events see them before the next render.
-  const live = useRef({ surface, region, halo, placement, hidden });
-  live.current = { surface, region, halo, placement, hidden };
+  const live = useRef({ surface, region, halo, placement, hidden, notice });
+  live.current = { surface, region, halo, placement, hidden, notice };
 
   const clear = (timer: { current: number | null }) => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -184,6 +186,7 @@ export function PetApp() {
         pendingNotice.current = n;
         return;
       }
+      live.current.notice = n;
       setNotice(n);
       openSurface('notice');
     },
@@ -306,11 +309,19 @@ export function PetApp() {
   const recState = recordingData?.state ?? 'idle';
   const consentShown = settings?.['transcribe.consentShown'] === true;
 
-  const startNow = () => {
-    startRecording().then(
+  /** The latest detected call: names the app in the notice of a recording started for it. */
+  const lastCall = useRef<CallDetected | null>(null);
+  /** The call a `ConsentPanel` opened for, if any: its Start records that call. */
+  const consentCallId = useRef<string | undefined>(undefined);
+
+  const startNow = (callId?: string) => {
+    startRecording(undefined, callId).then(
       (s) => {
         if (!s.mic) showNotice({ message: t('notice.recMicMissing'), permission: 'microphone' });
         else if (!s.system) showNotice({ message: t('notice.recSystemMissing'), permission: 'screenRecording' });
+        else if (callId !== undefined && lastCall.current?.callId === callId) {
+          showNotice(callAutoNotice(lastCall.current, t));
+        }
       },
       (e: unknown) =>
         showNotice({
@@ -320,25 +331,30 @@ export function PetApp() {
     );
   };
 
-  /** Bubble `mic` and hotkey `recordMeeting`: a running recording only wakes the pet. */
-  const beginRecording = () => {
+  /**
+   * Bubble `mic`, hotkey `recordMeeting` and detected calls (`callId`): a running recording
+   * only wakes the pet; the first recording asks for consent.
+   */
+  const beginRecording = (opts?: { callId?: string }) => {
     if (recState !== 'idle') {
       machine.fire('wake');
       setOut(true);
       return;
     }
     if (!consentShown) {
+      consentCallId.current = opts?.callId;
       openSurface('consent');
       return;
     }
     closeSurface();
-    startNow();
+    startNow(opts?.callId);
   };
 
   const onConsentStart = () => {
     void setSetting('transcribe.consentShown', true);
     closeSurface();
-    startNow();
+    startNow(consentCallId.current);
+    consentCallId.current = undefined;
   };
 
   const onHudPause = () => {
@@ -369,7 +385,7 @@ export function PetApp() {
     prevRec.current = s.state;
     if (s.state !== 'idle') return;
     if (s.endedReason) {
-      showNotice({ message: t(s.endedReason === 'maxLength' ? 'notice.recMaxLength' : 'notice.recTooShort') });
+      showNotice(recordingEndedNotice(s.endedReason, t));
     } else if (was !== 'idle') {
       queueSpeech('recStopped');
     }
@@ -400,6 +416,9 @@ export function PetApp() {
   };
 
   // ---------- Rust events ----------
+  /** A call detected while the pet was hidden: offered (or, waiting for consent, started) once it is back. */
+  const pendingCall = useRef<CallDetected | null>(null);
+
   const applyVisibility = (isHidden: boolean) => {
     live.current.hidden = isHidden;
     setHidden(isHidden);
@@ -410,7 +429,38 @@ export function PetApp() {
       pendingNotice.current = null;
       setSurface(null);
       setOut(false);
+    } else if (pendingCall.current) {
+      const call = pendingCall.current;
+      pendingCall.current = null;
+      onCallDetected(call);
     }
+  };
+
+  /**
+   * Ask: offer to record the call. Auto: record it through `beginRecording` (consent first). A
+   * hidden pet holds the offer, or an Auto start that still needs consent, until it is back.
+   */
+  const onCallDetected = (e: CallDetected) => {
+    lastCall.current = e;
+    if (recState !== 'idle') return;
+    if (live.current.hidden && (e.mode === 'ask' || !consentShown)) {
+      pendingCall.current = e;
+      return;
+    }
+    if (e.mode === 'auto') beginRecording({ callId: e.callId });
+    else showNotice(callOfferNotice(e, t));
+  };
+
+  const onCallEnded = (e: EventPayloads['call-ended']) => {
+    if (pendingCall.current?.callId === e.callId) pendingCall.current = null;
+    showNotice(callEndedNotice(e, t, Date.now()));
+  };
+
+  /** The call came back: its "recording stops in 20 s" notice no longer holds. */
+  const onCallResumed = (e: EventPayloads['call-resumed']) => {
+    if (pendingCall.current?.callId === e.callId) pendingCall.current = null;
+    if (pendingNotice.current?.keepRecording?.callId === e.callId) pendingNotice.current = null;
+    if (live.current.surface === 'notice' && live.current.notice?.keepRecording?.callId === e.callId) closeSurface();
   };
 
   /** A proactive card: only onto an idle, visible, awake pet; otherwise nothing is recorded. */
@@ -548,9 +598,11 @@ export function PetApp() {
   // The subscriptions live for the window's lifetime and call the latest handlers.
   const handlers = useRef({
     applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onDiaryReady, onRecordingStatus, showSpeech,
+    onCallDetected, onCallEnded, onCallResumed,
   });
   handlers.current = {
     applyVisibility, onRegion, onHotkey, onReaction, onDropResult, onWhatsNext, onDiaryReady, onRecordingStatus, showSpeech,
+    onCallDetected, onCallEnded, onCallResumed,
   };
 
   useEffect(() => {
@@ -572,6 +624,9 @@ export function PetApp() {
       on('whats-next', (e) => h.current.onWhatsNext(e)),
       on('diary-ready', (e) => h.current.onDiaryReady(e)),
       on('recording-status', (s) => h.current.onRecordingStatus(s)),
+      on('call-detected', (e) => h.current.onCallDetected(e)),
+      on('call-ended', (e) => h.current.onCallEnded(e)),
+      on('call-resumed', (e) => h.current.onCallResumed(e)),
       getCurrentWindow().onFocusChanged(({ payload: focused }) => {
         // A click outside (another app became key) closes the keyboard surfaces.
         if (!focused && KEYED.includes(live.current.surface)) setSurface(null);
@@ -936,7 +991,18 @@ export function PetApp() {
                   (e: unknown) => showNotice({ message: errorMessage(t, e) }),
                 );
               } else if (notice.home !== undefined) goHome(notice.home);
-              else closeSurface();
+              else if (notice.record) {
+                closeSurface();
+                beginRecording({ callId: notice.record.callId });
+              } else if (notice.keepRecording) {
+                callKeepRecording(notice.keepRecording.callId).catch((e: unknown) =>
+                  showNotice({ message: errorMessage(t, e) }),
+                );
+                closeSurface();
+              } else if (notice.stopRecording) {
+                closeSurface();
+                onHudStop();
+              } else closeSurface();
             }}
           />
         </Floating>

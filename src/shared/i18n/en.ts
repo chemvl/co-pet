@@ -564,6 +564,7 @@ export const en = {
   'settings.hotkeys.notSet': 'Not set',
   'settings.hotkeys.inUse': 'This shortcut is already in use',
   'settings.hotkeys.invalid': "This shortcut can't be used. Include ⌘, ⌃ or ⌥.",
+  'settings.hotkeys.invalidWin': "This shortcut can't be used. Include Ctrl or Alt.",
   'settings.hotkeys.failed': "Couldn't change the shortcut — {reason}.",
   'settings.hotkeys.space': 'Space',
   'settings.capture.removeOriginal': 'Remove original after capture',
@@ -1115,6 +1116,11 @@ export const en = {
   'palette.empty': "No matches. Press Enter to search your inbox.",
   'home.resultsFor': "Results for “{q}”",
   'home.clearResults': "Clear",
+
+  'window.minimize': 'Minimize',
+  'window.maximize': 'Maximize',
+  'window.restore': 'Restore',
+  'window.close': 'Close',
 } as const;
 
 export type I18nKey = keyof typeof en;

@@ -2,9 +2,11 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button, SegmentedControl } from '../ds';
 import { useAiAction } from '../home/settings/ModelCards';
+import { WindowControls } from '../home/WindowControls';
 import { asSpecies, resolveSkin, type Species } from '../pet/catalog';
 import { errorText } from '../shared/errors';
 import { useLang, useT, type I18nKey } from '../shared/i18n';
+import { isWindows } from '../shared/platform';
 import { aiDownload, aiSelectModel, finishOnboarding } from '../shared/ipc';
 import { useAiStatus, useSetSetting, useSetting } from '../shared/queries';
 import { AiStep, AppsStep, DownloadStrip, HotkeysStep, PermissionsStep, PetStep } from './steps';
@@ -104,6 +106,7 @@ export function OnboardingApp() {
             { value: 'vi', label: t('common.vietnamese') },
           ]}
         />
+        {isWindows && <WindowControls maximizable={false} />}
       </header>
 
       <main ref={mainRef} tabIndex={-1} style={{ flex: '1 1 0', minHeight: 0, display: 'flex', outline: 'none' }}>

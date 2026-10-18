@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { categoryLabel, categoryLabelOf } from '../shared/categories';
 import { useT } from '../shared/i18n';
 import { on } from '../shared/ipc';
+import { isWindows } from '../shared/platform';
 import { useCategories } from '../shared/queries';
 import type { Counts } from '../shared/types';
 import { HomeNav, type NavKey } from './HomeNav';
@@ -109,7 +110,7 @@ export function HomeApp(): ReactElement {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+      if ((isWindows ? e.ctrlKey : e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen(true);
       }

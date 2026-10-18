@@ -565,6 +565,7 @@ export const vi: Record<keyof typeof en, string> = {
   'settings.hotkeys.notSet': 'Chưa đặt',
   'settings.hotkeys.inUse': 'Phím tắt này đang được dùng',
   'settings.hotkeys.invalid': 'Không dùng được phím tắt này. Hãy kèm ⌘, ⌃ hoặc ⌥.',
+  'settings.hotkeys.invalidWin': 'Không dùng được phím tắt này. Hãy kèm Ctrl hoặc Alt.',
   'settings.hotkeys.failed': 'Không đổi được phím tắt — {reason}.',
   'settings.hotkeys.space': 'Space',
   'settings.capture.removeOriginal': 'Xóa bản gốc sau khi thu thập',
@@ -1116,4 +1117,9 @@ export const vi: Record<keyof typeof en, string> = {
   'palette.empty': "Không có kết quả. Nhấn Enter để tìm trong hộp thư đến.",
   'home.resultsFor': "Kết quả cho “{q}”",
   'home.clearResults': "Xoá",
+
+  'window.minimize': 'Thu nhỏ',
+  'window.maximize': 'Phóng to',
+  'window.restore': 'Khôi phục',
+  'window.close': 'Đóng',
 };

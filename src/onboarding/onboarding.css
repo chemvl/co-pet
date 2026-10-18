@@ -5,8 +5,9 @@ body { background: var(--surface); color: var(--ink); font-family: var(--font-sa
 
 .ob-win { height: 100%; display: flex; flex-direction: column; }
 
-/* 84 px left inset keeps the overlay traffic lights clear. */
+/* 84 px left inset keeps the overlay traffic lights clear (macOS); Windows has caption buttons on the right. */
 .ob-top { display: flex; align-items: center; gap: 16px; min-height: 52px; box-sizing: border-box; padding: 12px 24px 12px 84px; border-bottom: 1px solid var(--line); }
+html[data-platform="windows"] .ob-top { padding-left: 24px; padding-right: 0; }
 .ob-steps { display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
 .ob-st { display: flex; align-items: center; gap: 6px; font: 500 13px/20px var(--font-sans); color: var(--ink-muted); white-space: nowrap; }
 .ob-st i { width: 22px; height: 22px; box-sizing: border-box; border-radius: var(--radius-pill); display: inline-flex; align-items: center; justify-content: center; font: 700 11px/16px var(--font-sans); font-style: normal; border: 1.5px solid var(--line-strong); }

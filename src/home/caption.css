@@ -1,0 +1,6 @@
+/* Windows caption buttons (WindowControls.tsx), shared by the Home and onboarding windows.
+   Tokens only, except #c42b1c: the Windows 11 close-hover red (a system color). */
+.hm-caption { display: flex; height: 44px; margin-left: var(--space-3); }
+.hm-caption__btn { width: 46px; height: 44px; border: 0; background: none; color: var(--ink); font: 10px/44px "Segoe Fluent Icons", "Segoe MDL2 Assets"; cursor: default; }
+.hm-caption__btn:hover { background: var(--surface-hover); }
+.hm-caption__btn--close:hover { background: #c42b1c; color: #fff; }

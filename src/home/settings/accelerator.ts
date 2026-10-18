@@ -1,4 +1,5 @@
 // Global-shortcut accelerators (tauri-plugin-global-shortcut syntax) ↔ keyboard events and Kbd keys.
+import { platform, type Platform } from '../../shared/platform';
 
 const MODIFIER_CODES: Record<string, true> = {
   MetaLeft: true, MetaRight: true, ControlLeft: true, ControlRight: true, AltLeft: true, AltRight: true,
@@ -14,17 +15,29 @@ const NAMED_CODES: Record<string, true> = {
 
 export type RecordResult =
   | { kind: 'wait' } // only modifiers so far
-  | { kind: 'invalid' } // a key without ⌘, ⌃ or ⌥
+  | { kind: 'invalid' } // no primary modifier, or the Windows key
   | { kind: 'ok'; accelerator: string };
 
-/** Maps a keydown to an accelerator; `⌘`→`CommandOrControl`, `⌃`→`Control`, `⌥`→`Alt`, `⇧`→`Shift`. */
-export function acceleratorFromEvent(e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): RecordResult {
+/**
+ * Maps a keydown to an accelerator. macOS: ⌘→`CommandOrControl`, ⌃→`Control`. Windows:
+ * Ctrl→`CommandOrControl` (so the defaults round-trip), the Windows key is refused (the OS
+ * reserves most Win combinations). ⌥/Alt→`Alt`, ⇧/Shift→`Shift`.
+ */
+export function acceleratorFromEvent(
+  e: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>,
+  os: Platform = platform,
+): RecordResult {
   if (Object.hasOwn(MODIFIER_CODES, e.code)) return { kind: 'wait' };
   const key = keyFromCode(e.code);
+  if (os === 'windows' && e.metaKey) return { kind: 'invalid' };
   if (!key || !(e.metaKey || e.ctrlKey || e.altKey)) return { kind: 'invalid' };
   const mods: string[] = [];
-  if (e.metaKey) mods.push('CommandOrControl');
-  if (e.ctrlKey) mods.push('Control');
+  if (os === 'macos') {
+    if (e.metaKey) mods.push('CommandOrControl');
+    if (e.ctrlKey) mods.push('Control');
+  } else if (e.ctrlKey) {
+    mods.push('CommandOrControl');
+  }
   if (e.altKey) mods.push('Alt');
   if (e.shiftKey) mods.push('Shift');
   return { kind: 'ok', accelerator: [...mods, key].join('+') };
@@ -51,15 +64,30 @@ const KEY_GLYPH: Record<string, string> = {
   comma: ',', period: '.', slash: '/', backquote: '`',
 };
 
-/** Kbd keys for an accelerator, e.g. `CommandOrControl+Shift+Space` → `['⌘', '⇧', 'Space']`. */
-export function acceleratorKeys(accelerator: string, spaceLabel: string): string[] {
+const MOD_LABEL_WIN: Record<string, string> = {
+  commandorcontrol: 'Ctrl', cmdorctrl: 'Ctrl', control: 'Ctrl', ctrl: 'Ctrl', command: 'Win', cmd: 'Win', super: 'Win', meta: 'Win',
+  alt: 'Alt', option: 'Alt', shift: 'Shift',
+};
+
+const KEY_LABEL_WIN: Record<string, string> = {
+  enter: 'Enter', tab: 'Tab', backspace: 'Backspace', delete: 'Delete', home: 'Home', end: 'End', pageup: 'PgUp', pagedown: 'PgDn',
+};
+
+export function modKey(os: Platform = platform): string {
+  return os === 'windows' ? 'Ctrl' : '⌘';
+}
+
+/** Kbd keys for an accelerator: `CommandOrControl+Shift+Space` → `['⌘','⇧','Space']` or `['Ctrl','Shift','Space']`. */
+export function acceleratorKeys(accelerator: string, spaceLabel: string, os: Platform = platform): string[] {
+  const mods = os === 'windows' ? MOD_LABEL_WIN : MOD_GLYPH;
   return accelerator
     .split('+')
     .filter(Boolean)
     .map((part) => {
       const p = part.toLowerCase();
-      if (Object.hasOwn(MOD_GLYPH, p)) return MOD_GLYPH[p];
+      if (Object.hasOwn(mods, p)) return mods[p];
       if (p === 'space') return spaceLabel;
+      if (os === 'windows' && Object.hasOwn(KEY_LABEL_WIN, p)) return KEY_LABEL_WIN[p];
       if (Object.hasOwn(KEY_GLYPH, p)) return KEY_GLYPH[p];
       const letter = /^key([a-z])$/.exec(p);
       if (letter) return letter[1].toUpperCase();

@@ -6,6 +6,7 @@ import { Button, Kbd } from '../../ds';
 import { errorText } from '../../shared/errors';
 import { useT, type I18nKey } from '../../shared/i18n';
 import { setHotkey, suspendHotkeys } from '../../shared/ipc';
+import { isWindows } from '../../shared/platform';
 import { SETTINGS_KEY, useSetting } from '../../shared/queries';
 import type { HotkeyAction, Json } from '../../shared/types';
 import { acceleratorFromEvent, acceleratorKeys } from './accelerator';
@@ -42,7 +43,7 @@ export function HotkeyRows() {
       if (r.kind === 'wait') return;
       setRecording(null);
       if (r.kind === 'invalid') {
-        setError(t('settings.hotkeys.invalid'));
+        setError(t(isWindows ? 'settings.hotkeys.invalidWin' : 'settings.hotkeys.invalid'));
         return;
       }
       setHotkey(action, r.accelerator)
@@ -53,7 +54,7 @@ export function HotkeyRows() {
             code === 'inUse'
               ? t('settings.hotkeys.inUse')
               : code === 'invalid'
-                ? t('settings.hotkeys.invalid')
+                ? t(isWindows ? 'settings.hotkeys.invalidWin' : 'settings.hotkeys.invalid')
                 : t('settings.hotkeys.failed', { reason: code }),
           );
         })

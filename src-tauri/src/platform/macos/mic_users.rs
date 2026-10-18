@@ -181,8 +181,9 @@ fn get<T: Copy>(object: u32, selector: u32) -> Result<T, i32> {
 /// Shared with CoreAudio's notification thread through the listeners' client data.
 struct Context {
     on_change: Box<dyn Fn() + Send + Sync>,
-    /// The device carrying the `RUNNING_SOMEWHERE` listener (`NO_OBJECT` when none).
-    input: Mutex<u32>,
+    /// The device carrying the `RUNNING_SOMEWHERE` listener (`NO_OBJECT` when none); `None` once
+    /// `Drop` closed it, so a late `DEFAULT_INPUT` callback can't register a listener again.
+    input: Mutex<Option<u32>>,
 }
 
 impl Context {
@@ -190,13 +191,14 @@ impl Context {
         (self as *const Context).cast_mut().cast()
     }
 
-    /// Moves the `RUNNING_SOMEWHERE` listener to the current default input device.
+    /// Moves the `RUNNING_SOMEWHERE` listener to the current default input device, unless closed.
     fn retarget_input(&self) {
         let mut input = self.input.lock().unwrap_or_else(|e| e.into_inner());
-        if *input != NO_OBJECT {
-            remove(*input, RUNNING_SOMEWHERE, on_property, self.client_data());
+        let Some(current) = input.as_mut() else { return };
+        if *current != NO_OBJECT {
+            remove(*current, RUNNING_SOMEWHERE, on_property, self.client_data());
         }
-        *input = default_input()
+        *current = default_input()
             .filter(|&d| add(d, RUNNING_SOMEWHERE, on_property, self.client_data()))
             .unwrap_or(NO_OBJECT);
     }
@@ -222,7 +224,7 @@ unsafe impl Send for Listening {}
 
 /// Registers listeners; `on_change` runs on CoreAudio's thread and must only send on a channel.
 pub fn listen(on_change: Box<dyn Fn() + Send + Sync>) -> Listening {
-    let context = Box::into_raw(Box::new(Context { on_change, input: Mutex::new(NO_OBJECT) }));
+    let context = Box::into_raw(Box::new(Context { on_change, input: Mutex::new(Some(NO_OBJECT)) }));
     // SAFETY: just allocated; lives until `Drop` removes every listener that points at it.
     let ctx = unsafe { &*context };
     let mut system = Vec::new();
@@ -263,16 +265,15 @@ impl Drop for Listening {
         // SAFETY: `context` stays valid until the end of this function.
         let ctx = unsafe { &*self.context };
         let data = ctx.client_data();
-        // `DEFAULT_INPUT` first, so no callback re-targets the device listener meanwhile.
+        // `DEFAULT_INPUT` first, so no new callback re-targets the device listener meanwhile.
         for &(selector, proc) in &self.system {
             remove(SYSTEM_OBJECT, selector, proc, data);
         }
-        let mut input = ctx.input.lock().unwrap_or_else(|e| e.into_inner());
-        if *input != NO_OBJECT {
-            remove(*input, RUNNING_SOMEWHERE, on_property, data);
-            *input = NO_OBJECT;
+        // Close under the lock: a callback already in flight then finds `None` and adds nothing.
+        let closed = ctx.input.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(device) = closed.filter(|&d| d != NO_OBJECT) {
+            remove(device, RUNNING_SOMEWHERE, on_property, data);
         }
-        drop(input);
         for &object in self.processes.iter().flatten() {
             remove(object, PROCESS_RUNNING_INPUT, on_property, data);
         }

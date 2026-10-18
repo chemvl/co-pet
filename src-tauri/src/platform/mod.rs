@@ -12,6 +12,7 @@ use win as os;
 pub mod calendar;
 pub mod fullscreen;
 pub mod idle;
+pub mod mic_consent;
 pub mod pasteboard;
 pub mod pointer;
 pub mod screens;

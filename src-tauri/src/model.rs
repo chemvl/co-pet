@@ -424,7 +424,7 @@ pub struct PermissionsStatus {
     pub accessibility: bool,
     /// `granted` | `denied` | `notDetermined`.
     pub microphone: String,
-    /// `granted` | `denied` | `notDetermined`.
+    /// `granted` | `denied` | `notDetermined` | `unavailable` (Windows).
     pub calendar: String,
 }
 
@@ -725,7 +725,7 @@ pub struct CallResumed {
 
 /// `call_detection_status` (Settings › Transcribe). `mode`: `transcribe.autoRecord`;
 /// `per_process_mic`: CoreAudio names the processes using the mic (else the device flag only);
-/// `titles`: where window titles come from, `screenRecording | accessibility | none`;
+/// `titles`: where window titles come from, `screenRecording | accessibility | native | none`;
 /// `active`: the call in progress.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

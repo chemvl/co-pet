@@ -1,12 +1,13 @@
-// Renders the app icon from Kitty's pixel art (src/pet/pixelCat.ts, peach skin) and the
-// menu-bar template icon from the Cat.dc.html soft-clay cat's head silhouette.
+// Renders the app icon from Kitty's pixel art (src/pet/pixelCat.ts, peach skin), the macOS
+// menu-bar template icon and the Windows tray icon from the Cat.dc.html soft-clay cat's head
+// silhouette.
 import { Resvg } from '@resvg/resvg-js';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { SKINS } from '../src/pet/catalog';
 import { COLS, EYES, OUTLINE, PIXEL_MAP, ROWS } from '../src/pet/pixelCat';
 
-const root = join(dirname(new URL(import.meta.url).pathname), '..');
+const root = join(import.meta.dir, '..');
 const out = join(root, 'src-tauri/icons');
 mkdirSync(out, { recursive: true });
 
@@ -27,15 +28,19 @@ writeFileSync(
 );
 
 // Head silhouette: head circle cx60 cy50 r34 plus both ears. Bounds x 26..94, y 4..84 → 68×80.
-const head = `
-<g fill="#000000">
+const renderHead = (file: string, fill: string, size: number) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="16 2 88 88">
+<g fill="${fill}">
   <polygon points="30,32 28,4 54,20"/>
   <polygon points="90,32 92,4 66,20"/>
   <circle cx="60" cy="50" r="34"/>
-</g>`;
-const traySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="16 2 88 88">${head}</svg>`;
-writeFileSync(
-  join(out, 'tray-template.png'),
-  new Resvg(traySvg, { fitTo: { mode: 'width', value: 44 }, background: 'rgba(0,0,0,0)' }).render().asPng(),
-);
+</g></svg>`;
+  writeFileSync(
+    join(out, file),
+    new Resvg(svg, { fitTo: { mode: 'width', value: size }, background: 'rgba(0,0,0,0)' }).render().asPng(),
+  );
+};
+// macOS tints the template; the Windows tray shows the colors as drawn.
+renderHead('tray-template.png', '#000000', 44);
+renderHead('tray.png', '#1f2933', 32);
 console.log('icons written to', out);

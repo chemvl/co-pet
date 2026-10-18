@@ -11,6 +11,7 @@ use win as os;
 
 pub mod calendar;
 pub mod clip;
+pub mod drag_probe;
 pub mod fullscreen;
 pub mod idle;
 pub mod mic_consent;

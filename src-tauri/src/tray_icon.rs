@@ -1,7 +1,7 @@
-//! Menu bar icon (Step 10.1): the cat-head template image with (Restart to update to X when an
-//! update is ready) · Open home · Show pet · Pause/Resume
-//! pet · Settings · Quit Co-pet. Labels follow `ui.language`; the menu is rebuilt when the
-//! language or `pet.paused` changes.
+//! Menu bar icon on macOS, notification-area icon on Windows (Step 10.1): the cat-head image (a
+//! template on macOS) with (Restart to update to X when an update is ready) · Open home · Show
+//! pet · Pause/Resume pet · Settings · Quit Co-pet. Labels follow `ui.language`; the menu is
+//! rebuilt when the language or `pet.paused` changes.
 use serde_json::Value;
 use tauri::image::Image;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
@@ -18,12 +18,15 @@ use crate::model::UpdateState;
 use crate::{system, updater, windows};
 
 const TRAY_ID: &str = "copet";
+#[cfg(target_os = "macos")]
 const ICON: &[u8] = include_bytes!("../icons/tray-template.png");
+#[cfg(windows)]
+const ICON: &[u8] = include_bytes!("../icons/tray.png");
 
 pub fn create(app: &AppHandle) -> AppResult<()> {
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(ICON)?)
-        .icon_as_template(true)
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("Co-pet")
         .menu(&build_menu(app)?)
         .show_menu_on_left_click(true)

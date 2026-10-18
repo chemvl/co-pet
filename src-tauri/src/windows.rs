@@ -98,13 +98,16 @@ fn build_pet_window(app: &AppHandle, mt: MainThread) -> AppResult<()> {
     Ok(())
 }
 
+/// `work_area` reaches the frontend in window CSS px: global units divided by `css_scale`.
 fn placement_for(screen: &Screen, edge: String, offset: f64) -> Placement {
+    let k = screens::css_scale(screen);
+    let v = screen.visible;
     Placement {
         monitor_name: screen.name.clone(),
         edge,
         offset,
         scale: screen.scale,
-        work_area: screen.visible,
+        work_area: Rect { x: v.x / k, y: v.y / k, w: v.w / k, h: v.h / k },
     }
 }
 
@@ -193,7 +196,7 @@ pub fn get_placement(app: &AppHandle) -> AppResult<Placement> {
         .ok_or_else(|| AppError::msg("pet window not placed"))
 }
 
-/// The full frame (global top-left points) of the monitor the pet lives on.
+/// The full frame (global units, top-left origin) of the monitor the pet lives on.
 pub(crate) fn pet_screen_frame(app: &AppHandle) -> Option<Rect> {
     pet_window(app)?;
     app.state::<PetPlacement>().lock().as_ref().map(|c| c.screen.frame)

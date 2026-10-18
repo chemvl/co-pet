@@ -23,10 +23,6 @@ hex = "0.4.3"
 htmd = "0.5"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "tiff"] }
 infer = "0.22"
-objc2 = "0.6"
-objc2-app-kit = "0.3"
-objc2-foundation = "0.3"
-objc2-vision = "0.3"
 pdf-extract = "0.12"
 percent-encoding = "2"
 quick-xml = "0.41"
@@ -35,13 +31,13 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "s
 rusqlite = { version = "0.40", features = ["bundled"] }
 rusqlite_migration = "2.6"
 scraper = "0.27"
-security-framework = "3.7.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 sha2 = "0.11"
 sysinfo = "0.39"
+# `macos-private-api` must sit here: tauri-build matches it against `app.macOSPrivateApi` in
+# `[dependencies]` only. It does nothing on Windows.
 tauri = { version = "2", features = ["macos-private-api", "tray-icon", "protocol-asset", "image-png"] }
-tauri-nspanel = "2.1"
 tauri-plugin-autostart = "2.7"
 tauri-plugin-deep-link = "2"
 tauri-plugin-dialog = "2"
@@ -61,14 +57,27 @@ hmac = "0.13"
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
 cpal = "0.18.2"
 hound = "3.5.1"
+whisper-rs = { version = "0.16", features = ["raw-api"] }
+sherpa-onnx = "1.13"
+symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "flac", "wav", "pcm", "ogg", "vorbis", "aiff"] }
+tauri-plugin-updater = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+objc2-vision = "0.3"
+security-framework = "3.7.0"
+tauri-nspanel = "2.1"
 block2 = "0.6"
 screencapturekit = { version = "8", features = ["macos_13_0"] }
 objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
-whisper-rs = { version = "0.16", features = ["metal", "raw-api"] }
-sherpa-onnx = "1.13"
-symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "flac", "wav", "pcm", "ogg", "vorbis", "aiff"] }
 objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "block2", "bitflags", "EKEventStore", "EKEvent", "EKCalendar", "EKCalendarItem", "EKObject", "EKParticipant", "EKSource", "EKTypes"] }
-tauri-plugin-updater = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation"] }
+windows-core = "0.62"
 
 # whisper.cpp built as Debug is unusably slow in `tauri dev`.
 [profile.dev.package.whisper-rs-sys]

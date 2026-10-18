@@ -1,5 +1,9 @@
-// `bun --env-file=.env.prod scripts/build-local.ts` (= `bun run build:prod`): the `.app` bundle,
-// signed with a stable certificate from the login keychain instead of the ad-hoc "-" signature.
+// `bun --env-file=.env.prod scripts/build-local.ts` (= `bun run build:prod`).
+//
+// Windows: the NSIS setup exe (`bun run tauri build`), unsigned (Authenticode happens in release).
+//
+// macOS: the `.app` bundle, signed with a stable certificate from the login keychain instead of
+// the ad-hoc "-" signature.
 //
 // Why: an ad-hoc signature's designated requirement is the binary's hash, so every rebuild is a
 // new app to the keychain and macOS asks for the login password again for every Co-pet secret.
@@ -9,11 +13,19 @@
 // Identity: $APPLE_SIGNING_IDENTITY, else the first "Developer ID Application" or
 // "Apple Development" identity from `security find-identity`. With none, falls back to ad-hoc.
 // Not notarized: the Apple notarization env vars are dropped for this build.
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
+
+if (process.platform === "win32") {
+  const p = Bun.spawnSync(["bun", "run", "tauri", "build"], { cwd: root, stdout: "inherit", stderr: "inherit" });
+  if (p.exitCode !== 0) process.exit(p.exitCode ?? 1);
+  const { version } = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
+  console.log(`built ${join(root, `src-tauri/target/release/bundle/nsis/Co-pet_${version}_x64-setup.exe`)}`);
+  process.exit(0);
+}
 
 function findIdentity(): string | undefined {
   const p = Bun.spawnSync(["security", "find-identity", "-v", "-p", "codesigning"]);

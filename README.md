@@ -36,6 +36,13 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 - macOS 13 or later on Apple Silicon, with Xcode Command Line Tools (`xcode-select --install`).
 - Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+, Ninja, LLVM 17+ and the Vulkan SDK for whisper's GPU build (`winget install Kitware.CMake Ninja-build.Ninja LLVM.LLVM KhronosGroup.VulkanSDK`). Set `CMAKE_GENERATOR=Ninja` before building: with the Visual Studio generator, whisper.cpp's Vulkan shader build exceeds the Windows path length limit. Build Windows on Windows; cross-compiling from macOS isn't supported.
   On a Windows machine without a GPU driver that provides `vulkan-1.dll` (for example a VM), the test binaries need the Vulkan Runtime's `vulkan-1.dll` on `PATH` to start (CI adds the runtime its Vulkan SDK action installs).
+  Run every Windows build (`cargo`, `tauri dev`, `tauri build`, `build:prod`) from an "x64 Native Tools Command Prompt for VS 2022" (or after `call "<VS>\VC\Auxiliary\Build\vcvars64.bat"`), with Ninja, CMake and `C:\Program Files\LLVM\bin` on `PATH` and these variables set:
+
+  ```bat
+  set CMAKE_GENERATOR=Ninja
+  set VULKAN_SDK=C:\VulkanSDK\<version>
+  set LIBCLANG_PATH=C:\Program Files\LLVM\bin
+  ```
 - [Rust](https://rustup.rs) (stable).
 - [Bun](https://bun.sh) 1.4 or later.
 - Optional, only for accounts/sync/OAuth: the [Supabase CLI](https://supabase.com/docs/guides/cli) and Docker (Docker Desktop or colima).
@@ -44,7 +51,7 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 
 ```sh
 bun install
-bun run fetch:llama   # downloads the pinned llama.cpp build into src-tauri/resources/llama/ (once)
+bun run fetch:llama   # downloads the pinned llama.cpp build for this OS (macOS arm64, Windows x64 Vulkan) into src-tauri/resources/llama/ (once per OS)
 ```
 
 ### 3. Start the app in development mode
@@ -63,12 +70,23 @@ Notes:
 
 ### 4. Build the app bundle
 
+macOS:
+
 ```sh
 bun run tauri build --bundles app
 open src-tauri/target/release/bundle/macos/Co-pet.app
 ```
 
 Launch the bundle with `open`, not from a terminal — otherwise macOS attributes permissions to the terminal. `copet://` deep links (Notion/Asana OAuth, Google sign-in, item links) only work in the bundled app.
+
+Windows (per-user NSIS installer, no UAC; installs to `%LOCALAPPDATA%\Co-pet`):
+
+```bat
+bun run tauri build
+src-tauri\target\release\bundle\nsis\Co-pet_<version>_x64-setup.exe
+```
+
+Local builds are unsigned: SmartScreen warns when the installer is downloaded onto another machine and run there.
 
 ### 5. Run the checks
 
@@ -155,6 +173,8 @@ Sign in from Settings › Account and sync with any email. The 6-digit code arri
    bun run build:prod   # bundle against the hosted project, signed with your Apple Development / Developer ID certificate
    open src-tauri/target/release/bundle/macos/Co-pet.app
    ```
+
+   On Windows, `build:prod` builds the unsigned NSIS installer and prints its path (`src-tauri\target\release\bundle\nsis\Co-pet_<version>_x64-setup.exe`); run it to install.
 
 Google sign-in and Notion/Asana OAuth return through `copet://` deep links. macOS delivers those only to the bundled app, so these flows can't finish in `tauri dev`. Use the hosted project to test them. `supabase/config.toml` has no Google provider and doesn't allow `copet://auth/callback`, and the local `oauth` function's redirect URI isn't reachable from Notion or Asana.
 

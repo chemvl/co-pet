@@ -12,14 +12,17 @@ use serde_json::Value;
 use tauri::{AppHandle, Listener, Manager};
 use tokio::sync::Notify;
 
-use crate::db::{now_ms, settings, Db};
+use crate::db::{meetings, now_ms, settings, Db};
 use crate::error::AppError;
 use crate::events;
+use crate::i18n::{self, tr, Lang};
 use crate::model::{CallDetected, CallDetectionStatus, CallEnded, CallResumed};
 use crate::platform::macos::mic_users::{self, MicUsers};
 use crate::platform::macos::window_titles::{self, TitleSource};
 use crate::transcribe::recorder::Recorder;
-use detect::{Action, Ctx, Mode, Snapshot, Watch, CHECK_EVERY_MS, ZOOM_BUNDLE, ZOOM_MEETING_PROCESSES};
+use detect::{
+    Action, CallApp, Ctx, Mode, Snapshot, Watch, CHECK_EVERY_MS, ZOOM_BUNDLE, ZOOM_MEETING_PROCESSES,
+};
 
 const AUTO_RECORD: &str = "transcribe.autoRecord";
 const AUTO_STOP: &str = "transcribe.autoStop";
@@ -39,9 +42,33 @@ impl CallWatch {
         lock(&self.watch)
     }
 
+    /// `start_recording` for `call_id` started recording `meeting_id`: the recording now stops
+    /// with the call when `auto_stop`. Returns the call's app and Meet name, or `None` when the
+    /// call already ended or is unknown.
+    fn link(&self, call_id: &str, meeting_id: &str, auto_stop: bool) -> Option<(CallApp, Option<String>)> {
+        let linked = {
+            let mut watch = self.watch();
+            watch.link(call_id, meeting_id, auto_stop).then(|| watch.active()).flatten()
+        };
+        self.wake.notify_one();
+        linked.map(|(_, app, name)| (app, name))
+    }
+
+    /// A recording started without a call: the call in progress, if any, is not offered.
+    fn note_manual_recording(&self, meeting_id: &str) {
+        self.watch().note_manual_recording(meeting_id);
+    }
+
     /// Keep recording on a `call-ended` notice: the call's recording no longer stops with it.
     pub fn keep_recording(&self, call_id: &str) {
         self.watch().unlink(call_id);
+        self.wake.notify_one();
+    }
+
+    /// The user stopped recording `meeting_id` by hand: its call neither stops it again nor
+    /// offers it again.
+    pub fn unlink_meeting(&self, meeting_id: &str) {
+        self.watch().unlink_meeting(meeting_id);
         self.wake.notify_one();
     }
 }
@@ -187,17 +214,48 @@ fn mode_name(mode: Mode) -> &'static str {
     }
 }
 
-/// The live settings for a step. An unreadable setting never stops a recording or shows an offer.
-fn read_ctx(app: &AppHandle) -> Ctx {
-    let auto_stop = settings::read::<bool>(app, AUTO_STOP).unwrap_or_else(|e| {
+/// `transcribe.autoStop`; `false` when unreadable.
+fn auto_stop(app: &AppHandle) -> bool {
+    settings::read::<bool>(app, AUTO_STOP).unwrap_or_else(|e| {
         eprintln!("[calls] read {AUTO_STOP}: {e}");
         false
-    });
+    })
+}
+
+/// The live settings for a step. An unreadable setting never stops a recording or shows an offer.
+fn read_ctx(app: &AppHandle) -> Ctx {
     let offers_allowed = crate::next::pet_shown(&app.state::<Db>().conn(), now_ms()).unwrap_or_else(|e| {
         eprintln!("[calls] read pet visibility: {e}");
         false
     });
-    Ctx { mode: mode(app), auto_stop, offers_allowed }
+    Ctx { mode: mode(app), auto_stop: auto_stop(app), offers_allowed }
+}
+
+/// The title of a meeting recorded for a call: the app, plus the Meet name when known.
+fn meeting_title(lang: Lang, app: CallApp, name: Option<&str>) -> String {
+    match (app, name) {
+        (CallApp::Zoom, _) => tr(lang, "meeting.titleZoom").to_owned(),
+        (CallApp::Meet, Some(name)) => tr(lang, "meeting.titleMeet").replace("{name}", name),
+        (CallApp::Meet, None) => tr(lang, "meeting.titleMeetPlain").to_owned(),
+    }
+}
+
+/// `start_recording` started recording `meeting_id`; `call_id` is the `call-detected` call the
+/// user chose to record. Linked to that call, the recording takes the call's title and, with
+/// `transcribe.autoStop`, stops when the call ends. Started by hand, or for a call that already
+/// ended or is unknown, it is a manual recording.
+pub fn recording_started(app: &AppHandle, meeting_id: &str, call_id: Option<&str>) {
+    let state = app.state::<CallWatch>();
+    let Some((call_app, name)) = call_id.and_then(|id| state.link(id, meeting_id, auto_stop(app))) else {
+        state.note_manual_recording(meeting_id);
+        return;
+    };
+    let title = meeting_title(i18n::lang(app), call_app, name.as_deref());
+    let saved = meetings::set_auto_title(&app.state::<Db>().conn(), meeting_id, &title);
+    match saved {
+        Ok(()) => meetings::notify_changed(app, vec![meeting_id.to_owned()]),
+        Err(e) => eprintln!("[calls] meeting title: {e}"),
+    }
 }
 
 async fn apply(app: &AppHandle, action: Action) {

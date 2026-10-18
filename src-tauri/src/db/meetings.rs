@@ -222,6 +222,12 @@ pub fn mark_tasks_created(conn: &Connection, id: &str) -> AppResult<()> {
     update(conn, id, "tasks_created_at = COALESCE(tasks_created_at, ?1)", &[])
 }
 
+/// A better automatic title (the detected call's): replaces only an automatic title and keeps it
+/// `auto`, so the AI title can still replace it.
+pub fn set_auto_title(conn: &Connection, id: &str, title: &str) -> AppResult<()> {
+    update(conn, id, "title = CASE WHEN title_source = 'auto' THEN ?3 ELSE title END", &[&title])
+}
+
 /// User rename: trimmed, 1–200 characters.
 pub fn rename(conn: &Connection, id: &str, title: &str) -> AppResult<()> {
     let title = title.trim();
@@ -806,5 +812,28 @@ mod tests {
         assert_eq!((e.speaker_count, e.action_count, e.tasks_added, e.item_id.clone()), (0, 0, 0, None));
         assert_eq!(detail(&conn, &id, "d1", &paths, None).unwrap().meeting, *m);
         assert!(matches!(detail(&conn, "nope", "d1", &paths, None), Err(AppError::Code("notFound"))));
+    }
+
+    #[test]
+    fn auto_title_never_overrides_user_or_ai() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        let title = |id: &str| {
+            let m = get(&conn, id).unwrap();
+            (m.title, m.title_source)
+        };
+
+        let auto = meeting(&conn, "d1");
+        set_auto_title(&conn, &auto, "Zoom call").unwrap();
+        assert_eq!(title(&auto), ("Zoom call".into(), "auto".into()));
+        save_notes(&conn, &auto, Some("Roadmap sync"), &[], &[], &[], "en").unwrap();
+        assert_eq!(title(&auto), ("Roadmap sync".into(), "ai".into()), "the AI title still replaces it");
+        set_auto_title(&conn, &auto, "Zoom call").unwrap();
+        assert_eq!(title(&auto), ("Roadmap sync".into(), "ai".into()));
+
+        let user = meeting(&conn, "d1");
+        rename(&conn, &user, "Weekly 1:1").unwrap();
+        set_auto_title(&conn, &user, "Zoom call").unwrap();
+        assert_eq!(title(&user), ("Weekly 1:1".into(), "user".into()));
     }
 }

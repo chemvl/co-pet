@@ -489,6 +489,12 @@ fn idle(ended_reason: Option<&str>) -> RecordingStatus {
     }
 }
 
+/// Whether a stop for `only` (any session when `None`) ends the running session `active`: a stop
+/// meant for one call's recording never ends a later one.
+fn should_end(active: &str, only: Option<&str>) -> bool {
+    only.is_none_or(|id| id == active)
+}
+
 /// Emits the current status (capture threads call this when a track turns on or off).
 fn emit_status(app: &AppHandle) {
     if let Some(r) = app.try_state::<Recorder>() {
@@ -710,7 +716,7 @@ impl Recorder {
         let session = {
             let mut slot = lock(&self.session);
             match slot.take() {
-                Some(s) if only.is_none_or(|id| id == s.meeting_id) => s,
+                Some(s) if should_end(&s.meeting_id, only) => s,
                 other => {
                     *slot = other;
                     return Err(AppError::Code("notRecording"));
@@ -769,5 +775,17 @@ impl Recorder {
             eprintln!("[recorder] abort: {e}");
         }
         discard(app, &id, &dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stop_for_call_ignores_other_sessions() {
+        assert!(should_end("m1", Some("m1")), "the call's own session stops");
+        assert!(!should_end("m2", Some("m1")), "a session started after the call's never does");
+        assert!(should_end("m2", None), "a stop by hand ends any session");
     }
 }

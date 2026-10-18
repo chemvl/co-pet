@@ -200,13 +200,19 @@ pub fn recording_status(rec: State<'_, Recorder>) -> RecordingStatus {
     rec.status()
 }
 
+/// `call_id`: the `call-detected` call the user chose to record (see `calls::recording_started`).
 #[tauri::command]
 pub async fn start_recording(
     app: AppHandle,
     rec: State<'_, Recorder>,
     language: Option<String>,
+    call_id: Option<String>,
 ) -> AppResult<RecordingStatus> {
-    rec.start(&app, language).await
+    let status = rec.start(&app, language).await?;
+    if let Some(meeting_id) = status.meeting_id.as_deref() {
+        crate::transcribe::calls::recording_started(&app, meeting_id, call_id.as_deref());
+    }
+    Ok(status)
 }
 
 #[tauri::command]
@@ -219,9 +225,16 @@ pub fn resume_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<R
     rec.resume(&app)
 }
 
-/// Returns the meeting id.
+/// Returns the meeting id. A recording linked to a call no longer stops with it.
 #[tauri::command]
-pub async fn stop_recording(app: AppHandle, rec: State<'_, Recorder>) -> AppResult<String> {
+pub async fn stop_recording(
+    app: AppHandle,
+    rec: State<'_, Recorder>,
+    watch: State<'_, crate::transcribe::calls::CallWatch>,
+) -> AppResult<String> {
+    if let Some(meeting_id) = rec.status().meeting_id {
+        watch.unlink_meeting(&meeting_id);
+    }
     rec.stop(&app).await
 }
 

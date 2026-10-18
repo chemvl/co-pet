@@ -51,8 +51,12 @@ export const speechStatus = () => invoke<SpeechStatus>('speech_status');
 export const speechDownload = (pack: SpeechPackId) => invoke<void>('speech_download', { pack });
 export const speechPause = (pack: SpeechPackId) => invoke<void>('speech_pause', { pack });
 export const recordingStatus = () => invoke<RecordingStatus>('recording_status');
-/** Rejects with `alreadyRecording`, `invalid`, `noAudioSource` or `micUnavailable`. */
-export const startRecording = (language?: string) => invoke<RecordingStatus>('start_recording', { language });
+/**
+ * Rejects with `alreadyRecording`, `invalid`, `noAudioSource` or `micUnavailable`. `callId`: the
+ * `call-detected` call being recorded; the recording takes its title and can stop when it ends.
+ */
+export const startRecording = (language?: string, callId?: string) =>
+  invoke<RecordingStatus>('start_recording', { language, callId });
 export const pauseRecording = () => invoke<RecordingStatus>('pause_recording');
 export const resumeRecording = () => invoke<RecordingStatus>('resume_recording');
 /** Resolves with the meeting id; rejects with `notRecording` or `tooShort`. */

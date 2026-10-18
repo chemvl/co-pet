@@ -15,7 +15,8 @@ export interface CatParts {
   zzz: boolean;
 }
 
-/** `shut`: the eyes drawn closed for the whole length, with no CSS animation (the still idle's blink). */
+/** `shut`: the eyes drawn closed for the whole length, with no CSS animation (the still idle's blink).
+ *  A motion rather than closed `parts` so CatArt can drop it under reduced motion, like `blink`. */
 export type CatMotion =
   | 'breathe' | 'stretch' | 'hop' | 'lean' | 'bounce' | 'offer' | 'flash' | 'shake' | 'tilt'
   | 'blink' | 'shut' | 'ear' | 'tail' | 'dots' | 'poof';

@@ -261,7 +261,9 @@ export function createPetMachine(deps: MachineDeps): PetMachine {
       return;
     }
     const current = playing.priority;
-    if (priority === 3) return;
+    // P3 never cuts a reaction, except the still idle's blink, which stands in for the idle pose.
+    const blinking = playing.trigger === 'fidget' && playing.opts.variant === IDLE_BLINK_VARIANT;
+    if (priority === 3 && !blinking) return;
     if (priority === 0 || current >= priority) {
       play(r);
       return;

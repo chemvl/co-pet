@@ -334,4 +334,24 @@ describe('petMachine loops', () => {
     clock.advance(3850);
     expect(machine.output()).toMatchObject({ body: 'fidget', variant: 4 });
   });
+
+  it('a P3 reaction cuts the still idle blink (Windows)', () => {
+    const { clock, machine, body } = setup({ stillIdle: true });
+    clock.advance(3900);
+    expect(machine.output()).toMatchObject({ body: 'fidget', variant: 4 });
+    machine.fire('gesture');
+    expect(body()).toBe('gesture');
+    clock.advance(300);
+    expect(body()).toBe('idle');
+    // The blink re-arms from the end of the gesture (t = 4200).
+    clock.advance(3849);
+    expect(body()).toBe('idle');
+    clock.advance(1);
+    expect(machine.output()).toMatchObject({ body: 'fidget', variant: 4 });
+    // A blink never cuts other P3 reactions.
+    clock.advance(150);
+    machine.fire('glance');
+    machine.fire('gesture');
+    expect(body()).toBe('glance');
+  });
 });

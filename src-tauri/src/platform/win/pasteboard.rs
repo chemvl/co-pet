@@ -36,7 +36,6 @@ thread_local! {
 static DRAG_COUNT: AtomicIsize = AtomicIsize::new(0);
 
 /// Sets (on drag enter) or clears (on leave/drop) the source `read(Board::Drag)` reads.
-#[allow(dead_code)] // called by `win::drop_target` (Task 11)
 pub fn set_drag_source(src: Option<Box<dyn Formats>>) {
     if src.is_some() {
         DRAG_COUNT.fetch_add(1, Ordering::Relaxed);

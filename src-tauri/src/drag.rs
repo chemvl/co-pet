@@ -70,7 +70,8 @@ pub async fn paste_items(app: &AppHandle, ids: Vec<String>) -> AppResult<&'stati
 
 /// - only file/image/screenshot items, no Alt → their files
 /// - one url or text item, no Alt → typed data
-/// - Alt, or any other selection → files, with text as `.md` and links as `.webloc`
+/// - Alt, or any other selection → files, with text as `.md` and links as `.webloc` (macOS) or
+///   `.url` (Windows)
 ///
 /// `fileElsewhere` when an item's library file isn't on this Mac (it synced from another one).
 fn plan(paths: &Paths, rows: &[ItemRow], as_files: bool) -> AppResult<DragPlan> {
@@ -94,7 +95,10 @@ fn plan(paths: &Paths, rows: &[ItemRow], as_files: bool) -> AppResult<DragPlan> 
                     }
                     library::dragout_path(paths, row)?
                 }
-                "url" => library::temp_text_file(paths, &slug(&row.title), "webloc", &webloc(url_of(row)))?,
+                "url" => {
+                    let (ext, body) = link_file(url_of(row));
+                    library::temp_text_file(paths, &slug(&row.title), ext, &body)?
+                }
                 _ => library::temp_text_file(paths, &slug(&row.title), "md", &markdown(row))?,
             };
             path.into_os_string().into_string().map_err(|p| AppError::msg(format!("non-UTF-8 path {p:?}")))
@@ -157,6 +161,15 @@ fn markdown(row: &ItemRow) -> String {
     match (&row.kind[..], &row.payload_html) {
         ("richtext", Some(html)) => htmd::convert(html).ok().filter(|m| !m.trim().is_empty()).unwrap_or(plain),
         _ => plain,
+    }
+}
+
+/// A double-clickable link file: `.webloc` (macOS) or `.url` (Windows).
+fn link_file(url: &str) -> (&'static str, String) {
+    if cfg!(windows) {
+        ("url", format!("[InternetShortcut]\r\nURL={url}\r\n"))
+    } else {
+        ("webloc", webloc(url))
     }
 }
 
@@ -291,9 +304,26 @@ mod tests {
         assert_eq!(f[0].file_name().unwrap(), "ghi-chú-họp-14-00.md");
         assert_eq!(std::fs::read_to_string(&f[0]).unwrap().trim(), "**Bold**");
         let f = files(plan(&paths, &[url_row()], true).unwrap());
-        assert_eq!(f[0].file_name().unwrap(), "tom-jerry.webloc");
-        let plist = std::fs::read_to_string(&f[0]).unwrap();
-        assert!(plist.contains("<key>URL</key>\n\t<string>https://example.com/a?b=1&amp;c=2</string>"));
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(f[0].file_name().unwrap(), "tom-jerry.webloc");
+            let plist = std::fs::read_to_string(&f[0]).unwrap();
+            assert!(plist.contains("<key>URL</key>\n\t<string>https://example.com/a?b=1&amp;c=2</string>"));
+        }
+        #[cfg(windows)]
+        assert_eq!(f[0].file_name().unwrap(), "tom-jerry.url");
+    }
+
+    #[test]
+    fn link_files_use_the_platform_shortcut_format() {
+        let (ext, body) = link_file("https://a.test/?q=1&r=2");
+        if cfg!(windows) {
+            assert_eq!(ext, "url");
+            assert_eq!(body, "[InternetShortcut]\r\nURL=https://a.test/?q=1&r=2\r\n");
+        } else {
+            assert_eq!(ext, "webloc");
+            assert!(body.contains("<string>https://a.test/?q=1&amp;r=2</string>"));
+        }
     }
 
     #[test]
@@ -302,7 +332,8 @@ mod tests {
         let rows = [url_row(), file_row(&paths, "a.pdf", "file"), text_row("text", "hello", None)];
         let f = files(plan(&paths, &rows, false).unwrap());
         let names: Vec<_> = f.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
-        assert_eq!(names, ["tom-jerry.webloc", "a.pdf", "ghi-chú-họp-14-00.md"]);
+        let link = if cfg!(windows) { "tom-jerry.url" } else { "tom-jerry.webloc" };
+        assert_eq!(names, [link, "a.pdf", "ghi-chú-họp-14-00.md"]);
         assert_eq!(std::fs::read_to_string(&f[2]).unwrap(), "hello");
         // Two links can't share one typed-data item either.
         assert_eq!(files(plan(&paths, &[url_row(), url_row()], false).unwrap()).len(), 2);

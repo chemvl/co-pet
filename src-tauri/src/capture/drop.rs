@@ -1,7 +1,8 @@
 //! Drop on the pet (Step 6.2). The native drop target (`platform::drop_target`) accepts the
-//! drag synchronously, reads the drag pasteboard with [`read`] inside `performDragOperation`, and
-//! hands the result to [`spawn`], which captures off the main thread and emits `capture-result`
-//! to the pet window. WebKit never sees the drop.
+//! drag synchronously, reads the drag data with [`read`] inside the drop callback
+//! (`performDragOperation` on macOS, `IDropTarget::Drop` on Windows), and hands the result to
+//! [`spawn`], which captures off the main thread and emits `capture-result` to the pet window.
+//! The webview never sees the drop.
 use tauri::{AppHandle, Manager};
 
 use super::{capture_blocking, input_from, CaptureSource};
@@ -20,9 +21,10 @@ pub struct Dropped {
     source: Option<FrontApp>,
 }
 
-/// Reads the drag pasteboard. Main thread only (AppKit). `source` is the app the drag came from,
-/// recorded when the drag started (the pet panel never activates Co-pet). `None` when nothing
-/// usable is on the board (e.g. file promises), so the drop is refused and the drag snaps back.
+/// Reads the drag board (the macOS drag pasteboard, or the dropped `IDataObject` on Windows).
+/// Main thread only. `source` is the app the drag came from, recorded when the drag started (the
+/// pet window never activates Co-pet). `None` when nothing usable is on the board (e.g. file
+/// promises), so the drop is refused and the drag snaps back.
 pub fn read(source: Option<FrontApp>) -> Option<Dropped> {
     let content = pasteboard::read(Board::Drag).content?;
     let image = match content {

@@ -234,6 +234,21 @@ pub fn set_recording_language(
     rec.set_language(&app, language)
 }
 
+/// Settings › Transcribe: the auto-record mode, where call signals come from on this Mac, and the
+/// call in progress.
+#[tauri::command]
+pub async fn call_detection_status(app: AppHandle) -> AppResult<crate::model::CallDetectionStatus> {
+    tauri::async_runtime::spawn_blocking(move || crate::transcribe::calls::status(&app))
+        .await
+        .map_err(|e| crate::error::AppError::msg(e.to_string()))
+}
+
+/// Keep recording on a `call-ended` notice: the call's recording no longer stops with it.
+#[tauri::command]
+pub fn call_keep_recording(watch: State<'_, crate::transcribe::calls::CallWatch>, call_id: String) {
+    watch.keep_recording(&call_id);
+}
+
 /// Returns the new meeting's id. Errors: `unsupportedAudio`.
 #[tauri::command]
 pub async fn import_meeting(app: AppHandle, path: String) -> AppResult<String> {

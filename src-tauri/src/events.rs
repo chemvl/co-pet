@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::model::{AiStatus, CaptureResult, Counts, NextCard, Placement, RecordingStatus, SpeechStatus, SyncStatus, UpdateStatus};
+use crate::model::{
+    AiStatus, CallDetected, CallEnded, CallResumed, CaptureResult, Counts, NextCard, Placement, RecordingStatus,
+    SpeechStatus, SyncStatus, UpdateStatus,
+};
 
 pub const ITEMS_CHANGED: &str = "items-changed";
 pub const COUNTS_CHANGED: &str = "counts-changed";
@@ -48,6 +51,12 @@ pub const MEETINGS_CHANGED: &str = "meetings-changed";
 pub const RECORDING_STATUS: &str = "recording-status";
 /// Pet window only, every 100 ms while recording: track levels 0–1.
 pub const RECORDING_LEVEL: &str = "recording-level";
+/// Pet window only: a Zoom or Meet call started (offer it, or start recording it in Auto mode).
+pub const CALL_DETECTED: &str = "call-detected";
+/// Pet window only: a detected call ended; `stopAtMs` is when its recording stops, if it does.
+pub const CALL_ENDED: &str = "call-ended";
+/// Pet window only: an ended call came back before its recording stopped.
+pub const CALL_RESUMED: &str = "call-resumed";
 
 /// At most one `celebrate` reaction per this gap.
 const CELEBRATE_GAP: Duration = Duration::from_secs(10);
@@ -359,6 +368,27 @@ pub fn recording_level(app: &AppHandle, l: RecordingLevel) {
     }
 }
 
+/// Sent to the pet window only; it offers the call or starts recording it.
+pub fn call_detected(app: &AppHandle, c: CallDetected) {
+    if let Err(e) = app.emit_to(crate::windows::PET, CALL_DETECTED, c) {
+        eprintln!("[events] emit {CALL_DETECTED} failed: {e}");
+    }
+}
+
+/// Sent to the pet window only; it announces the coming stop or asks about the recording.
+pub fn call_ended(app: &AppHandle, c: CallEnded) {
+    if let Err(e) = app.emit_to(crate::windows::PET, CALL_ENDED, c) {
+        eprintln!("[events] emit {CALL_ENDED} failed: {e}");
+    }
+}
+
+/// Sent to the pet window only; it withdraws the call-ended notice.
+pub fn call_resumed(app: &AppHandle, c: CallResumed) {
+    if let Err(e) = app.emit_to(crate::windows::PET, CALL_RESUMED, c) {
+        eprintln!("[events] emit {CALL_RESUMED} failed: {e}");
+    }
+}
+
 /// `pet-reaction {input: "celebrate"}` when a task becomes done, at most once per 10 s.
 pub fn celebrate(app: &AppHandle) {
     static LAST: Mutex<Option<Instant>> = Mutex::new(None);
@@ -380,6 +410,7 @@ fn gap_passed(last: Option<Instant>, now: Instant) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transcribe::calls::detect::CallApp;
 
     #[test]
     fn celebrate_is_throttled_to_ten_seconds() {
@@ -401,5 +432,14 @@ mod tests {
         assert_eq!(t.emit(t0 + ms(1_500), AGENTS_GAP), Emit::After(ms(500)));
         t.emitted(t0 + ms(2_000));
         assert_eq!(t.emit(t0 + ms(3_000), AGENTS_GAP), Emit::Now);
+    }
+
+    #[test]
+    fn call_ended_without_stop_serialises_null() {
+        let ended = CallEnded { call_id: "zoom:1".into(), app: CallApp::Zoom, stop_at_ms: None };
+        assert_eq!(
+            serde_json::to_value(ended).unwrap(),
+            serde_json::json!({ "callId": "zoom:1", "app": "zoom", "stopAtMs": null })
+        );
     }
 }

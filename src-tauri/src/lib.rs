@@ -163,6 +163,8 @@ pub fn run() {
             commands::resume_recording,
             commands::stop_recording,
             commands::set_recording_language,
+            commands::call_detection_status,
+            commands::call_keep_recording,
             commands::import_meeting,
             commands::transcribe_item,
             commands::list_meetings,

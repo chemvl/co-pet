@@ -270,7 +270,42 @@ export interface RecordingStatus {
   mic: boolean;
   system: boolean;
   /** Only on the transition to `idle`. */
-  endedReason: 'maxLength' | 'tooShort' | null;
+  endedReason: 'maxLength' | 'tooShort' | 'callEnded' | null;
+}
+
+export type CallApp = 'zoom' | 'meet';
+
+/** `call-detected` (pet only): `ask` = offer to record it, `auto` = start recording it. */
+export interface CallDetected {
+  callId: string;
+  app: CallApp;
+  /** The Meet meeting name; null for Zoom. */
+  name: string | null;
+  mode: 'ask' | 'auto';
+}
+
+/** `call-ended` (pet only): `stopAtMs` = when the call's recording stops on its own; null when
+ *  nothing stops it (a Co-pet recording still runs: ask the user). */
+export interface CallEnded {
+  callId: string;
+  app: CallApp;
+  stopAtMs: number | null;
+}
+
+/** `call-resumed` (pet only). */
+export interface CallResumed {
+  callId: string;
+}
+
+/** `call_detection_status` (Settings › Transcribe). */
+export interface CallDetectionStatus {
+  mode: 'off' | 'ask' | 'auto';
+  /** CoreAudio names the processes using the mic; false = the device flag only (older macOS). */
+  perProcessMic: boolean;
+  /** Where window titles (Meet detection) come from. */
+  titles: 'screenRecording' | 'accessibility' | 'none';
+  /** The call in progress. */
+  active: CallDetected | null;
 }
 
 export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' | 'trashed' | 'restored';
@@ -621,6 +656,12 @@ export interface EventPayloads {
   'recording-status': RecordingStatus;
   /** Pet window only, every 100 ms while recording: track levels 0–1 (0 for a track that is off). */
   'recording-level': { mic: number; system: number };
+  /** Pet window only: a Zoom or Meet call started. */
+  'call-detected': CallDetected;
+  /** Pet window only: a detected call ended. */
+  'call-ended': CallEnded;
+  /** Pet window only: an ended call came back before its recording stopped. */
+  'call-resumed': CallResumed;
 }
 
 // Phase 4 M3 — pet diary

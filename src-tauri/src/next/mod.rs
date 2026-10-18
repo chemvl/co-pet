@@ -22,7 +22,7 @@ use crate::windows;
 
 mod proactive;
 mod slot;
-pub use proactive::{after_done, after_meeting, start};
+pub use proactive::{after_done, after_meeting, pet_shown, start};
 
 /// Candidates returned by [`rank`].
 const MAX_CANDIDATES: usize = 8;

@@ -1,7 +1,6 @@
 //! Meeting transcription.
 pub mod assemble;
 pub mod audio;
-#[allow(dead_code)] // consumed by the call watcher runtime, the next task
 pub mod calls;
 pub mod diarize;
 pub mod extract;
@@ -12,6 +11,12 @@ pub mod summary;
 pub mod wer;
 pub mod worker;
 
-/// Crash recovery, the transcription worker and the audio retention loop (in setup, after
-/// `sync::start`, with `TranscribeQueue` managed).
-pub use worker::start;
+use tauri::{AppHandle, Manager};
+
+/// Crash recovery, the transcription worker, the audio retention loop and call detection (in
+/// setup, after `sync::start`, with `TranscribeQueue` and `Recorder` managed).
+pub fn start(app: &AppHandle) {
+    app.manage(calls::CallWatch::default());
+    worker::start(app);
+    calls::start(app);
+}

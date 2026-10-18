@@ -121,7 +121,7 @@ pub fn classify(s: &Snapshot) -> Signals {
     }
 }
 
-fn is_browser(bundle_id: &str) -> bool {
+pub(super) fn is_browser(bundle_id: &str) -> bool {
     BROWSER_BUNDLE_PREFIXES.iter().any(|p| bundle_id.starts_with(p))
 }
 

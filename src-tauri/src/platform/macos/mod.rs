@@ -6,13 +6,11 @@ pub mod frontmost;
 pub mod fullscreen;
 pub mod idle;
 pub mod keys;
-#[allow(dead_code)] // consumed by the call watcher (`transcribe::calls`), the next task
 pub mod mic_users;
 pub mod pasteboard;
 pub mod permissions;
 pub mod pointer;
 pub mod screens;
-#[allow(dead_code)] // consumed by the call watcher (`transcribe::calls`), a later task; fullscreen uses window_list
 pub mod window_titles;
 
 use objc2::MainThreadMarker;

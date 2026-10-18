@@ -71,15 +71,21 @@ fn shown_last_hour(conn: &Connection, now_ms: i64) -> AppResult<i64> {
     )?)
 }
 
-/// Onboarding done, inside `whatsNext.workHours`, and the pet neither paused nor hidden by the user.
+/// Onboarding done, inside `whatsNext.workHours`, and [`pet_shown`].
 fn pet_available(conn: &Connection, now: DateTime<Local>) -> AppResult<bool> {
     if !settings::get::<bool>(conn, "onboarding.completed")?
-        || settings::get::<bool>(conn, "pet.paused")?
         || !in_work_hours(&settings::get(conn, "whatsNext.workHours")?, now.naive_local())
     {
         return Ok(false);
     }
-    let now_ms = now.timestamp_millis();
+    pet_shown(conn, now.timestamp_millis())
+}
+
+/// The pet neither paused (`pet.paused`) nor hidden by the user (`pet.hiddenUntil`) at `now_ms`.
+pub fn pet_shown(conn: &Connection, now_ms: i64) -> AppResult<bool> {
+    if settings::get::<bool>(conn, "pet.paused")? {
+        return Ok(false);
+    }
     Ok(!settings::get::<Option<f64>>(conn, "pet.hiddenUntil")?.is_some_and(|until| (now_ms as f64) < until))
 }
 

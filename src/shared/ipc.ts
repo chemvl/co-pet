@@ -6,7 +6,7 @@ import type {
   HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskStatus, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, UpdateStatus, RecordingStatus,
-  MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider,
+  MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider, CallDetectionStatus,
 } from './types';
 
 // Step 3 — storage
@@ -59,6 +59,10 @@ export const resumeRecording = () => invoke<RecordingStatus>('resume_recording')
 export const stopRecording = () => invoke<string>('stop_recording');
 export const setRecordingLanguage = (language: string) =>
   invoke<RecordingStatus>('set_recording_language', { language });
+/** Settings › Transcribe: the auto-record mode, Meet/Zoom signal sources and the call in progress. */
+export const callDetectionStatus = () => invoke<CallDetectionStatus>('call_detection_status');
+/** Keep recording on a `call-ended` notice: the call's recording no longer stops with it. */
+export const callKeepRecording = (callId: string) => invoke<void>('call_keep_recording', { callId });
 /** Resolves with the new meeting id; rejects with `unsupportedAudio`. */
 export const importMeeting = (path: string) => invoke<string>('import_meeting', { path });
 /** Resolves with the new meeting id; rejects with `invalid` or `unsupportedAudio`. */

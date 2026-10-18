@@ -697,6 +697,12 @@ impl Recorder {
         self.end(app, None, None).await
     }
 
+    /// Stops `meeting_id` because the call it was recording ended (`callEnded`). Errors:
+    /// `notRecording` (that session is no longer running), `tooShort`.
+    pub async fn stop_for_call(&self, app: &AppHandle, meeting_id: &str) -> AppResult<String> {
+        self.end(app, Some(meeting_id), Some("callEnded")).await
+    }
+
     /// `stop` for the session of `only` (any session when `None`); `ended_reason` goes into the
     /// idle status.
     async fn end(&self, app: &AppHandle, only: Option<&str>, ended_reason: Option<&str>) -> AppResult<String> {

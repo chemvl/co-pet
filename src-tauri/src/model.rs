@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
+use crate::transcribe::calls::detect::CallApp;
 
 /// Built-in category ids in design-system order; `unsorted` is last. Users add more rows to
 /// `categories` (`db::categories`).
@@ -680,7 +681,7 @@ pub struct MeetingDetail {
 
 /// The recorder (`recording-status`). `state`: `idle | recording | paused`; `elapsed_ms` is the
 /// active time (pauses excluded) when sent; `mic` / `system`: the track is capturing;
-/// `ended_reason`: `maxLength | tooShort`, only on the transition to `idle`.
+/// `ended_reason`: `maxLength | tooShort | callEnded`, only on the transition to `idle`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingStatus {
@@ -692,6 +693,47 @@ pub struct RecordingStatus {
     pub mic: bool,
     pub system: bool,
     pub ended_reason: Option<String>,
+}
+
+/// `call-detected` (pet only). `mode`: `ask` (offer it) | `auto` (start recording it).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallDetected {
+    pub call_id: String,
+    pub app: CallApp,
+    /// The Meet meeting name; `None` for Zoom.
+    pub name: Option<String>,
+    pub mode: &'static str,
+}
+
+/// `call-ended` (pet only). `stop_at_ms`: when the call's recording stops on its own; `None`
+/// when nothing stops it (a Co-pet recording still runs: ask the user).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallEnded {
+    pub call_id: String,
+    pub app: CallApp,
+    pub stop_at_ms: Option<i64>,
+}
+
+/// `call-resumed` (pet only).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallResumed {
+    pub call_id: String,
+}
+
+/// `call_detection_status` (Settings › Transcribe). `mode`: `transcribe.autoRecord`;
+/// `per_process_mic`: CoreAudio names the processes using the mic (else the device flag only);
+/// `titles`: where window titles come from, `screenRecording | accessibility | none`;
+/// `active`: the call in progress.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallDetectionStatus {
+    pub mode: String,
+    pub per_process_mic: bool,
+    pub titles: String,
+    pub active: Option<CallDetected>,
 }
 
 /// One local day of a diary week; `date` is `YYYY-MM-DD`.

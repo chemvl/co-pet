@@ -2,6 +2,7 @@
 //! executable) that runs while `mcp.paused` is false. It restarts 5 s after it exits, except with
 //! exit code 3 (the port is taken), which leaves it stopped in the `portInUse` state. A port
 //! change restarts it on the new port.
+#[cfg(target_os = "macos")]
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -55,6 +56,7 @@ impl Default for McpHttp {
 /// the port), starts the server unless paused and follows `mcp.paused` and `mcp.httpPort`.
 pub fn start(app: &AppHandle) {
     app.manage(McpHttp::default());
+    #[cfg(target_os = "macos")]
     match super::mcp_exe() {
         Ok(exe) => reap_orphans(&exe),
         Err(e) => eprintln!("[agent] http: {e}"),
@@ -74,9 +76,12 @@ pub fn start(app: &AppHandle) {
 }
 
 /// Kills `copet-mcp --http` processes an earlier Co-pet left behind when it died without running
-/// its exit path (SIGKILL, crash), and waits until they are gone so the port is free.
+/// its exit path (SIGKILL, crash), and waits until they are gone so the port is free. Windows
+/// needs no reaping: the job object (`platform::process`) kills helpers with Co-pet.
+#[cfg(target_os = "macos")]
 fn reap_orphans(exe: &Path) {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+    let Some(name) = exe.file_name() else { return };
     let Ok(exe) = exe.canonicalize() else { return };
     let mut sys = System::new();
     sys.refresh_processes_specifics(
@@ -84,7 +89,7 @@ fn reap_orphans(exe: &Path) {
         true,
         ProcessRefreshKind::nothing().with_exe(UpdateKind::Always).with_cmd(UpdateKind::Always),
     );
-    for p in sys.processes_by_exact_name("copet-mcp".as_ref()) {
+    for p in sys.processes_by_exact_name(name) {
         if is_orphan(p.parent().map(|p| p.as_u32()), p.exe(), p.cmd(), &exe) {
             eprintln!("[agent] http: killing orphaned copet-mcp pid {}", p.pid());
             if let Err(e) = p.kill_and_wait() {
@@ -96,6 +101,7 @@ fn reap_orphans(exe: &Path) {
 
 /// An HTTP server of this app's `copet-mcp` (`exe`, canonical) whose parent is launchd. Stdio
 /// servers belong to their agent and exit with its pipe.
+#[cfg(target_os = "macos")]
 fn is_orphan(parent: Option<u32>, exe: Option<&Path>, cmd: &[OsString], ours: &Path) -> bool {
     parent == Some(1) && exe == Some(ours) && cmd.iter().skip(1).any(|a| a == "--http")
 }
@@ -217,10 +223,12 @@ fn spawn(exe: &Path, port: u16, sock: &Path) -> std::io::Result<tokio::process::
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
     use super::*;
 
+    #[cfg(unix)]
     fn script(dir: &Path, body: &str) -> PathBuf {
         let path = dir.join("copet-mcp");
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -232,6 +240,7 @@ mod tests {
         Arc::new(Mutex::new(HttpState::Running))
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn port_in_use_stops_without_restart() {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -249,6 +258,7 @@ mod tests {
         assert_eq!(changes.load(Ordering::SeqCst), 1, "running → portInUse; running was already set");
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn other_exit_restarts_after_the_delay() {
         const DELAY: Duration = Duration::from_millis(200);
@@ -282,6 +292,7 @@ mod tests {
         assert!(!keeps(None, 4823));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn orphans_are_launchd_children_running_our_http_server() {
         let ours = Path::new("/Applications/Co-pet.app/Contents/MacOS/copet-mcp");

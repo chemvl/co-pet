@@ -1,8 +1,11 @@
 //! Speech-to-text benchmark: transcribes audio files with the app's engines and, where a
 //! reference `<file stem>.txt` sits next to a file, scores it.
 //!
-//! cargo run --release --example stt_bench -- [--models <dir>] [--lang auto|en|vi|zh|vi+en]
+//! cargo run --release --example stt_bench -- --models <dir> [--lang auto|en|vi|zh|vi+en]
 //!     [--greedy] [--diarize] <files…>
+//!
+//! `<dir>` is the app's `models` folder (`~/Library/Application Support/com.copet.app/models`
+//! on macOS, `%APPDATA%\com.copet.app\models` on Windows).
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,7 +17,7 @@ use copet_lib::transcribe::stt::{SpeechToText, WhisperStt};
 use copet_lib::transcribe::audio::Convert;
 use copet_lib::transcribe::{assemble, audio, models, wer};
 
-const USAGE: &str = "usage: stt_bench [--models <dir>] [--lang auto|en|vi|zh|vi+en] [--greedy] [--diarize] <files…>";
+const USAGE: &str = "usage: stt_bench --models <dir> [--lang auto|en|vi|zh|vi+en] [--greedy] [--diarize] <files…>";
 
 struct Args {
     models: PathBuf,
@@ -25,9 +28,9 @@ struct Args {
 }
 
 fn parse_args() -> Result<Args, String> {
-    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
+    let mut models = None;
     let mut args = Args {
-        models: Path::new(&home).join("Library/Application Support/com.copet.app/models"),
+        models: PathBuf::new(),
         lang: "auto".to_owned(),
         greedy: false,
         diarize: false,
@@ -36,7 +39,7 @@ fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
-            "--models" => args.models = it.next().ok_or("--models needs a directory")?.into(),
+            "--models" => models = Some(PathBuf::from(it.next().ok_or("--models needs a directory")?)),
             "--lang" => {
                 args.lang = it.next().ok_or("--lang needs a value")?;
                 if !["auto", "en", "vi", "zh", "vi+en"].contains(&args.lang.as_str()) {
@@ -52,6 +55,7 @@ fn parse_args() -> Result<Args, String> {
     if args.files.is_empty() {
         return Err("no input files".to_owned());
     }
+    args.models = models.ok_or("--models is required")?;
     Ok(args)
 }
 

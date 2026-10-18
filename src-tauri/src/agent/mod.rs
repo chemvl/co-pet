@@ -39,9 +39,9 @@ pub fn start(app: &AppHandle) {
     http::start(app);
 }
 
-/// The bundled `copet-mcp`, next to the app executable.
+/// The bundled `copet-mcp` (`copet-mcp.exe` on Windows), next to the app executable.
 pub fn mcp_exe() -> AppResult<PathBuf> {
-    Ok(std::env::current_exe()?.with_file_name("copet-mcp"))
+    Ok(std::env::current_exe()?.with_file_name(format!("copet-mcp{}", std::env::consts::EXE_SUFFIX)))
 }
 
 pub fn status(app: &AppHandle) -> AppResult<McpStatus> {
@@ -194,5 +194,17 @@ impl tools::Host for AppHost {
             *last = Some(now);
         }
         events::pet_reaction(&self.0, PetReaction::new("glance"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_exe_sits_next_to_the_app_with_the_platform_suffix() {
+        let exe = mcp_exe().unwrap();
+        assert_eq!(exe.parent(), std::env::current_exe().unwrap().parent());
+        assert_eq!(exe.file_name().unwrap(), format!("copet-mcp{}", std::env::consts::EXE_SUFFIX).as_str());
     }
 }

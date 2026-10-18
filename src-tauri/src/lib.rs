@@ -40,7 +40,12 @@ pub fn run() {
     platform::init_main_thread();
     let builder = tauri::Builder::default()
         // Registered first so a second launch never gets as far as setup.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // Windows launches a second instance with the link as an argument; the deep-link
+            // plugin forwards it to `on_open_url`, so only a plain relaunch opens a window.
+            if argv.iter().any(|a| a.starts_with("copet://")) {
+                return;
+            }
             let opened = if settings_bool(app, "onboarding.completed") {
                 windows::open_home(app, None)
             } else {
@@ -114,6 +119,11 @@ pub fn run() {
                 system::apply_autostart(&handle);
             } else {
                 windows::open_onboarding(&handle)?;
+            }
+            // Installed builds register `copet://` from the NSIS installer; dev builds register at runtime.
+            #[cfg(all(windows, debug_assertions))]
+            if let Err(e) = app.deep_link().register_all() {
+                eprintln!("[links] register: {e}");
             }
             // `copet://` links: while running, and the one that launched the app.
             let links_handle = handle.clone();

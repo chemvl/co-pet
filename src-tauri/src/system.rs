@@ -71,8 +71,8 @@ fn spawn_quit(app: AppHandle) {
     tauri::async_runtime::spawn(async move { quit(&app).await });
 }
 
-/// SIGTERM (`kill`, launchd), SIGINT and SIGHUP exit through `quit` instead of ending the
-/// process outright, which would orphan `llama-server`.
+/// SIGTERM/SIGINT/SIGHUP (macOS) or console close/logoff/shutdown (Windows) exit through `quit`
+/// instead of ending the process outright, which would orphan `llama-server`.
 pub fn quit_on_signals(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -97,6 +97,25 @@ async fn signals() {
         _ = term.recv() => {}
         _ = int.recv() => {}
         _ = hup.recv() => {}
+    }
+}
+
+/// Resolves on the first console control event; never when the handlers can't be installed.
+#[cfg(windows)]
+async fn signals() {
+    use tokio::signal::windows::{ctrl_break, ctrl_c, ctrl_close, ctrl_logoff, ctrl_shutdown};
+    let (Ok(mut c), Ok(mut b), Ok(mut close), Ok(mut logoff), Ok(mut shutdown)) =
+        (ctrl_c(), ctrl_break(), ctrl_close(), ctrl_logoff(), ctrl_shutdown())
+    else {
+        eprintln!("[system] could not install console handlers");
+        return std::future::pending().await;
+    };
+    tokio::select! {
+        _ = c.recv() => {}
+        _ = b.recv() => {}
+        _ = close.recv() => {}
+        _ = logoff.recv() => {}
+        _ = shutdown.recv() => {}
     }
 }
 

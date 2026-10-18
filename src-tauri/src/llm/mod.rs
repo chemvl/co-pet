@@ -49,10 +49,15 @@ impl Default for LlmServer {
 /// in debug builds falls back to `src-tauri/resources/llama/` when the resource dir lacks it.
 fn server_dir(app: &AppHandle) -> AppResult<PathBuf> {
     let dir = app.path().resource_dir()?.join("llama");
-    if !dir.join("llama-server").exists() && cfg!(debug_assertions) {
+    if !server_exe(&dir).exists() && cfg!(debug_assertions) {
         return Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join("llama"));
     }
     Ok(dir)
+}
+
+/// `llama-server` (`llama-server.exe` on Windows) inside `dir`.
+pub(crate) fn server_exe(dir: &Path) -> PathBuf {
+    dir.join(format!("llama-server{}", std::env::consts::EXE_SUFFIX))
 }
 
 /// The verified file of the selected model (`ai.modelId`), if it is downloaded.
@@ -89,7 +94,7 @@ fn free_port() -> AppResult<u16> {
 #[cfg(target_os = "macos")]
 pub fn reap_orphans(app: &AppHandle) {
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-    let Ok(exe) = server_dir(app).and_then(|d| Ok(d.join("llama-server").canonicalize()?)) else {
+    let Ok(exe) = server_dir(app).and_then(|d| Ok(server_exe(&d).canonicalize()?)) else {
         return;
     };
     let mut sys = System::new();
@@ -142,7 +147,8 @@ impl LlmServer {
             let _ = r.child.kill().await;
             *running = None;
         }
-        let exe = dir.join("llama-server");
+        let exe = server_exe(dir);
+        #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))?;

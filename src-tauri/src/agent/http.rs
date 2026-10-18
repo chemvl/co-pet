@@ -138,7 +138,7 @@ impl McpHttp {
                 return;
             }
         };
-        let sock = app.state::<Paths>().sock.clone();
+        let sock = app.state::<Paths>().mcp_endpoint();
         let handle = app.clone();
         let changed = move || events::agents_changed(&handle);
         let task = tauri::async_runtime::spawn(supervise(exe, port, sock, self.state.clone(), RESTART_DELAY, changed));
@@ -177,7 +177,7 @@ fn set(state: &Mutex<HttpState>, s: HttpState) -> bool {
 async fn supervise(
     exe: PathBuf,
     port: u16,
-    sock: PathBuf,
+    sock: String,
     state: Arc<Mutex<HttpState>>,
     delay: Duration,
     changed: impl Fn() + Send + Sync + 'static,
@@ -211,7 +211,7 @@ async fn supervise(
     }
 }
 
-fn spawn(exe: &Path, port: u16, sock: &Path) -> std::io::Result<tokio::process::Child> {
+fn spawn(exe: &Path, port: u16, sock: &str) -> std::io::Result<tokio::process::Child> {
     let mut cmd = Command::new(exe);
     cmd.args(["--http", "--port", &port.to_string()])
         .env("COPET_SOCKET", sock)
@@ -240,6 +240,10 @@ mod tests {
         Arc::new(Mutex::new(HttpState::Running))
     }
 
+    fn endpoint(dir: &Path) -> String {
+        dir.join("mcp.sock").to_string_lossy().into_owned()
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn port_in_use_stops_without_restart() {
@@ -252,7 +256,7 @@ mod tests {
         let changed = move || {
             counted.fetch_add(1, Ordering::SeqCst);
         };
-        let sup = supervise(exe, 4823, dir.path().join("mcp.sock"), s.clone(), Duration::ZERO, changed);
+        let sup = supervise(exe, 4823, endpoint(dir.path()), s.clone(), Duration::ZERO, changed);
         tokio::time::timeout(Duration::from_secs(2), sup).await.expect("no restart after exit code 3");
         assert_eq!(*s.lock().unwrap(), HttpState::PortInUse);
         assert_eq!(changes.load(Ordering::SeqCst), 1, "running → portInUse; running was already set");
@@ -266,7 +270,7 @@ mod tests {
         let runs = dir.path().join("runs");
         let exe = script(dir.path(), &format!("echo run >> '{}'; exit 1", runs.display()));
         let started = std::time::Instant::now();
-        let sup = tokio::spawn(supervise(exe, 4823, dir.path().join("mcp.sock"), state(), DELAY, || {}));
+        let sup = tokio::spawn(supervise(exe, 4823, endpoint(dir.path()), state(), DELAY, || {}));
         while std::fs::read_to_string(&runs).map_or(0, |r| r.lines().count()) < 2 {
             assert!(started.elapsed() < Duration::from_secs(5), "not restarted");
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -279,7 +283,7 @@ mod tests {
     async fn missing_binary_stops() {
         let dir = tempfile::tempdir().unwrap();
         let s = state();
-        let sock = dir.path().join("mcp.sock");
+        let sock = endpoint(dir.path());
         supervise(dir.path().join("copet-mcp"), 4823, sock, s.clone(), Duration::ZERO, || {}).await;
         assert_eq!(*s.lock().unwrap(), HttpState::Stopped);
     }

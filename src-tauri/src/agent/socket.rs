@@ -1,19 +1,25 @@
-//! The Unix socket the `copet-mcp` sidecar talks to (`Paths::sock`, mode 0600). One JSON object
+//! The endpoint the `copet-mcp` sidecar talks to (`Paths::mcp_endpoint`): a Unix socket with mode
+//! 0600 on macOS, a per-user named pipe on Windows (`agent::pipe`). One JSON object
 //! per line each way: `{id, client, tool, args}` in; `{id, ok: true, result}` or
 //! `{id, ok: false, error, message}` out. Calls on one connection run concurrently (at most
 //! [`MAX_IN_FLIGHT`]) and answer in completion order, matched by `id`. A line over
 //! [`MAX_LINE`] bytes gets one `invalid` reply and the connection is closed.
 use std::future::Future;
+#[cfg(unix)]
 use std::io::ErrorKind;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
+#[cfg(unix)]
 use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixListener;
 use tokio::sync::{Mutex, Semaphore};
 
@@ -39,6 +45,7 @@ struct Request {
 }
 
 /// Binds the socket and serves connections until the app quits. A bind failure is logged.
+#[cfg(unix)]
 pub fn start(app: &AppHandle) {
     let path = app.state::<Paths>().sock.clone();
     let app = app.clone();
@@ -66,7 +73,14 @@ pub fn start(app: &AppHandle) {
     });
 }
 
+/// Serves the per-user named pipe until the app quits.
+#[cfg(windows)]
+pub fn start(app: &AppHandle) {
+    super::pipe::server::start(app, app.state::<Paths>().mcp_endpoint());
+}
+
 /// Removes a stale socket file, binds, then restricts the socket to this user.
+#[cfg(unix)]
 fn bind(path: &Path) -> std::io::Result<UnixListener> {
     match std::fs::remove_file(path) {
         Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
@@ -78,7 +92,7 @@ fn bind(path: &Path) -> std::io::Result<UnixListener> {
 }
 
 /// Reads request lines and answers each with `handle`'s reply.
-async fn serve<R, W, F, Fut>(read: R, write: W, handle: F)
+pub(super) async fn serve<R, W, F, Fut>(read: R, write: W, handle: F)
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -148,7 +162,7 @@ fn error_reply(id: Value, e: &ToolError) -> Value {
 }
 
 /// One request line → one response. The call runs on the blocking pool (SQLite, file copies).
-async fn handle(app: AppHandle, line: String) -> Value {
+pub(super) async fn handle(app: AppHandle, line: String) -> Value {
     let req: Request = match serde_json::from_str(&line) {
         Ok(r) => r,
         Err(e) => {
@@ -174,11 +188,15 @@ async fn handle(app: AppHandle, line: String) -> Value {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
+    use tokio::io::DuplexStream;
+    #[cfg(unix)]
     use tokio::net::UnixStream;
 
     use super::*;
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn bind_replaces_stale_socket_and_is_private() {
         let dir = tempfile::tempdir().unwrap();
@@ -194,10 +212,10 @@ mod tests {
         assert_eq!(line, "ping\n");
     }
 
-    /// `serve` on one end of a socket pair, answering `{"echo": <line>}`.
-    fn echo_server() -> UnixStream {
-        let (client, server) = UnixStream::pair().unwrap();
-        let (read, write) = server.into_split();
+    /// `serve` on one end of an in-memory pipe, answering `{"echo": <line>}`.
+    fn echo_server() -> DuplexStream {
+        let (client, server) = tokio::io::duplex(64 * 1024);
+        let (read, write) = tokio::io::split(server);
         tokio::spawn(serve(read, write, |line| async move { json!({ "echo": line }) }));
         client
     }
@@ -205,7 +223,7 @@ mod tests {
     #[tokio::test]
     async fn oversized_line_is_rejected_and_closes() {
         let client = echo_server();
-        let (read, mut write) = client.into_split();
+        let (read, mut write) = tokio::io::split(client);
         let mut lines = BufReader::new(read).lines();
         let fits = "a".repeat(MAX_LINE);
         write.write_all(format!("{fits}\n").as_bytes()).await.unwrap();
@@ -223,10 +241,10 @@ mod tests {
 
     #[tokio::test]
     async fn in_flight_calls_are_bounded() {
-        let (client, server) = UnixStream::pair().unwrap();
+        let (client, server) = tokio::io::duplex(64 * 1024);
         let started = Arc::new(AtomicUsize::new(0));
         let gate = Arc::new(Semaphore::new(0));
-        let (read, write) = server.into_split();
+        let (read, write) = tokio::io::split(server);
         let (s, g) = (started.clone(), gate.clone());
         tokio::spawn(serve(read, write, move |line| {
             let (s, g) = (s.clone(), g.clone());
@@ -236,7 +254,7 @@ mod tests {
                 json!({ "echo": line })
             }
         }));
-        let (read, mut write) = client.into_split();
+        let (read, mut write) = tokio::io::split(client);
         for i in 0..MAX_IN_FLIGHT + 3 {
             write.write_all(format!("{i}\n").as_bytes()).await.unwrap();
         }

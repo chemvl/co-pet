@@ -1,5 +1,6 @@
-// The Unix socket to Co-pet: one JSON line per call (`{id, client, tool, args}`), answered by
-// `{id, ok: true, result}` or `{id, ok: false, error, message}` in completion order.
+// The Unix socket (macOS) or named pipe (Windows) to Co-pet: one JSON line per call
+// (`{id, client, tool, args}`), answered by `{id, ok: true, result}` or
+// `{id, ok: false, error, message}` in completion order.
 import { createConnection, type Socket } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -34,9 +35,15 @@ export class BridgeError extends Error {
   }
 }
 
-/// `COPET_SOCKET`, else the socket in Co-pet's app data folder.
-export function socketPath(env: Record<string, string | undefined> = process.env): string {
-  return env.COPET_SOCKET ?? `${env.HOME}/Library/Application Support/com.copet.app/mcp.sock`;
+/// `COPET_SOCKET`, else Co-pet's endpoint: the per-user pipe on Windows, the socket in the app
+/// data folder on macOS.
+export function socketPath(
+  env: Record<string, string | undefined> = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (env.COPET_SOCKET) return env.COPET_SOCKET;
+  if (platform === 'win32') return `\\\\.\\pipe\\copet-mcp-${Buffer.from(env.USERNAME ?? '', 'utf8').toString('hex')}`;
+  return `${env.HOME}/Library/Application Support/com.copet.app/mcp.sock`;
 }
 
 function slug(s: string): string {

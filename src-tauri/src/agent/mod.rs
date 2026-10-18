@@ -1,10 +1,13 @@
 //! The local MCP server's Rust side. The `copet-mcp` sidecar forwards each tool call over a Unix
-//! socket ([`socket`]); [`tools::dispatch`] identifies the client ([`clients`]), applies pause,
-//! write approval and agent visibility, does the work and logs it ([`activity`]). Agents never
-//! touch SQLite.
+//! socket on macOS or a named pipe on Windows ([`socket`]); [`tools::dispatch`] identifies the
+//! client ([`clients`]), applies pause, write approval and agent visibility, does the work and
+//! logs it ([`activity`]). Agents never touch SQLite.
 pub mod activity;
 pub mod clients;
 pub mod http;
+/// Only Windows serves the pipe; macOS compiles the name for its test.
+#[cfg(any(windows, test))]
+pub(crate) mod pipe;
 mod socket;
 pub mod tools;
 

@@ -1,4 +1,5 @@
-//! App data layout under `~/Library/Application Support/com.copet.app/`.
+//! App data layout under the Tauri app data folder (`~/Library/Application Support/com.copet.app/`
+//! on macOS, `%APPDATA%\com.copet.app\` on Windows).
 use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
@@ -15,7 +16,8 @@ pub struct Paths {
     pub tmp: PathBuf,
     /// Meeting audio, one folder per meeting (`recordings/<meetingId>/`). Never synced.
     pub recordings: PathBuf,
-    /// Unix socket the `copet-mcp` sidecar talks to.
+    /// Unix socket the `copet-mcp` sidecar talks to (macOS).
+    #[cfg(unix)]
     pub sock: PathBuf,
 }
 
@@ -28,6 +30,7 @@ impl Paths {
             models: root.join("models"),
             tmp: root.join("tmp"),
             recordings: root.join("recordings"),
+            #[cfg(unix)]
             sock: root.join("mcp.sock"),
             root,
         }
@@ -62,5 +65,14 @@ impl Paths {
     /// Absolute path of a library-relative path such as `ab/abcd….pdf` or `thumbs/abcd….png`.
     pub fn abs(&self, rel: &str) -> PathBuf {
         self.library.join(rel)
+    }
+
+    /// Where the `copet-mcp` sidecar connects: the Unix socket (macOS) or the per-user named
+    /// pipe (Windows). Passed to the sidecar as `COPET_SOCKET`.
+    pub fn mcp_endpoint(&self) -> String {
+        #[cfg(unix)]
+        return self.sock.to_string_lossy().into_owned();
+        #[cfg(windows)]
+        return crate::agent::pipe::pipe_name(&std::env::var("USERNAME").unwrap_or_default());
     }
 }

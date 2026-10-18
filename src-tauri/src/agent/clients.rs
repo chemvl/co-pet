@@ -198,10 +198,11 @@ fn output_within(mut cmd: Command, timeout: Duration) -> io::Result<Output> {
     Ok(Output { status, stdout: stdout.join().unwrap_or_default(), stderr: stderr.join().unwrap_or_default() })
 }
 
-/// The user's login shell (`/bin/zsh -l`), so the PATH matches their terminal's. Each call is
-/// killed after [`SHELL_TIMEOUT`].
+/// The user's login shell (`/bin/zsh -l`) on macOS, so the PATH matches their terminal's; on
+/// Windows, Co-pet's own PATH. Each call is killed after [`SHELL_TIMEOUT`].
 pub struct LoginShell;
 
+#[cfg(unix)]
 impl ClaudeCli for LoginShell {
     fn find(&self) -> Option<PathBuf> {
         let mut cmd = Command::new("/bin/zsh");
@@ -216,6 +217,42 @@ impl ClaudeCli for LoginShell {
         // Through the login shell too: `claude` is a node script that needs its PATH.
         let mut cmd = Command::new("/bin/zsh");
         cmd.args(["-lc", r#"exec "$0" "$@""#]).arg(claude).args(args);
+        let out = output_within(cmd, SHELL_TIMEOUT).map_err(|e| AppError::msg(format!("claude failed: {e}")))?;
+        if out.status.success() {
+            return Ok(());
+        }
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        Err(AppError::msg(format!("claude failed ({}): {}", out.status, stderr.trim())))
+    }
+}
+
+/// `CREATE_NO_WINDOW`: `claude.exe` and the `cmd.exe` behind a `.cmd` shim are console
+/// programs, which would otherwise flash a console window over Co-pet.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// The first `claude.exe` in the folders of `path` (a `PATH` value), else the first
+/// `claude.cmd` (npm shim).
+#[cfg(any(windows, test))]
+fn claude_on_path(path: &std::ffi::OsStr) -> Option<PathBuf> {
+    let dirs: Vec<PathBuf> = std::env::split_paths(path).filter(|d| !d.as_os_str().is_empty()).collect();
+    ["claude.exe", "claude.cmd"].iter().find_map(|name| dirs.iter().map(|d| d.join(name)).find(|p| p.is_file()))
+}
+
+#[cfg(windows)]
+impl ClaudeCli for LoginShell {
+    /// Searched in-process: `where.exe` prints in the console code page, which mangles
+    /// non-ASCII folder names.
+    fn find(&self) -> Option<PathBuf> {
+        claude_on_path(&std::env::var_os("PATH")?)
+    }
+
+    /// Runs `claude` directly; for a `.cmd` shim the standard library goes through `cmd.exe`
+    /// with batch-safe quoting (a plain `cmd /C` would mangle quoted paths with spaces).
+    fn run(&self, claude: &Path, args: &[OsString]) -> AppResult<()> {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = Command::new(claude);
+        cmd.args(args).creation_flags(CREATE_NO_WINDOW);
         let out = output_within(cmd, SHELL_TIMEOUT).map_err(|e| AppError::msg(format!("claude failed: {e}")))?;
         if out.status.success() {
             return Ok(());
@@ -623,8 +660,12 @@ mod tests {
 
     use super::*;
 
-    const COMMAND: &str = "/Applications/Co-pet.app/Contents/MacOS/copet-mcp";
+    /// The bundled `copet-mcp` in a made-up install folder.
+    fn command() -> PathBuf {
+        std::env::temp_dir().join("Co-pet").join(format!("copet-mcp{}", std::env::consts::EXE_SUFFIX))
+    }
 
+    #[cfg(unix)]
     #[test]
     fn shell_calls_are_killed_after_the_timeout() {
         // The shell's `sleep` child keeps the pipes open after the shell is killed.
@@ -641,6 +682,23 @@ mod tests {
         assert_eq!(out.status.code(), Some(3));
         assert_eq!(out.stdout, b"out\n");
         assert_eq!(out.stderr, b"err\n");
+    }
+
+    #[test]
+    fn claude_on_path_prefers_the_exe_over_the_npm_shim() {
+        let root = tempfile::tempdir().unwrap();
+        let (npm, bin, empty) = (root.path().join("npm Cường"), root.path().join("bin"), root.path().join("empty"));
+        for d in [&npm, &bin, &empty] {
+            fs::create_dir_all(d).unwrap();
+        }
+        fs::write(npm.join("claude.cmd"), "").unwrap();
+        let path = |dirs: &[&PathBuf]| std::env::join_paths(dirs).unwrap();
+        assert_eq!(claude_on_path(&path(&[&empty, &npm, &bin])), Some(npm.join("claude.cmd")));
+        fs::write(bin.join("claude.exe"), "").unwrap();
+        assert_eq!(claude_on_path(&path(&[&empty, &npm, &bin])), Some(bin.join("claude.exe")), "the .exe wins");
+        assert_eq!(claude_on_path(&path(&[&empty])), None);
+        fs::create_dir_all(empty.join("claude.exe")).unwrap();
+        assert_eq!(claude_on_path(&path(&[&empty])), None, "a folder isn't a program");
     }
 
     /// A `claude` CLI that records its calls; `path: None` = not on the PATH.
@@ -672,7 +730,7 @@ mod tests {
     }
 
     fn setup<'a>(home: &Path, claude: &'a FakeClaude) -> Setup<'a> {
-        Setup { home: home.to_owned(), command: PathBuf::from(COMMAND), claude }
+        Setup { home: home.to_owned(), command: command(), claude }
     }
 
     fn k(key: &str) -> &'static Known {
@@ -698,14 +756,15 @@ mod tests {
         assert_eq!(
             json_at(&path),
             json!({ "mcpServers": { "copet": {
-                "type": "stdio", "command": COMMAND, "args": ["--stdio"], "env": { "COPET_CLIENT": "cursor" }
+                "type": "stdio", "command": command().to_str().unwrap(), "args": ["--stdio"],
+                "env": { "COPET_CLIENT": "cursor" }
             } } })
         );
         assert!(!backup_path(&path).exists(), "nothing to back up");
         let gemini = install(&s, k("gemini-cli")).unwrap();
         assert_eq!(
             json_at(&gemini)["mcpServers"]["copet"],
-            json!({ "command": COMMAND, "args": ["--stdio"], "env": { "COPET_CLIENT": "gemini-cli" } })
+            json!({ "command": command().to_str().unwrap(), "args": ["--stdio"], "env": { "COPET_CLIENT": "gemini-cli" } })
         );
         // Without the CLI, Claude Code's file is edited directly.
         let claude = install(&s, k("claude-code")).unwrap();
@@ -779,7 +838,7 @@ mod tests {
         let doc: toml_edit::DocumentMut = text.parse().unwrap();
         let entry = &doc["mcp_servers"]["copet"];
         assert!(entry.is_table(), "a [mcp_servers.copet] table: {text}");
-        assert_eq!(entry["command"].as_str(), Some(COMMAND));
+        assert_eq!(entry["command"].as_str(), command().to_str());
         assert_eq!(entry["args"].as_array().unwrap().iter().map(|a| a.as_str().unwrap()).collect::<Vec<_>>(), ["--stdio"]);
         assert_eq!(entry["env"]["COPET_CLIENT"].as_str(), Some("codex"));
         assert_eq!(fs::read_to_string(backup_path(&path)).unwrap(), original);
@@ -812,7 +871,8 @@ mod tests {
         write(&path, original);
         assert_eq!(install(&s, k("claude-code")).unwrap(), path);
         let add = format!(
-            "mcp add --scope user --transport stdio copet --env COPET_CLIENT=claude-code -- {COMMAND} --stdio"
+            "mcp add --scope user --transport stdio copet --env COPET_CLIENT=claude-code -- {} --stdio",
+            command().display()
         );
         assert_eq!(cli.calls(), [add.clone()]);
         assert_eq!(fs::read_to_string(&path).unwrap(), original, "the CLI edits it, not Co-pet");
@@ -842,6 +902,7 @@ mod tests {
         assert!(!backup_path(&path).exists(), "not written");
     }
 
+    #[cfg(unix)]
     #[test]
     fn writes_through_a_symlink() {
         let home = tempfile::tempdir().unwrap();

@@ -34,9 +34,9 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 ### 1. Prerequisites
 
 - macOS 13 or later on Apple Silicon, with Xcode Command Line Tools (`xcode-select --install`).
-- Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+, Ninja, LLVM 17+ and the Vulkan SDK for whisper's GPU build (`winget install Kitware.CMake Ninja-build.Ninja LLVM.LLVM KhronosGroup.VulkanSDK`). Set `CMAKE_GENERATOR=Ninja` before building: with the Visual Studio generator, whisper.cpp's Vulkan shader build exceeds the Windows path length limit. Build Windows on Windows; cross-compiling from macOS isn't supported.
+- Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+, Ninja, LLVM 17+ and the Vulkan SDK for whisper's GPU build (`winget install Kitware.CMake Ninja-build.Ninja LLVM.LLVM KhronosGroup.VulkanSDK`). Build Windows on Windows; cross-compiling from macOS isn't supported.
   On a Windows machine without a GPU driver that provides `vulkan-1.dll` (for example a VM), the test binaries need the Vulkan Runtime's `vulkan-1.dll` on `PATH` to start (CI adds the runtime its Vulkan SDK action installs).
-  Run every Windows build (`cargo`, `tauri dev`, `tauri build`, `build:prod`) from an "x64 Native Tools Command Prompt for VS 2022" (or after `call "<VS>\VC\Auxiliary\Build\vcvars64.bat"`), with Ninja, CMake and `C:\Program Files\LLVM\bin` on `PATH` and these variables set:
+  Run every Windows build (`cargo`, `tauri dev`, `tauri build`, `build:prod`) from an "x64 Native Tools Command Prompt for VS 2022" (or after `call "<VS>\VC\Auxiliary\Build\vcvars64.bat"`), with Ninja, CMake and `C:\Program Files\LLVM\bin` on `PATH` and these variables set (Ninja because with the Visual Studio generator, whisper.cpp's Vulkan shader build exceeds the Windows path length limit):
 
   ```bat
   set CMAKE_GENERATOR=Ninja

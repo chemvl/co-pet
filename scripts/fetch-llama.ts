@@ -31,10 +31,15 @@ const TARGETS = {
   win32: {
     asset: `llama-${BUILD}-bin-win-vulkan-x64.zip`,
     sha256: "2c07574e7bde71321cb785282b20cc821e951132149eeceeea32ddebdbf0598e",
-    // Empty: llama-server.exe, the DLLs beside it (ggml loads its CPU/Vulkan backends at runtime)
-    // without the other tools' `*-impl.dll`, and the LICENSE files.
+    // Empty: llama-server.exe and the DLLs beside it (ggml loads its CPU/Vulkan backends at
+    // runtime) without the other tools' `*-impl.dll`, plus LICENSE-LLVM-OpenMP.
     files: [],
     exe: "llama-server.exe",
+    // The zip lacks llama.cpp's own MIT license: fetched from the same tag into LICENSE.
+    license: {
+      url: `https://raw.githubusercontent.com/ggml-org/llama.cpp/${BUILD}/LICENSE`,
+      sha256: "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+    },
   },
 } as const;
 const target =
@@ -77,6 +82,17 @@ async function findFile(dir: string, name: string): Promise<string | null> {
   return null;
 }
 
+/** Downloads `url` and checks its SHA-256 against `sha256`. */
+async function download(url: string, sha256: string): Promise<Uint8Array> {
+  console.log(`Downloading ${url}`);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed: HTTP ${res.status} for ${url}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (digest !== sha256) throw new Error(`checksum mismatch for ${url}: got ${digest}, expected ${sha256}`);
+  return bytes;
+}
+
 if ((await exists(versionFile)) && (await readFile(versionFile, "utf8")).trim() === VERSION) {
   console.log(`llama.cpp ${VERSION} already present in ${dest}`);
   process.exit(0);
@@ -84,12 +100,7 @@ if ((await exists(versionFile)) && (await readFile(versionFile, "utf8")).trim() 
 
 const work = await mkdtemp(join(tmpdir(), "copet-llama-"));
 try {
-  console.log(`Downloading ${URL}`);
-  const res = await fetch(URL);
-  if (!res.ok) throw new Error(`download failed: HTTP ${res.status}`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const digest = createHash("sha256").update(bytes).digest("hex");
-  if (digest !== target.sha256) throw new Error(`checksum mismatch: got ${digest}, expected ${target.sha256}`);
+  const bytes = await download(URL, target.sha256);
   const archive = join(work, target.asset);
   await writeFile(archive, bytes);
 
@@ -100,18 +111,31 @@ try {
 
   const exe = await findFile(work, target.exe);
   if (!exe) throw new Error(`${target.exe} not found in the archive`);
-  const files: readonly string[] = target.files.length
-    ? target.files
-    : (await readdir(dirname(exe))).filter(windowsRuntimeFile);
+  // [name, source path] of every file to install.
+  const sources: [string, string][] = [];
+  if (target.files.length) {
+    for (const name of target.files) {
+      const src = await findFile(work, name);
+      if (!src) throw new Error(`${name} not found in the archive`);
+      sources.push([name, src]);
+    }
+  } else {
+    const exeDir = dirname(exe);
+    const names = (await readdir(exeDir)).filter(windowsRuntimeFile);
+    if (!names.includes("ggml-vulkan.dll") || !names.some((n) => n.startsWith("ggml-cpu-"))) {
+      throw new Error(`ggml-vulkan.dll or ggml-cpu-*.dll missing beside ${target.exe}`);
+    }
+    for (const name of names) sources.push([name, join(exeDir, name)]);
+  }
+  const license = "license" in target ? await download(target.license.url, target.license.sha256) : null;
 
   await rm(dest, { recursive: true, force: true });
   await mkdir(dest, { recursive: true });
-  for (const name of files) {
-    const src = await findFile(work, name);
-    if (!src) throw new Error(`${name} not found in the archive`);
+  for (const [name, src] of sources) {
     // copyFile follows symlinks, so every copied file is a real file.
     await copyFile(src, join(dest, name));
   }
+  if (license) await writeFile(join(dest, "LICENSE"), license);
   if (process.platform !== "win32") await chmod(join(dest, target.exe), 0o755);
   await writeFile(versionFile, `${VERSION}\n`);
   console.log(`Installed llama.cpp ${VERSION} into ${dest}`);

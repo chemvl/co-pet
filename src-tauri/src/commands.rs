@@ -478,8 +478,10 @@ pub fn pet_status(app: AppHandle) -> crate::model::PetStatus {
 
 // ---------- Step 11: Home ----------
 
+/// Async because it can create a webview: Windows deadlocks building one inside a sync command,
+/// which runs on the main thread in the WebView2 IPC handler (the window stays blank).
 #[tauri::command]
-pub fn open_home(app: AppHandle, route: Option<String>) -> AppResult<()> {
+pub async fn open_home(app: AppHandle, route: Option<String>) -> AppResult<()> {
     crate::windows::open_home(&app, route)
 }
 
@@ -549,14 +551,17 @@ pub fn restart_app(app: AppHandle) -> AppResult<()> {
 
 /// Marks onboarding done, shows the pet, applies the login item and closes onboarding. With a
 /// data move pending it restarts instead; the next start moves the data and shows the pet.
+/// Async for the same reason as `open_home`; the pet window hops to the main thread from the
+/// blocking pool, since `on_main_sync` must not block a tokio worker.
 #[tauri::command]
-pub fn finish_onboarding(app: AppHandle) -> AppResult<()> {
+pub async fn finish_onboarding(app: AppHandle) -> AppResult<()> {
     crate::db::settings::set(&app, "onboarding.completed", &Value::Bool(true))?;
     if crate::storage::load(&app.state::<crate::paths::Paths>().base).pending_data_dir.is_some() {
         app.request_restart();
         return Ok(());
     }
-    crate::windows::create_pet_window(&app)?;
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::windows::create_pet_window(&handle)).await??;
     crate::system::apply_autostart(&app);
     if let Some(window) = app.get_webview_window(crate::windows::ONBOARDING) {
         window.close()?;
@@ -760,8 +765,9 @@ pub async fn whats_next(app: AppHandle, trigger: String) -> AppResult<Option<cra
 }
 
 /// `action`: `shown | start | done | snooze | skip`. Rejects with `invalid` or `notFound`.
+/// Async because `start` can open Home (see `open_home`).
 #[tauri::command]
-pub fn next_action(app: AppHandle, task_id: String, action: String, trigger: String) -> AppResult<()> {
+pub async fn next_action(app: AppHandle, task_id: String, action: String, trigger: String) -> AppResult<()> {
     crate::next::act(&app, &task_id, &action, &trigger)
 }
 

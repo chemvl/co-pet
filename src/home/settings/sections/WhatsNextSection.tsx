@@ -114,7 +114,7 @@ export function WhatsNextSection() {
         </div>
       </Group>
       <Group title={t('settings.whatsnext.calendar')}>
-        {access === 'unavailable' ? (
+        {access === 'unavailable' || (isWindows && access === undefined) ? (
           <p className="st-desc">{t('settings.whatsnext.calendarUnavailable')}</p>
         ) : (
           <Switch

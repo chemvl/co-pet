@@ -19,6 +19,7 @@ import {
   quitApp, requestPermission, resignPetPanel, resumeRecording, setHitRegions, setPetMoving, setRecordingLanguage,
   startRecording, stopRecording, transcribeItem, whatsNext,
 } from '../shared/ipc';
+import { isWindows } from '../shared/platform';
 import { useCategories, useRecording, useSetSetting, useSettings } from '../shared/queries';
 import type {
   CallDetected, CaptureResult, EventPayloads, HitRegion, HotkeyAction, MeetingLanguage, NextCard, NextTrigger,
@@ -319,7 +320,12 @@ export function PetApp() {
     startRecording(undefined, callId).then(
       (s) => {
         if (!s.mic) showNotice({ message: t('notice.recMicMissing'), permission: 'microphone' });
-        else if (!s.system) showNotice({ message: t('notice.recSystemMissing'), permission: 'screenRecording' });
+        else if (!s.system)
+          showNotice(
+            isWindows
+              ? { message: t('notice.recSystemMissingWin') }
+              : { message: t('notice.recSystemMissing'), permission: 'screenRecording' },
+          );
         else if (callId !== undefined && lastCall.current?.callId === callId) {
           showNotice(callAutoNotice(lastCall.current, t));
         }

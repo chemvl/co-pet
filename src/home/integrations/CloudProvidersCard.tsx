@@ -139,7 +139,11 @@ function KeySetup({ p, keyProvider, onTest, onChange }: SetupProps & { keyProvid
     <>
       {p.hasKey ? (
         <div className="in-actions">
-          <StatusPill status="local" icon="lock" label={t('integrations.ai.keySaved')} />
+          <StatusPill
+            status="local"
+            icon="lock"
+            label={t(isWindows ? 'integrations.ai.keySavedWin' : 'integrations.ai.keySaved')}
+          />
           <Button variant="secondary" size="sm" onClick={() => void onTest()}>
             {t('integrations.ai.test')}
           </Button>

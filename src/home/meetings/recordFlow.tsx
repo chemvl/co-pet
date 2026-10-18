@@ -46,7 +46,7 @@ export function MeetingActionsProvider({ children }: { children: ReactNode }): R
   const [busy, setBusy] = useState(false);
 
   const permissionAction = (kind: 'microphone' | 'screenRecording') => ({
-    label: t('onboarding.perm.open'),
+    label: t(isWindows ? 'common.openSettings' : 'onboarding.perm.open'),
     run: () => void requestPermission(kind).catch((e: unknown) => show({ message: errorMessage(t, e) })),
   });
 
@@ -58,7 +58,7 @@ export function MeetingActionsProvider({ children }: { children: ReactNode }): R
           if (!s.mic) show({ message: t('notice.recMicMissing'), action: permissionAction('microphone') });
           else if (!s.system)
             show({
-              message: t('notice.recSystemMissing'),
+              message: t(isWindows ? 'notice.recSystemMissingWin' : 'notice.recSystemMissing'),
               action: isWindows ? undefined : permissionAction('screenRecording'),
             });
           if (s.meetingId) openMeeting(s.meetingId);

@@ -1,6 +1,8 @@
 //! Meeting transcription.
 pub mod assemble;
 pub mod audio;
+#[allow(dead_code)] // consumed by the call watcher runtime, the next task
+pub mod calls;
 pub mod diarize;
 pub mod extract;
 pub mod models;

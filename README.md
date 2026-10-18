@@ -96,6 +96,8 @@ src-tauri\target\release\bundle\nsis\Co-pet_<version>_x64-setup.exe
 
 Local builds are unsigned: SmartScreen warns when the installer is downloaded onto another machine and run there.
 
+Step-by-step local builds for the team and signed releases: [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md).
+
 ### 5. Run the checks
 
 ```sh
@@ -196,4 +198,5 @@ Open Home › Agents and click **Add to Claude Code / Cursor / Codex / Gemini CL
 
 - [Product brief](docs/Desktop%20Pet%20Inbox%20%E2%80%94%20Product%20Brief.md)
 - [UI & UX guidelines](docs/Co-pet%20%E2%80%94%20UI%20%26%20UX%20guidelines.md)
+- [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md)
 - [Phase 2 plan](docs/handoff/copet-phase2-plan.md) and session handoffs in `docs/handoff/`

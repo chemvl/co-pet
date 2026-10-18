@@ -214,9 +214,9 @@ pub fn read_image(b: Board) -> Option<Vec<u8>> {
     }
 }
 
-/// Puts `bytes` on the open clipboard as `fmt`; the clipboard owns the memory afterwards. The block
-/// is zeroed, so slack past `bytes` (blocks are rounded up) reads as NULs.
-fn set(fmt: u32, bytes: &[u8]) -> AppResult<()> {
+/// A movable global block holding `bytes`; the caller owns it. The block is zeroed, so slack past
+/// `bytes` (blocks are rounded up) reads as NULs.
+pub(crate) fn global_alloc(bytes: &[u8]) -> AppResult<HGLOBAL> {
     unsafe {
         let g = GlobalAlloc(GHND, bytes.len().max(1)).map_err(|e| AppError::msg(e.to_string()))?;
         let p = GlobalLock(g);
@@ -226,10 +226,16 @@ fn set(fmt: u32, bytes: &[u8]) -> AppResult<()> {
         }
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), p as *mut u8, bytes.len());
         let _ = GlobalUnlock(g);
-        if let Err(e) = SetClipboardData(fmt, Some(HANDLE(g.0))) {
-            let _ = GlobalFree(Some(g));
-            return Err(AppError::msg(e.to_string()));
-        }
+        Ok(g)
+    }
+}
+
+/// Puts `bytes` on the open clipboard as `fmt`; the clipboard owns the memory afterwards.
+fn set(fmt: u32, bytes: &[u8]) -> AppResult<()> {
+    let g = global_alloc(bytes)?;
+    if let Err(e) = unsafe { SetClipboardData(fmt, Some(HANDLE(g.0))) } {
+        let _ = unsafe { GlobalFree(Some(g)) };
+        return Err(AppError::msg(e.to_string()));
     }
     Ok(())
 }
@@ -239,46 +245,55 @@ fn utf16z(s: &str) -> Vec<u8> {
     s.encode_utf16().chain(std::iter::once(0)).flat_map(u16::to_le_bytes).collect()
 }
 
-/// Replaces the clipboard: files as `CF_HDROP`, the known `data` types as their Windows formats,
-/// and optional PNG bytes (also as `CF_DIB`). Concealed/transient data is kept out of clipboard
-/// history, cloud clipboard and clipboard monitors.
+/// The Windows formats for files (`CF_HDROP`), the known `data` types and optional PNG bytes (also
+/// as `CF_DIB`), in the order they are offered. Concealed/transient data is marked so clipboard
+/// history, cloud clipboard and clipboard monitors skip it. Shared by the clipboard and drag-out.
+pub(crate) fn formats(files: &[PathBuf], data: &BTreeMap<String, String>, png: Option<&[u8]>) -> Vec<(u32, Vec<u8>)> {
+    let mut out = Vec::new();
+    if !files.is_empty() {
+        out.push((CF_HDROP.0 as u32, clip::dropfiles_encode(files)));
+    }
+    if let Some(t) = data.get(TYPE_PLAIN) {
+        out.push((CF_UNICODETEXT.0 as u32, utf16z(t)));
+    }
+    if let Some(h) = data.get(TYPE_HTML) {
+        // NUL-terminated: CF_HTML readers commonly treat the block as a C string.
+        out.push((registered("HTML Format"), [clip::cf_html_encode(h).as_slice(), &[0]].concat()));
+    }
+    if let Some(u) = data.get(TYPE_URL) {
+        out.push((registered("UniformResourceLocatorW"), utf16z(u)));
+        let moz = match data.get(TYPE_URL_NAME) {
+            Some(title) => format!("{u}\n{title}"),
+            None => u.clone(),
+        };
+        out.push((registered("text/x-moz-url"), utf16z(&moz)));
+        if !data.contains_key(TYPE_PLAIN) {
+            out.push((CF_UNICODETEXT.0 as u32, utf16z(u)));
+        }
+    }
+    if let Some(png) = png {
+        out.push((registered("PNG"), png.to_vec()));
+        if let Some(dib) = clip::png_to_dib(png) {
+            out.push((CF_DIB.0 as u32, dib));
+        }
+    }
+    if data.contains_key(TYPE_CONCEALED) || data.contains_key(TYPE_TRANSIENT) {
+        out.push((registered("ExcludeClipboardContentFromMonitorProcessing"), vec![0]));
+        out.push((registered("CanIncludeInClipboardHistory"), 0u32.to_le_bytes().to_vec()));
+        out.push((registered("CanUploadToCloud"), 0u32.to_le_bytes().to_vec()));
+    }
+    out
+}
+
+/// Replaces the clipboard with [`formats`].
 pub fn write(files: &[PathBuf], data: &BTreeMap<String, String>, png: Option<&[u8]>) -> AppResult<()> {
     if files.is_empty() && data.is_empty() && png.is_none() {
         return Err(AppError::msg("nothing to write to the pasteboard"));
     }
     let _c = Clipboard::open()?;
     unsafe { EmptyClipboard() }.map_err(|e| AppError::msg(e.to_string()))?;
-    if !files.is_empty() {
-        set(CF_HDROP.0 as u32, &clip::dropfiles_encode(files))?;
-    }
-    if let Some(t) = data.get(TYPE_PLAIN) {
-        set(CF_UNICODETEXT.0 as u32, &utf16z(t))?;
-    }
-    if let Some(h) = data.get(TYPE_HTML) {
-        // NUL-terminated: CF_HTML readers commonly treat the block as a C string.
-        set(registered("HTML Format"), &[clip::cf_html_encode(h).as_slice(), &[0]].concat())?;
-    }
-    if let Some(u) = data.get(TYPE_URL) {
-        set(registered("UniformResourceLocatorW"), &utf16z(u))?;
-        let moz = match data.get(TYPE_URL_NAME) {
-            Some(title) => format!("{u}\n{title}"),
-            None => u.clone(),
-        };
-        set(registered("text/x-moz-url"), &utf16z(&moz))?;
-        if !data.contains_key(TYPE_PLAIN) {
-            set(CF_UNICODETEXT.0 as u32, &utf16z(u))?;
-        }
-    }
-    if let Some(png) = png {
-        set(registered("PNG"), png)?;
-        if let Some(dib) = clip::png_to_dib(png) {
-            set(CF_DIB.0 as u32, &dib)?;
-        }
-    }
-    if data.contains_key(TYPE_CONCEALED) || data.contains_key(TYPE_TRANSIENT) {
-        set(registered("ExcludeClipboardContentFromMonitorProcessing"), &[0])?;
-        set(registered("CanIncludeInClipboardHistory"), &0u32.to_le_bytes())?;
-        set(registered("CanUploadToCloud"), &0u32.to_le_bytes())?;
+    for (fmt, bytes) in formats(files, data, png) {
+        set(fmt, &bytes)?;
     }
     Ok(())
 }

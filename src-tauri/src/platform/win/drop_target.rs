@@ -45,6 +45,11 @@ pub fn mark_own_drag() {
     OWN.store(now_ms(), Ordering::Relaxed);
 }
 
+/// Reads a drag's data object with the clipboard's precedence (`pasteboard::read_from`).
+pub(crate) fn read_data_object(d: &IDataObject) -> crate::platform::pasteboard::PbRead {
+    super::pasteboard::read_from(&DataObjectFormats(d.clone()))
+}
+
 struct DataObjectFormats(IDataObject);
 
 impl Formats for DataObjectFormats {
@@ -108,10 +113,7 @@ impl IDropTarget_Impl for Target_Impl {
         effect: *mut DROPEFFECT,
     ) -> windows::core::Result<()> {
         let own = now_ms().saturating_sub(OWN.load(Ordering::Relaxed)) < OWN_MARK_WINDOW_MS;
-        let usable = !own
-            && data
-                .as_ref()
-                .is_some_and(|d| super::pasteboard::read_from(&DataObjectFormats(d.clone())).content.is_some());
+        let usable = !own && data.as_ref().is_some_and(|d| read_data_object(d).content.is_some());
         ACCEPT.set(usable);
         // The pet never activates, so the foreground app is the drag source.
         SOURCE.with(|s| *s.borrow_mut() = usable.then(frontmost::frontmost_app).flatten());

@@ -1,9 +1,12 @@
-// Native drag-out from a tray card (plan Step 7.2). Pointerdown arms it; after 4 px
-// of movement the formats come from Rust (`prepare_drag`, Alt = as files), the pet
-// plays `handOver`, and tauri-plugin-drag starts a real OS drag.
+// Native drag-out from a tray card (plan Step 7.2). Pointerdown arms it; after 4 px of movement
+// the pet plays `handOver` and a real OS drag starts with the formats Rust picks (`prepare_drag`).
+// macOS: tauri-plugin-drag, Alt (Option) = as files. Windows: `start_drag_out`, since the plugin
+// drags files only there; Ctrl = as files, because Windows targets read Alt during a drag as
+// "create a shortcut" and refuse a copy-only drag while it is held.
 import { startDrag } from '@crabnebula/tauri-plugin-drag';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { prepareDrag } from '../shared/ipc';
+import { prepareDrag, startDragOut } from '../shared/ipc';
+import { isWindows } from '../shared/platform';
 import type { ItemSummary } from '../shared/types';
 import { renderDragImage } from './dragImage';
 
@@ -35,14 +38,19 @@ export function armDragOut(e: ReactPointerEvent, opts: DragOutOptions): void {
   const onMove = (ev: PointerEvent) => {
     if (Math.hypot(ev.clientX - x0, ev.clientY - y0) <= DRAG_THRESHOLD) return;
     cleanup();
-    void run(ev.altKey);
+    void run(isWindows ? ev.ctrlKey : ev.altKey);
   };
   const run = async (asFiles: boolean) => {
     opts.onStart();
     try {
-      const plan = await prepareDrag(opts.items.map((i) => i.id), asFiles);
+      const ids = opts.items.map((i) => i.id);
       const first = opts.items[0];
       const icon = renderDragImage({ kind: first.kind, meetingId: first.meetingId, title: first.title, count: opts.items.length });
+      if (isWindows) {
+        opts.onEnd(await startDragOut(ids, asFiles, icon));
+        return;
+      }
+      const plan = await prepareDrag(ids, asFiles);
       await startDrag({ item: plan, icon, mode: 'copy' }, ({ result }) => opts.onEnd(result === 'Dropped'));
     } catch (err) {
       opts.onEnd(false);

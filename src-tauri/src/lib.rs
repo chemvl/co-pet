@@ -175,6 +175,8 @@ pub fn run() {
             commands::capture_selection,
             commands::capture_note,
             commands::prepare_drag,
+            #[cfg(windows)]
+            commands::start_drag_out,
             commands::copy_items,
             commands::paste_items,
             commands::ai_status,

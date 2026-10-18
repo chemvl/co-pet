@@ -41,6 +41,9 @@ pub struct AppPicker {
 pub use os::MainThread;
 #[cfg(windows)]
 pub use os::init_main_thread;
+/// Tray drag-out with typed data; macOS uses tauri-plugin-drag.
+#[cfg(windows)]
+pub use os::drag_out;
 /// NUL-terminated UTF-16 for Win32 strings.
 #[cfg(windows)]
 pub(crate) use os::wide;

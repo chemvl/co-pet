@@ -185,6 +185,22 @@ pub(crate) fn in_drop_halo(app: &AppHandle, mt: MainThread, x: f64, y: f64) -> b
     !s.hidden && near_pet(&s.regions, (x - frame.x) / scale, (y - frame.y) / scale, HALO)
 }
 
+/// Lets the mouse through the pet window right away, ahead of the loop. Windows' drag-out runs
+/// OLE's modal loop inside a main-thread task, so no tick runs until the drop; the window, which
+/// takes the mouse while the press is on a tray card, would otherwise stay the window under the
+/// cursor for the whole drag, and its webview would take the drop. The next tick after the drag
+/// sets the state from the cursor again.
+#[cfg(windows)]
+pub(crate) fn pass_through(app: &AppHandle, mt: MainThread) {
+    let Some(window) = windows::pet_window(app) else { return };
+    let state = app.state::<PointerState>();
+    let mut s = state.lock();
+    if !s.passthrough {
+        pet_window::set_ignores_mouse(mt, &window, true);
+        s.passthrough = true;
+    }
+}
+
 /// The union of the pet regions grown by `pad` (window CSS px).
 fn pet_bounds(regions: &[HitRegion], pad: f64) -> Option<Rect> {
     let (x0, y0, x1, y1) = regions.iter().filter(|r| r.kind == "pet").fold(None, |acc, r| {

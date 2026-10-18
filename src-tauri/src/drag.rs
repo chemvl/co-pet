@@ -29,6 +29,28 @@ pub async fn prepare_drag(app: &AppHandle, ids: Vec<String>, as_files: bool) -> 
     .map_err(|e| AppError::msg(e.to_string()))?
 }
 
+/// Windows: prepares the drag like [`prepare_drag`] and runs it (`platform::drag_out`). `icon` is
+/// the card image as a PNG data URL, `scale` the window's pixels per CSS px. `true` when a target
+/// accepted the drop.
+#[cfg(windows)]
+pub async fn start_drag_out(app: &AppHandle, ids: Vec<String>, as_files: bool, icon: String, scale: f64) -> AppResult<bool> {
+    use base64::Engine;
+    let png = icon
+        .strip_prefix("data:image/png;base64,")
+        .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+        .ok_or(AppError::Code("invalid"))?;
+    let (files, data): (Vec<std::path::PathBuf>, _) = match prepare_drag(app, ids, as_files).await? {
+        DragPlan::Files(files) => (files.into_iter().map(Into::into).collect(), BTreeMap::new()),
+        DragPlan::Data { data, .. } => (Vec::new(), data),
+    };
+    let handle = app.clone();
+    on_main(app, move |mt| {
+        crate::platform::pointer::pass_through(&handle, mt);
+        crate::platform::drag_out::run(mt, &files, &data, &png, scale)
+    })
+    .await?
+}
+
 /// Writes the drag formats to the general pasteboard. Image files also carry `public.png`.
 pub async fn copy_items(app: &AppHandle, ids: Vec<String>) -> AppResult<()> {
     let handle = app.clone();

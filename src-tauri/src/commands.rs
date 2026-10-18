@@ -117,6 +117,20 @@ pub async fn prepare_drag(app: AppHandle, ids: Vec<String>, as_files: bool) -> A
     crate::drag::prepare_drag(&app, ids, as_files).await
 }
 
+/// Windows only: the tray's native drag-out (see `platform::drag_out`).
+#[cfg(windows)]
+#[tauri::command]
+pub async fn start_drag_out(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    ids: Vec<String>,
+    as_files: bool,
+    icon: String,
+) -> AppResult<bool> {
+    let scale = window.scale_factor()?;
+    crate::drag::start_drag_out(&app, ids, as_files, icon, scale).await
+}
+
 #[tauri::command]
 pub async fn copy_items(app: AppHandle, ids: Vec<String>) -> AppResult<()> {
     crate::drag::copy_items(&app, ids).await

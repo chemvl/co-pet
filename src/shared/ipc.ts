@@ -40,6 +40,9 @@ export const listCalendars = () => invoke<CalendarInfo[]>('list_calendars');
 // Step 7 — tray, copy, paste, drag-out
 export const prepareDrag = (ids: string[], asFiles: boolean) =>
   invoke<DragPlan>('prepare_drag', { ids, asFiles });
+/** Windows only: prepares and runs the native drag; resolves `true` when a target took the drop. */
+export const startDragOut = (ids: string[], asFiles: boolean, icon: string) =>
+  invoke<boolean>('start_drag_out', { ids, asFiles, icon });
 export const copyItems = (ids: string[]) => invoke<void>('copy_items', { ids });
 export const pasteItems = (ids: string[]) => invoke<'ok' | 'needsAccessibility'>('paste_items', { ids });
 

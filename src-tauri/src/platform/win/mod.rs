@@ -2,6 +2,7 @@
 pub mod apps;
 pub mod audio_convert;
 pub mod calendar;
+pub mod drag_out;
 pub mod drop_target;
 pub mod frontmost;
 pub mod fullscreen;

@@ -303,7 +303,7 @@ export interface CallDetectionStatus {
   /** CoreAudio names the processes using the mic; false = the device flag only (older macOS). */
   perProcessMic: boolean;
   /** Where window titles (Meet detection) come from. */
-  titles: 'screenRecording' | 'accessibility' | 'none';
+  titles: 'screenRecording' | 'accessibility' | 'native' | 'none';
   /** The call in progress. */
   active: CallDetected | null;
 }
@@ -434,7 +434,7 @@ export interface PermissionsStatus {
   screenRecording: boolean;
   accessibility: boolean;
   microphone: 'granted' | 'denied' | 'notDetermined';
-  calendar: 'granted' | 'denied' | 'notDetermined';
+  calendar: 'granted' | 'denied' | 'notDetermined' | 'unavailable';
 }
 
 /** `list_calendars`: one event calendar on this Mac; `id` is EventKit's `calendarIdentifier`. */

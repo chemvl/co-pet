@@ -37,4 +37,9 @@ describe('callsStatusLine', () => {
     expect(callsStatusLine(s, en)).toEqual({ text: en('settings.calls.olderMac'), needsPermission: false });
     expect(callsStatusLine(s, vi)?.text).toMatch(/^Trên phiên bản macOS này/);
   });
+
+  it('native window titles need no permission line', () => {
+    const line = callsStatusLine({ mode: 'ask', perProcessMic: true, titles: 'native', active: null }, vi);
+    expect(line).toBeNull();
+  });
 });

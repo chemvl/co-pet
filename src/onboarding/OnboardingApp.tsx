@@ -1,4 +1,5 @@
 // Onboarding window (plan Step 13): Your pet · Permissions · Local AI · Apps · Hotkeys.
+// Windows skips Permissions: it has no consent prompts for screen capture or accessibility.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button, SegmentedControl } from '../ds';
 import { useAiAction } from '../home/settings/ModelCards';
@@ -12,13 +13,16 @@ import { useAiStatus, useSetSetting, useSetting } from '../shared/queries';
 import { AiStep, AppsStep, DownloadStrip, HotkeysStep, PermissionsStep, PetStep } from './steps';
 import './onboarding.css';
 
-const STEPS: readonly { label: I18nKey; note: I18nKey }[] = [
-  { label: 'onboarding.step.pet', note: 'onboarding.note.pet' },
-  { label: 'onboarding.step.permissions', note: 'onboarding.note.permissions' },
-  { label: 'onboarding.step.ai', note: 'onboarding.note.ai' },
-  { label: 'onboarding.step.apps', note: 'onboarding.note.apps' },
-  { label: 'onboarding.step.hotkeys', note: 'onboarding.note.hotkeys' },
+type StepId = 'pet' | 'permissions' | 'ai' | 'apps' | 'hotkeys';
+
+const ALL_STEPS: readonly { id: StepId; label: I18nKey; note: I18nKey }[] = [
+  { id: 'pet', label: 'onboarding.step.pet', note: 'onboarding.note.pet' },
+  { id: 'permissions', label: 'onboarding.step.permissions', note: 'onboarding.note.permissions' },
+  { id: 'ai', label: 'onboarding.step.ai', note: 'onboarding.note.ai' },
+  { id: 'apps', label: 'onboarding.step.apps', note: 'onboarding.note.apps' },
+  { id: 'hotkeys', label: 'onboarding.step.hotkeys', note: 'onboarding.note.hotkeys' },
 ];
+const STEPS = isWindows ? ALL_STEPS.filter((s) => s.id !== 'permissions') : ALL_STEPS;
 const LAST = STEPS.length - 1;
 
 export function OnboardingApp() {
@@ -42,6 +46,7 @@ export function OnboardingApp() {
 
   const petLook = look ?? savedLook;
   const skin = resolveSkin(petLook, savedSkin);
+  const current = STEPS[step].id;
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -110,13 +115,13 @@ export function OnboardingApp() {
       </header>
 
       <main ref={mainRef} tabIndex={-1} style={{ flex: '1 1 0', minHeight: 0, display: 'flex', outline: 'none' }}>
-        {step === 0 ? (
+        {current === 'pet' ? (
           <PetStep name={name ?? savedName} onName={setName} look={petLook} onLook={setLook} skin={skin} />
-        ) : step === 1 ? (
+        ) : current === 'permissions' ? (
           <PermissionsStep look={petLook} skin={skin} />
-        ) : step === 2 ? (
+        ) : current === 'ai' ? (
           <AiStep look={petLook} skin={skin} status={ai} localOnly={localOnly} />
-        ) : step === 3 ? (
+        ) : current === 'apps' ? (
           <AppsStep look={petLook} skin={skin} />
         ) : (
           <HotkeysStep look={petLook} skin={skin} />

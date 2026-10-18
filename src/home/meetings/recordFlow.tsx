@@ -6,6 +6,7 @@ import { Button } from '../../ds';
 import { errorMessage, errorText } from '../../shared/errors';
 import { useT } from '../../shared/i18n';
 import { importMeeting, requestPermission, startRecording, stopRecording } from '../../shared/ipc';
+import { isWindows } from '../../shared/platform';
 import { useRecording, useSetSetting, useSetting } from '../../shared/queries';
 import { useToast } from '../../shared/Toast';
 import { navigate } from '../router';
@@ -55,7 +56,11 @@ export function MeetingActionsProvider({ children }: { children: ReactNode }): R
       .then(
         (s) => {
           if (!s.mic) show({ message: t('notice.recMicMissing'), action: permissionAction('microphone') });
-          else if (!s.system) show({ message: t('notice.recSystemMissing'), action: permissionAction('screenRecording') });
+          else if (!s.system)
+            show({
+              message: t('notice.recSystemMissing'),
+              action: isWindows ? undefined : permissionAction('screenRecording'),
+            });
           if (s.meetingId) openMeeting(s.meetingId);
         },
         (e: unknown) =>

@@ -5,6 +5,7 @@ import { Button } from '../../../ds';
 import { errorText } from '../../../shared/errors';
 import { useT } from '../../../shared/i18n';
 import { deleteEverything, exportAll } from '../../../shared/ipc';
+import { isWindows } from '../../../shared/platform';
 import { useToast } from '../../../shared/Toast';
 import { Group, SettingRow, TypedConfirmDialog } from '../parts';
 
@@ -23,7 +24,7 @@ export function DataSection() {
       const folder = path.split('/').filter(Boolean).pop() ?? path;
       toast.show({
         message: t('settings.data.exported', { folder }),
-        action: { label: t('common.showInFinder'), run: () => void revealItemInDir(path) },
+        action: { label: t(isWindows ? 'common.showInExplorer' : 'common.showInFinder'), run: () => void revealItemInDir(path) },
       });
     } catch (e) {
       toast.show({ message: t('settings.data.exportFailed', { reason: errorText(e) }) });

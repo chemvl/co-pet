@@ -1,5 +1,6 @@
 import { Button, SegmentedControl } from '../../../ds';
 import { useT } from '../../../shared/i18n';
+import { isWindows } from '../../../shared/platform';
 import { useSetSetting, useSetting } from '../../../shared/queries';
 import { Group, SettingRow } from '../parts';
 
@@ -15,7 +16,10 @@ export function AppearanceSection({ onNavigate }: { onNavigate: (route: string) 
           {t('settings.appearance.openPetRoom')}
         </Button>
       </SettingRow>
-      <SettingRow label={t('settings.appearance.theme')} desc={t('settings.appearance.themeDesc')}>
+      <SettingRow
+        label={t('settings.appearance.theme')}
+        desc={t(isWindows ? 'settings.appearance.themeDescWin' : 'settings.appearance.themeDesc')}
+      >
         <SegmentedControl
           label={t('settings.appearance.theme')}
           value={theme === 'light' || theme === 'dark' ? theme : 'system'}

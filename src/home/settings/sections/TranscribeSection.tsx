@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Button, SegmentedControl, Switch } from '../../../ds';
 import { useT, type I18nKey } from '../../../shared/i18n';
 import { callDetectionStatus, requestPermission } from '../../../shared/ipc';
+import { isWindows } from '../../../shared/platform';
 import { useAiStatus, useSetSetting, useSetting } from '../../../shared/queries';
 import type { MeetingLanguage } from '../../../shared/types';
 import { activeCloud, providerName } from '../../integrations/cloudModel';
@@ -130,7 +131,7 @@ function CallsGroup() {
       {line && (
         <>
           <p className="st-body">{line.text}</p>
-          {line.needsPermission && (
+          {line.needsPermission && !isWindows && (
             <Button size="sm" variant="secondary" onClick={() => void requestPermission('screenRecording')}>
               {t('common.openSettings')}
             </Button>

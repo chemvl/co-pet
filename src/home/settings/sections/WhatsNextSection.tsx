@@ -3,6 +3,7 @@ import { Button, Switch } from '../../../ds';
 import { formatWeekday } from '../../../shared/format';
 import { useLang, useT } from '../../../shared/i18n';
 import { listCalendars, permissionsStatus, requestPermission } from '../../../shared/ipc';
+import { isWindows } from '../../../shared/platform';
 import { useSetSetting, useSetting } from '../../../shared/queries';
 import { Group, SettingRow, TimeRange } from '../parts';
 
@@ -27,11 +28,15 @@ export function WhatsNextSection() {
   const calendarOn = useSetting<boolean>('whatsNext.calendar', false);
   const excluded = useSetting<string[]>('whatsNext.calendarExcluded', []);
   const qc = useQueryClient();
+  // Windows reports `unavailable` (no calendar access yet), so fetch there even with the switch off.
   const perms = useQuery({
     queryKey: ['permissions'],
     queryFn: permissionsStatus,
-    enabled: calendarOn,
-    refetchInterval: (q) => (q.state.data?.calendar === 'granted' ? false : 2000),
+    enabled: calendarOn || isWindows,
+    refetchInterval: (q) => {
+      const c = q.state.data?.calendar;
+      return c === 'granted' || c === 'unavailable' ? false : 2000;
+    },
   });
   const access = perms.data?.calendar;
   const cals = useQuery({ queryKey: ['calendars'], queryFn: listCalendars, enabled: calendarOn && access === 'granted' });
@@ -109,19 +114,23 @@ export function WhatsNextSection() {
         </div>
       </Group>
       <Group title={t('settings.whatsnext.calendar')}>
-        <Switch
-          id="st-next-cal"
-          label={t('settings.whatsnext.calendarUse')}
-          description={t('settings.whatsnext.calendarUseDesc')}
-          checked={calendarOn}
-          onChange={(v) => {
-            void set('whatsNext.calendar', v).then(refreshNext);
-            if (v)
-              void permissionsStatus().then((p) => {
-                if (p.calendar === 'notDetermined') void requestPermission('calendar');
-              });
-          }}
-        />
+        {access === 'unavailable' ? (
+          <p className="st-desc">{t('settings.whatsnext.calendarUnavailable')}</p>
+        ) : (
+          <Switch
+            id="st-next-cal"
+            label={t('settings.whatsnext.calendarUse')}
+            description={t('settings.whatsnext.calendarUseDesc')}
+            checked={calendarOn}
+            onChange={(v) => {
+              void set('whatsNext.calendar', v).then(refreshNext);
+              if (v)
+                void permissionsStatus().then((p) => {
+                  if (p.calendar === 'notDetermined') void requestPermission('calendar');
+                });
+            }}
+          />
+        )}
         {calendarOn && access === 'notDetermined' && (
           <>
             <p className="st-body">{t('settings.whatsnext.calendarAsk')}</p>

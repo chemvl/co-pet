@@ -4,7 +4,7 @@ Co-pet is a desktop companion that lives on the edge of your screen as an animat
 
 It is local-first: items, tasks and the triage model live on your Mac. Nothing leaves the machine unless you turn on a feature that needs the network, and synced data is end-to-end encrypted.
 
-Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
+Platforms: macOS 13+ on Apple Silicon and Windows 11 x64. UI in English and Vietnamese.
 
 ## What it does
 
@@ -67,6 +67,14 @@ Notes:
 - Dev mode uses the real app data folder `~/Library/Application Support/com.copet.app/` (database, library files, models). To start fresh use Settings › Data › Delete everything, or quit the app and remove that folder.
 - macOS asks for **Screen Recording** (screen capture) and **Accessibility** (send selection, paste back) the first time you use those features. The dev binary and the bundled app get separate grants.
 - Without a backend configured, the app runs fully local; Integrations shows "Use a token instead" for Notion/Asana and Settings › Account says sync isn't set up in this build. To build with a backend, see [Backend configuration](#backend-configuration).
+
+Windows notes:
+
+- The app data folder is `%APPDATA%\com.copet.app\` (database, library files, models).
+- `copet://` links work in `tauri dev` too: the dev app registers the scheme at runtime.
+- Windows has no Screen Recording or Accessibility prompts.
+- Calendar isn't available on Windows, so What's Next doesn't use calendar events.
+- To build and install the per-user installer, see [4. Build the app bundle](#4-build-the-app-bundle).
 
 ### 4. Build the app bundle
 

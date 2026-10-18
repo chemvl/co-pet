@@ -465,8 +465,16 @@ BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('settings', NEW.key, 
   ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
 "#;
 
+/// Schema v13: `transcribe.autoRecord` (off | ask | auto) and `transcribe.autoStop`. Device-only: not in `SYNCED_SETTINGS`.
+const V13: &str = r#"
+-- Schema v13: call detection (auto-record). Device-only: not in SYNCED_SETTINGS or the sync triggers.
+INSERT INTO settings (key, value, updated_at) VALUES
+  ('transcribe.autoRecord', '"ask"', 0),   -- off | ask | auto
+  ('transcribe.autoStop', 'true', 0);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13)])
 });
 
 #[cfg(test)]

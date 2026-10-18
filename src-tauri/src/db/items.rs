@@ -962,6 +962,33 @@ mod tests {
     }
 
     #[test]
+    fn v13_call_settings_are_device_only() {
+        const KEYS: [&str; 2] = ["transcribe.autoRecord", "transcribe.autoStop"];
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 12).unwrap();
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        let get = |c: &Connection, key: &str| -> String {
+            c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(get(&c, KEYS[0]), "\"ask\"");
+        assert_eq!(get(&c, KEYS[1]), "true");
+        c.execute("DELETE FROM sync_outbox", []).unwrap();
+        crate::db::settings::put(&c, KEYS[0], &serde_json::json!("auto")).unwrap();
+        crate::db::settings::put(&c, KEYS[1], &serde_json::json!(false)).unwrap();
+        let queued: i64 = c
+            .query_row(
+                "SELECT count(*) FROM sync_outbox WHERE tbl = 'settings' AND id IN ('transcribe.autoRecord', 'transcribe.autoStop')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(queued, 0);
+        for key in KEYS {
+            assert!(!crate::sync::SYNCED_SETTINGS.contains(&key));
+        }
+    }
+
+    #[test]
     fn fts_folds_vietnamese() {
         let db = db();
         let mut conn = db.conn();

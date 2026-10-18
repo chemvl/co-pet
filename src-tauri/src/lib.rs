@@ -36,6 +36,8 @@ use crate::db::Db;
 use crate::paths::Paths;
 
 pub fn run() {
+    #[cfg(windows)]
+    platform::init_main_thread();
     let builder = tauri::Builder::default()
         // Registered first so a second launch never gets as far as setup.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {

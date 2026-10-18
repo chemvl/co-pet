@@ -100,7 +100,7 @@ impl MeetSignal {
 pub fn classify(s: &Snapshot) -> Signals {
     let is_zoom: fn(&str) -> bool = |b| b == ZOOM_BUNDLE;
     let runs = |is_app: fn(&str) -> bool| s.apps.iter().any(|(_, b)| is_app(b));
-    let safari_runs = s.apps.iter().any(|(_, b)| b.starts_with(SAFARI_BUNDLE));
+    let safari_runs = s.apps.iter().any(|(_, b)| b == SAFARI_BUNDLE);
     // Older macOS: the device flag stands for the app's mic, except while Co-pet holds it.
     let device_mic = s.mic_users.is_none() && s.device_running && !s.co_pet_recording;
     let mic_held = |by: &dyn Fn(&str) -> bool| {
@@ -218,8 +218,10 @@ impl Call {
         }
     }
 
-    fn auto_stop_link(&self) -> Option<&Link> {
-        self.linked.as_ref().filter(|l| l.auto_stop)
+    /// The link to stop when the call ends: the recording asked for auto-stop and the setting is
+    /// still on (turning it off mid-call cancels it; turning it on doesn't upgrade a link).
+    fn auto_stop_link(&self, ctx: &Ctx) -> Option<&Link> {
+        self.linked.as_ref().filter(|l| l.auto_stop && ctx.auto_stop)
     }
 
     /// Offers or auto-starts the call once; an offer the pet can't show now waits for a later step.
@@ -336,10 +338,13 @@ impl Watch {
         self.mic_in_use || !matches!(self.state, State::Idle)
     }
 
-    /// When a pending auto-stop is due: the runtime must step by then to emit `Stop`.
+    /// When a pending auto-stop is due: the runtime must step by then. It can't see the current
+    /// `Ctx`, so the step at the deadline decides whether `Stop` is still emitted.
     pub fn next_deadline(&self) -> Option<i64> {
         match &self.state {
-            State::Ending(Ending { call, since, .. }) if call.auto_stop_link().is_some() => {
+            State::Ending(Ending { call, since, .. })
+                if call.linked.as_ref().is_some_and(|l| l.auto_stop) =>
+            {
                 Some(since + END_GRACE_MS)
             }
             _ => None,
@@ -371,14 +376,14 @@ impl Ending {
     fn step(mut self, s: &Snapshot, sig: &Signals, ctx: &Ctx, actions: &mut Vec<Action>) -> State {
         let call = &mut self.call;
         if call.stays(sig) {
-            if self.announced && call.auto_stop_link().is_some() {
+            if self.announced && call.linked.is_some() {
                 actions.push(Action::Resumed { call_id: call.id.clone() });
             }
             call.offer(s, ctx, actions);
             return State::InCall(self.call);
         }
         let stop_at = self.since + END_GRACE_MS;
-        if let Some(link) = call.auto_stop_link() {
+        if let Some(link) = call.auto_stop_link(ctx) {
             if !self.announced {
                 let call_id = call.id.clone();
                 actions.push(Action::EndedStopping { call_id, app: call.app, stop_at });
@@ -556,6 +561,11 @@ mod tests {
         assert_eq!(meet_in_call(&safari), Some("abc-defg-hij".into()));
         let not_running = Snapshot { apps: vec![], ..safari };
         assert_eq!(classify(&not_running).meet, None);
+        let agent_only = Snapshot {
+            apps: vec![(SAFARI_PID + 100, "com.apple.Safari.SafeBrowsing.Service".into())],
+            ..not_running
+        };
+        assert_eq!(classify(&agent_only).meet, None);
     }
 
     // Starting a call
@@ -779,6 +789,39 @@ mod tests {
         assert_eq!(w.next_deadline(), None);
         assert_eq!(w.step(&recording(quiet(33_000)), &ctx(Mode::Ask)), vec![]);
         assert_eq!(w.active(), None);
+    }
+
+    #[test]
+    fn auto_stop_turned_off_mid_call_never_stops() {
+        let off = Ctx { mode: Mode::Ask, auto_stop: false, offers_allowed: true };
+        // Turned off before the call ends: no countdown, the user is asked instead.
+        let mut w = Watch::default();
+        let id = meet_linked(&mut w, true);
+        assert_eq!(w.step(&recording(quiet(13_000)), &off), vec![]);
+        assert_eq!(
+            w.step(&recording(quiet(33_000)), &off),
+            vec![Action::EndedManual { call_id: id, app: CallApp::Meet }]
+        );
+
+        // Turned off during the countdown: no `Stop` at the deadline.
+        let mut w = Watch::default();
+        let id = meet_linked(&mut w, true);
+        assert!(matches!(
+            w.step(&recording(quiet(13_000)), &ctx(Mode::Ask)).as_slice(),
+            [Action::EndedStopping { stop_at: 33_000, .. }]
+        ));
+        assert_eq!(w.next_deadline(), Some(33_000));
+        assert_eq!(
+            w.step(&recording(quiet(33_000)), &off),
+            vec![Action::EndedManual { call_id: id, app: CallApp::Meet }]
+        );
+        assert_eq!(w.active(), None);
+
+        // Turned on again does not upgrade a link made without auto-stop.
+        let mut w = Watch::default();
+        meet_linked(&mut w, false);
+        assert_eq!(w.step(&recording(quiet(13_000)), &ctx(Mode::Ask)), vec![]);
+        assert_eq!(w.next_deadline(), None);
     }
 
     #[test]

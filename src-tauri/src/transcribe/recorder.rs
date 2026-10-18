@@ -238,7 +238,7 @@ fn spawn_writer(
 /// The input callback: frames averaged to mono, resampled from `from` to `to` Hz. Each resampled
 /// buffer is trimmed or extended by a sample so the total stays `input × to / from` (per-buffer
 /// rounding would otherwise drift the track off the clock).
-fn mono<T>(
+pub(crate) fn mono<T>(
     chunks: mpsc::Sender<Chunk>,
     channels: usize,
     from: u32,

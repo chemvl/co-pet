@@ -34,7 +34,8 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 ### 1. Prerequisites
 
 - macOS 13 or later on Apple Silicon, with Xcode Command Line Tools (`xcode-select --install`).
-- Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+ and LLVM 17+ (`winget install Kitware.CMake LLVM.LLVM`). Build Windows on Windows; cross-compiling from macOS isn't supported.
+- Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+, Ninja, LLVM 17+ and the Vulkan SDK for whisper's GPU build (`winget install Kitware.CMake Ninja-build.Ninja LLVM.LLVM KhronosGroup.VulkanSDK`). Set `CMAKE_GENERATOR=Ninja` before building: with the Visual Studio generator, whisper.cpp's Vulkan shader build exceeds the Windows path length limit. Build Windows on Windows; cross-compiling from macOS isn't supported.
+  On a Windows machine without a GPU driver that provides `vulkan-1.dll` (for example a VM), the test binaries need the Vulkan Runtime's `vulkan-1.dll` on `PATH` to start (CI adds the runtime its Vulkan SDK action installs).
 - [Rust](https://rustup.rs) (stable).
 - [Bun](https://bun.sh) 1.4 or later.
 - Optional, only for accounts/sync/OAuth: the [Supabase CLI](https://supabase.com/docs/guides/cli) and Docker (Docker Desktop or colima).

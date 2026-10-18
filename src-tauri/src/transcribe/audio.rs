@@ -1,6 +1,6 @@
 //! Audio on disk: a 16-bit mono WAV writer for recording tracks that fills silence gaps by wall
 //! clock and meters its level, linear resampling, WAV header repair after a crash, conversion
-//! through the OS's native converter, decoding imported files and mixing tracks.
+//! through the OS's native converter or symphonia, decoding imported files and mixing tracks.
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
@@ -196,14 +196,19 @@ pub fn read_wav_f32(path: &Path) -> AppResult<Vec<f32>> {
 pub fn decode_to_wav(input: &Path, output: &Path) -> AppResult<u64> {
     let result = decode(input, output);
     if result.is_err() {
-        match std::fs::remove_file(output) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                eprintln!("[transcribe] removing {}: {e}", output.display())
-            }
-            _ => {}
-        }
+        discard(output);
     }
     result
+}
+
+/// Removes the half-written `path` of a failed conversion; a missing file is fine.
+pub(crate) fn discard(path: &Path) {
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            eprintln!("[transcribe] removing {}: {e}", path.display())
+        }
+        _ => {}
+    }
 }
 
 fn decode(input: &Path, output: &Path) -> AppResult<u64> {
@@ -267,6 +272,35 @@ fn decode(input: &Path, output: &Path) -> AppResult<u64> {
     let (writer, rate) = wav.ok_or(AppError::Code("unsupportedAudio"))?;
     writer.finalize().map_err(wav_err)?;
     Ok(frames * 1000 / u64::from(rate))
+}
+
+/// Any audio symphonia decodes → 16-bit mono WAV at 16 kHz (the speech engines' input), without
+/// an OS converter: decode to mono at the source rate, then resample. Undecodable input is
+/// `audioConvert`; on any error no output file is left.
+pub fn wav16k_from_any(input: &Path, output: &Path) -> AppResult<()> {
+    let mono = output.with_extension("mono.wav");
+    decode_to_wav(input, &mono).map_err(|_| AppError::Code("audioConvert"))?;
+    let read = WavReader::open(&mono).map_err(wav_err).and_then(|reader| {
+        let rate = reader.spec().sample_rate;
+        drop(reader);
+        Ok((read_wav_f32(&mono)?, rate))
+    });
+    discard(&mono);
+    let (samples, rate) = read?;
+    let result = write_wav16k(output, linear_resample(&samples, rate, 16_000));
+    if result.is_err() {
+        discard(output);
+    }
+    result
+}
+
+fn write_wav16k(output: &Path, samples: Vec<f32>) -> AppResult<()> {
+    let spec = WavSpec { channels: 1, sample_rate: 16_000, bits_per_sample: 16, sample_format: SampleFormat::Int };
+    let mut w = WavWriter::create(output, spec).map_err(wav_err)?;
+    for s in samples {
+        w.write_sample(to_i16(s)).map_err(wav_err)?;
+    }
+    w.finalize().map_err(wav_err)
 }
 
 /// Sums two tracks sample by sample, clamped to −1…1; the shorter one is padded with silence.
@@ -401,6 +435,20 @@ mod tests {
         std::fs::write(&input, "not audio at all").unwrap();
         assert!(matches!(decode_to_wav(&input, &output), Err(AppError::Code("unsupportedAudio"))));
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn wav16k_from_any_downmixes_and_resamples() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.wav");
+        stereo_wav(&input);
+        let out = dir.path().join("out.wav");
+        wav16k_from_any(&input, &out).unwrap();
+        let r = WavReader::open(&out).unwrap();
+        assert_eq!((r.spec().channels, r.spec().sample_rate, r.spec().bits_per_sample), (1, 16_000, 16));
+        let n = read_wav_f32(&out).unwrap().len() as i64;
+        assert!((n - 16_000).abs() <= 160, "{n} samples");
+        assert!(!dir.path().join("out.mono.wav").exists(), "the intermediate file is removed");
     }
 
     #[test]

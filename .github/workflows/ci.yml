@@ -24,6 +24,8 @@ jobs:
   windows:
     runs-on: windows-2022
     continue-on-error: true # Task 15 removes this line
+    # whisper.cpp's Vulkan shader build exceeds MAX_PATH under the Visual Studio generator.
+    env: { CMAKE_GENERATOR: Ninja }
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -31,6 +33,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: src-tauri }
+      # whisper-rs `vulkan` (Windows) builds against the full Vulkan SDK (ggml-vulkan needs glslc).
+      - uses: jakoch/install-vulkan-sdk-action@v1
+        with: { vulkan_version: 1.4.304.0, install_runtime: true, cache: true }
+      # The test binaries load vulkan-1.dll at start; the runner has no GPU driver providing it.
+      - run: Add-Content $env:GITHUB_PATH "$env:VULKAN_SDK\runtime\x64"
+      - uses: seanmiddleditch/gha-setup-ninja@v6
       - run: bun install --frozen-lockfile
       - run: bun run build:mcp
       - run: mkdir -p src-tauri/resources/llama

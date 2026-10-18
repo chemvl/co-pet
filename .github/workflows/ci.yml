@@ -1,0 +1,41 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: bun install --frozen-lockfile
+      - run: bun run build:mcp
+      # tauri-build requires the bundled resource dir to exist; `bun run fetch:llama` fills it.
+      - run: mkdir -p src-tauri/resources/llama
+        shell: bash
+      - run: cargo test
+        working-directory: src-tauri
+      - run: bun run test
+      - run: bun run typecheck
+  windows:
+    runs-on: windows-2022
+    continue-on-error: true # Task 15 removes this line
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: bun install --frozen-lockfile
+      - run: bun run build:mcp
+      - run: mkdir -p src-tauri/resources/llama
+        shell: bash
+      - run: cargo test
+        working-directory: src-tauri
+      - run: bun run test
+      - run: bun run typecheck

@@ -34,6 +34,7 @@ Platform: macOS 13+ on Apple Silicon. UI in English and Vietnamese.
 ### 1. Prerequisites
 
 - macOS 13 or later on Apple Silicon, with Xcode Command Line Tools (`xcode-select --install`).
+- Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+ and LLVM 17+ (`winget install Kitware.CMake LLVM.LLVM`). Build Windows on Windows; cross-compiling from macOS isn't supported.
 - [Rust](https://rustup.rs) (stable).
 - [Bun](https://bun.sh) 1.4 or later.
 - Optional, only for accounts/sync/OAuth: the [Supabase CLI](https://supabase.com/docs/guides/cli) and Docker (Docker Desktop or colima).

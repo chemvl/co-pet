@@ -384,6 +384,10 @@ export function PetApp() {
     const was = prevRec.current;
     prevRec.current = s.state;
     if (s.state !== 'idle') return;
+    // Stop / Keep recording mean nothing once the recording is over, however it ended.
+    const actsOnRecording = (n: Notice | null) => n?.stopRecording === true || n?.keepRecording !== undefined;
+    if (actsOnRecording(pendingNotice.current)) pendingNotice.current = null;
+    if (live.current.surface === 'notice' && actsOnRecording(live.current.notice)) closeSurface();
     if (s.endedReason) {
       showNotice(recordingEndedNotice(s.endedReason, t));
     } else if (was !== 'idle') {

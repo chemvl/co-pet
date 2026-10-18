@@ -10,6 +10,7 @@ pub struct Busy {
 }
 
 /// How an event shows the user's time (EventKit's `EKEventAvailability`).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // only the EventKit backend reads events
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Availability {
     Busy,
@@ -20,6 +21,7 @@ pub enum Availability {
 }
 
 /// What decides whether one event blocks time.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy)]
 pub struct EventFacts {
     pub all_day: bool,
@@ -29,6 +31,7 @@ pub struct EventFacts {
 }
 
 /// Timed, not marked free, not canceled, not declined by the user.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn counts_as_busy(e: &EventFacts) -> bool {
     !e.all_day && e.availability != Availability::Free && !e.canceled && !e.declined
 }

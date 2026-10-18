@@ -38,6 +38,11 @@ fn panel(w: &WebviewWindow) -> Option<PanelHandle<Wry>> {
     w.app_handle().get_webview_panel(w.label()).ok()
 }
 
+/// Registers tauri-nspanel, which `configure` needs to turn the pet window into a panel.
+pub fn plugin(b: tauri::Builder<Wry>) -> tauri::Builder<Wry> {
+    b.plugin(tauri_nspanel::init())
+}
+
 /// Builder options for the pet window.
 pub fn builder<'a>(b: WebviewWindowBuilder<'a, Wry, AppHandle>) -> WebviewWindowBuilder<'a, Wry, AppHandle> {
     b.visible_on_all_workspaces(true)

@@ -7,7 +7,10 @@ pub use super::os::pasteboard::{change_count, read, read_image, write_concealed_
 
 pub const TYPE_URL: &str = "public.url";
 pub const TYPE_URL_NAME: &str = "public.url-name";
+// Image types: Windows reads images by clipboard format, not by these names.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const TYPE_PNG: &str = "public.png";
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const TYPE_TIFF: &str = "public.tiff";
 pub const TYPE_HTML: &str = "public.html";
 pub const TYPE_PLAIN: &str = "public.utf8-plain-text";

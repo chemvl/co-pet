@@ -37,6 +37,11 @@ fn keep_tool_window(w: &WebviewWindow) {
     }
 }
 
+/// Nothing to register: the pet window is a plain Tauri window (D2).
+pub fn plugin(b: tauri::Builder<Wry>) -> tauri::Builder<Wry> {
+    b
+}
+
 /// Not focusable: tao gives the window `WS_EX_NOACTIVATE`.
 pub fn builder<'a>(b: WebviewWindowBuilder<'a, Wry, AppHandle>) -> WebviewWindowBuilder<'a, Wry, AppHandle> {
     b.focusable(false)

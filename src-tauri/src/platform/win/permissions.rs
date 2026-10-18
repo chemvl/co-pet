@@ -31,10 +31,13 @@ fn reg_sz(root: HKEY, key: &str) -> Option<String> {
 pub fn screen_recording_granted() -> bool {
     true
 }
+// The `request_*` no-ops keep the facade identical to macOS, whose `request` calls them.
+#[allow(dead_code)]
 pub fn request_screen_recording() {}
 pub fn accessibility_trusted() -> bool {
     true
 }
+#[allow(dead_code)]
 pub fn request_accessibility() {}
 
 /// The device-wide switch (HKLM, set by an admin) overrides the user's own global switch when off.
@@ -58,6 +61,7 @@ pub async fn request_microphone() -> bool {
 pub fn calendar_status() -> &'static str {
     "unavailable"
 }
+#[allow(dead_code)]
 pub async fn request_calendar() -> bool {
     false
 }

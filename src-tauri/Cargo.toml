@@ -58,12 +58,12 @@ chacha20poly1305 = { version = "0.11", default-features = false, features = ["al
 cpal = "0.18.2"
 hound = "3.5.1"
 whisper-rs = { version = "0.16", features = ["raw-api"] }
-sherpa-onnx = "1.13"
 symphonia = { version = "0.6.1", features = ["aac", "alac", "isomp4", "mp3", "flac", "wav", "pcm", "ogg", "vorbis", "aiff"] }
 tauri-plugin-updater = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16", features = ["metal"] }
+sherpa-onnx = "1.13"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
@@ -79,6 +79,16 @@ objc2-event-kit = { version = "0.3", default-features = false, features = ["std"
 # `vulkan` needs the Vulkan SDK and `CMAKE_GENERATOR=Ninja` at build time (see README);
 # whisper.cpp falls back to CPU without a Vulkan device.
 whisper-rs = { version = "0.16", features = ["vulkan"] }
+# The `static` libs are built with `/MT`, which clashes with whisper.cpp's `/MD` at link time.
+# `shared` links `sherpa-onnx-c-api.dll` (which loads `onnxruntime.dll`). Its build script downloads
+# them to `target/sherpa-onnx-prebuilt/` and copies them to `target/<profile>/`, which covers only
+# `cargo test` and `tauri dev`. The installer ships them through `bundle.resources` in
+# `tauri.windows.conf.json`, which tauri-build resolves at build time. Not shipped yet: the VC++
+# runtime (`MSVCP140.dll`, `VCRUNTIME140.dll`) that the `/MD` build needs (Task 18).
+sherpa-onnx = { version = "1.13", default-features = false, features = ["shared"] }
+# Never imported. It's a direct dependency only because its `links` key makes Cargo run its build
+# script (the DLL download) before ours, which copies those DLLs as resources.
+sherpa-onnx-sys = { version = "1.13", default-features = false, features = ["shared"] }
 windows = { version = "0.62", features = [
   "Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi",
   "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_Security", "Win32_Security_Authorization",

@@ -17,13 +17,15 @@ jobs:
       # tauri-build requires the bundled resource dir to exist; `bun run fetch:llama` fills it.
       - run: mkdir -p src-tauri/resources/llama
         shell: bash
+      # rust-cache drops sherpa-onnx's downloaded libs but keeps its build script fresh; rerun it.
+      - run: cargo clean -p sherpa-onnx-sys
+        working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri
       - run: bun run test
       - run: bun run typecheck
   windows:
     runs-on: windows-2022
-    continue-on-error: true # Task 15 removes this line
     # whisper.cpp's Vulkan shader build exceeds MAX_PATH under the Visual Studio generator.
     env: { CMAKE_GENERATOR: Ninja }
     steps:
@@ -43,6 +45,9 @@ jobs:
       - run: bun run build:mcp
       - run: mkdir -p src-tauri/resources/llama
         shell: bash
+      # rust-cache drops sherpa-onnx's downloaded libs but keeps its build script fresh; rerun it.
+      - run: cargo clean -p sherpa-onnx-sys
+        working-directory: src-tauri
       - run: cargo test
         working-directory: src-tauri
       - run: bun run test

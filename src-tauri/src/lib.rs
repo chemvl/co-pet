@@ -55,9 +55,7 @@ pub fn run() {
                 eprintln!("[app] second launch: {e}");
             }
         }));
-    #[cfg(target_os = "macos")]
-    let builder = builder.plugin(tauri_nspanel::init());
-    builder
+    platform::pet_window::plugin(builder)
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_drag::init())
         .plugin(tauri_plugin_opener::init())

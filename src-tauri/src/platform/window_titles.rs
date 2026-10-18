@@ -13,12 +13,16 @@ pub use super::os::window_titles::{running_apps, title_source, titles_for};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TitleSource {
     /// macOS window server (needs Screen Recording).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     ScreenRecording,
     /// macOS Accessibility.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Accessibility,
     /// Read without a permission (Windows).
     #[cfg_attr(not(windows), allow(dead_code))]
     Native,
+    /// macOS without either permission.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     None,
 }
 

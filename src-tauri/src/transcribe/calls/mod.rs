@@ -1,8 +1,9 @@
 //! Zoom and Google Meet call detection. [`detect`] is the pure state machine; this is its runtime.
-//! CoreAudio listeners wake one task when mic use changes; the task reads the signals on the
-//! blocking pool, steps the [`Watch`] and acts on what it returns (pet-only events, the
-//! auto-stop). While no Zoom or browser process uses the mic and no call is on, the task is
-//! parked: no timer, no thread wake. With `transcribe.autoRecord = off` no listener exists.
+//! Mic listeners (CoreAudio / WASAPI session notifications) wake one task when mic use changes;
+//! the task reads the signals on the blocking pool, steps the [`Watch`] and acts on what it
+//! returns (pet-only events, the auto-stop). While no Zoom or browser process uses the mic and no
+//! call is on, the task is parked: no timer, no thread wake. With `transcribe.autoRecord = off`
+//! no listener exists.
 pub mod detect;
 
 use std::sync::{Mutex, MutexGuard};
@@ -21,9 +22,7 @@ use crate::platform::fullscreen::Visibility;
 use crate::platform::mic_users::{self, MicUsers};
 use crate::platform::window_titles::{self, TitleSource};
 use crate::transcribe::recorder::Recorder;
-use detect::{
-    Action, CallApp, Ctx, Mode, Snapshot, Watch, CHECK_EVERY_MS, ZOOM_BUNDLE, ZOOM_MEETING_PROCESSES,
-};
+use detect::{Action, CallApp, Ctx, Mode, Snapshot, Watch, CHECK_EVERY_MS, CURRENT};
 
 const AUTO_RECORD: &str = "transcribe.autoRecord";
 const AUTO_STOP: &str = "transcribe.autoStop";
@@ -34,7 +33,8 @@ pub struct CallWatch {
     watch: Mutex<Watch>,
     /// Wakes the task: mic use changed, a call setting changed, or Keep recording.
     wake: Notify,
-    /// The CoreAudio listeners; `None` while `transcribe.autoRecord` is `off`.
+    /// The mic listeners (CoreAudio / WASAPI session notifications); `None` while
+    /// `transcribe.autoRecord` is `off`.
     listening: Mutex<Option<mic_users::Listening>>,
 }
 
@@ -183,14 +183,14 @@ fn collect_snapshot(app: &AppHandle, in_call: bool) -> Snapshot {
     let pids: Vec<i32> = snap
         .apps
         .iter()
-        .filter(|(_, bundle)| bundle == ZOOM_BUNDLE || detect::is_browser(bundle))
+        .filter(|(_, bundle)| bundle == CURRENT.zoom || detect::is_browser(CURRENT, bundle))
         .map(|&(pid, _)| pid)
         .collect();
     if !pids.is_empty() {
         snap.titles = window_titles::titles_for(&pids);
     }
-    snap.zoom_meeting_process = snap.apps.iter().any(|(_, bundle)| bundle == ZOOM_BUNDLE)
-        && window_titles::process_running(ZOOM_MEETING_PROCESSES);
+    snap.zoom_meeting_process = snap.apps.iter().any(|(_, bundle)| bundle == CURRENT.zoom)
+        && window_titles::process_running(CURRENT.zoom_meeting_processes);
     snap
 }
 
@@ -286,7 +286,8 @@ async fn apply(app: &AppHandle, action: Action) {
 }
 
 /// `call_detection_status`: the mode, where the signals come from on this Mac, and the call in
-/// progress. Reads CoreAudio and the permissions: call it off the async workers.
+/// progress. Reads the mic users and the permissions: call it off the async workers (and, on
+/// Windows, off the main thread).
 pub fn status(app: &AppHandle) -> CallDetectionStatus {
     let mode = mode(app);
     let active = match mode {

@@ -8,24 +8,49 @@ use serde::Serialize;
 
 use crate::platform::mic_users::MicUser;
 
-pub const ZOOM_BUNDLE: &str = "us.zoom.xos";
-/// Process names that run only while Zoom is in a meeting.
-pub const ZOOM_MEETING_PROCESSES: &[&str] = &["CptHost"];
+/// The app identifiers call detection matches: bundle ids (macOS) or lowercase exe names (Windows).
+pub struct AppIds {
+    pub zoom: &'static str,
+    /// Processes that run only while Zoom is in a meeting.
+    pub zoom_meeting_processes: &'static [&'static str],
+    pub browser_prefixes: &'static [&'static str],
+    /// Safari, and the process its mic capture runs in (macOS only).
+    pub safari: Option<&'static str>,
+    pub safari_mic: Option<&'static str>,
+}
+
+pub const MACOS: AppIds = AppIds {
+    zoom: "us.zoom.xos",
+    zoom_meeting_processes: &["CptHost"],
+    browser_prefixes: &[
+        "com.google.Chrome",
+        "com.microsoft.edgemac",
+        "company.thebrowser.Browser",
+        "com.brave.Browser",
+        "org.mozilla.firefox",
+        "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera",
+        "com.apple.Safari",
+    ],
+    safari: Some("com.apple.Safari"),
+    safari_mic: Some("com.apple.WebKit.GPU"),
+};
+
+pub const WINDOWS: AppIds = AppIds {
+    zoom: "zoom.exe",
+    zoom_meeting_processes: &["CptHost.exe"],
+    browser_prefixes: &["chrome.exe", "msedge.exe", "arc.exe", "brave.exe", "firefox.exe", "vivaldi.exe", "opera.exe"],
+    safari: None,
+    safari_mic: None,
+};
+
+#[cfg(target_os = "macos")]
+pub const CURRENT: &AppIds = &MACOS;
+#[cfg(windows)]
+pub const CURRENT: &AppIds = &WINDOWS;
+
 /// Zoom window titles (prefix match) that mark a meeting.
 pub const ZOOM_MEETING_TITLES: &[&str] = &["Zoom Meeting", "Zoom Webinar"];
-pub const BROWSER_BUNDLE_PREFIXES: &[&str] = &[
-    "com.google.Chrome",
-    "com.microsoft.edgemac",
-    "company.thebrowser.Browser",
-    "com.brave.Browser",
-    "org.mozilla.firefox",
-    "com.vivaldi.Vivaldi",
-    "com.operasoftware.Opera",
-    "com.apple.Safari",
-];
-/// Safari captures the mic through this process; it counts only while Safari runs.
-pub const SAFARI_MIC_BUNDLE: &str = "com.apple.WebKit.GPU";
-const SAFARI_BUNDLE: &str = "com.apple.Safari";
 /// A call is reported only after it has held this long.
 pub const START_DEBOUNCE_MS: i64 = 8_000;
 /// A call ends after all its signals have been gone this long.
@@ -33,9 +58,12 @@ pub const END_GRACE_MS: i64 = 20_000;
 /// How often the runtime re-reads the signals while a candidate or call exists.
 pub const CHECK_EVERY_MS: i64 = 5_000;
 
+/// A Meet window title: "Meet – name", optionally with a browser suffix. Edge on Windows may add
+/// a profile segment and a zero-width space ("Meet - name - Work - Microsoft\u{200b} Edge");
+/// profile separators need spaces around the dash so Meet codes like "abc-defg-hij" stay whole.
 static MEET_TITLE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^Meet\s*[-–—]\s*(.+?)(\s*[-–—]\s*(Google Chrome|Microsoft Edge|Safari|Arc|Brave|Firefox|Vivaldi|Opera))?$",
+        r"^Meet\s*[-–—]\s*(.+?)(?:(?:\s+[-–—]\s+[^-–—]+?)??\s*[-–—]\s*Microsoft\x{200B}? ?Edge|\s*[-–—]\s*(?:Google Chrome|Safari|Arc|Brave|Firefox|Vivaldi|Opera))?$",
     )
     .expect("valid Meet title pattern")
 });
@@ -54,9 +82,9 @@ pub struct Snapshot {
     pub mic_users: Option<Vec<MicUser>>,
     /// The default input runs for anyone, Co-pet included.
     pub device_running: bool,
-    /// Running apps (pid, bundle id).
+    /// Running apps (pid, bundle id on macOS, lowercase exe name on Windows).
     pub apps: Vec<(i32, String)>,
-    /// A Zoom meeting helper process ([`ZOOM_MEETING_PROCESSES`]) runs.
+    /// A Zoom meeting helper process ([`AppIds::zoom_meeting_processes`]) runs.
     pub zoom_meeting_process: bool,
     /// Titles of Zoom and browser windows (owner pid, title).
     pub titles: Vec<(i32, String)>,
@@ -98,21 +126,26 @@ impl MeetSignal {
 }
 
 pub fn classify(s: &Snapshot) -> Signals {
-    let is_zoom: fn(&str) -> bool = |b| b == ZOOM_BUNDLE;
-    let runs = |is_app: fn(&str) -> bool| s.apps.iter().any(|(_, b)| is_app(b));
-    let safari_runs = s.apps.iter().any(|(_, b)| b == SAFARI_BUNDLE);
+    classify_with(CURRENT, s)
+}
+
+pub fn classify_with(ids: &AppIds, s: &Snapshot) -> Signals {
+    let is_zoom = |b: &str| b == ids.zoom;
+    let is_any_browser = |b: &str| is_browser(ids, b);
+    let runs = |is_app: &dyn Fn(&str) -> bool| s.apps.iter().any(|(_, b)| is_app(b));
+    let safari_runs = ids.safari.is_some_and(|safari| s.apps.iter().any(|(_, b)| b == safari));
     // Older macOS: the device flag stands for the app's mic, except while Co-pet holds it.
     let device_mic = s.mic_users.is_none() && s.device_running && !s.co_pet_recording;
     let mic_held = |by: &dyn Fn(&str) -> bool| {
         s.mic_users.as_ref().is_some_and(|users| users.iter().any(|u| by(&u.bundle_id)))
     };
 
-    let zoom_mic = mic_held(&is_zoom) || (device_mic && runs(is_zoom));
+    let zoom_mic = mic_held(&is_zoom) || (device_mic && runs(&is_zoom));
     let zoom_marker = s.zoom_meeting_process
         || app_titles(s, is_zoom).any(|t| ZOOM_MEETING_TITLES.iter().any(|m| t.starts_with(m)));
-    let browser_mic = mic_held(&|b| is_browser(b) || (b == SAFARI_MIC_BUNDLE && safari_runs))
-        || (device_mic && runs(is_browser));
-    let name = app_titles(s, is_browser).find_map(meet_name);
+    let browser_mic = mic_held(&|b| is_any_browser(b) || (ids.safari_mic == Some(b) && safari_runs))
+        || (device_mic && runs(&is_any_browser));
+    let name = app_titles(s, is_any_browser).find_map(meet_name);
 
     Signals {
         zoom: (zoom_mic || zoom_marker)
@@ -121,20 +154,20 @@ pub fn classify(s: &Snapshot) -> Signals {
     }
 }
 
-pub(super) fn is_browser(bundle_id: &str) -> bool {
-    BROWSER_BUNDLE_PREFIXES.iter().any(|p| bundle_id.starts_with(p))
+pub(super) fn is_browser(ids: &AppIds, bundle_id: &str) -> bool {
+    ids.browser_prefixes.iter().any(|p| bundle_id.starts_with(p))
 }
 
 /// Titles of the windows owned by a running app that `is_app` accepts.
-fn app_titles(s: &Snapshot, is_app: fn(&str) -> bool) -> impl Iterator<Item = &str> {
+fn app_titles<'a>(s: &'a Snapshot, is_app: impl Fn(&str) -> bool + 'a) -> impl Iterator<Item = &'a str> + 'a {
     s.titles
         .iter()
         .filter(move |(pid, _)| s.apps.iter().any(|(p, b)| p == pid && is_app(b)))
         .map(|(_, title)| title.as_str())
 }
 
-/// The meeting name in a Meet window title (CGWindowList: "Meet – name"; Accessibility adds a
-/// browser suffix: "Meet - name - Google Chrome").
+/// The meeting name in a Meet window title (CGWindowList: "Meet – name"; Accessibility and Windows
+/// add a browser suffix: "Meet - name - Google Chrome").
 pub fn meet_name(title: &str) -> Option<String> {
     let name = MEET_TITLE.captures(title)?.get(1)?.as_str().trim();
     (!name.is_empty()).then(|| name.to_owned())
@@ -420,6 +453,15 @@ mod tests {
     const SAFARI_PID: i32 = 30;
     const WEBKIT_GPU_PID: i32 = 31;
 
+    // This OS's ids: the state machine classifies with `CURRENT`.
+    const ZOOM: &str = CURRENT.zoom;
+    const CHROME: &str = CURRENT.browser_prefixes[0];
+    /// The process Chrome's mic runs in: a helper bundle on macOS, another chrome.exe on Windows.
+    #[cfg(target_os = "macos")]
+    const CHROME_HELPER: &str = "com.google.Chrome.helper";
+    #[cfg(windows)]
+    const CHROME_HELPER: &str = "chrome.exe";
+
     fn user(pid: i32, bundle_id: &str) -> MicUser {
         MicUser { pid, bundle_id: bundle_id.into() }
     }
@@ -438,21 +480,21 @@ mod tests {
 
     fn zoom_call(now: i64) -> Snapshot {
         Snapshot {
-            mic_users: Some(vec![user(ZOOM_PID, ZOOM_BUNDLE)]),
+            mic_users: Some(vec![user(ZOOM_PID, ZOOM)]),
             device_running: true,
-            apps: vec![(ZOOM_PID, ZOOM_BUNDLE.into())],
+            apps: vec![(ZOOM_PID, ZOOM.into())],
             zoom_meeting_process: true,
             ..quiet(now)
         }
     }
 
     fn chrome() -> Vec<(i32, String)> {
-        vec![(CHROME_PID, "com.google.Chrome".into())]
+        vec![(CHROME_PID, CHROME.into())]
     }
 
     fn meet_call(now: i64) -> Snapshot {
         Snapshot {
-            mic_users: Some(vec![user(CHROME_HELPER_PID, "com.google.Chrome.helper")]),
+            mic_users: Some(vec![user(CHROME_HELPER_PID, CHROME_HELPER)]),
             device_running: true,
             apps: chrome(),
             titles: vec![(CHROME_PID, "Meet – abc-defg-hij".into())],
@@ -548,7 +590,7 @@ mod tests {
         let s = Snapshot {
             mic_users: Some(vec![user(40, "com.apple.replayd"), user(41, "com.example.unknown")]),
             device_running: true,
-            apps: vec![(ZOOM_PID, ZOOM_BUNDLE.into()), (CHROME_PID, "com.google.Chrome".into())],
+            apps: vec![(ZOOM_PID, ZOOM.into()), (CHROME_PID, CHROME.into())],
             zoom_meeting_process: true,
             titles: vec![(CHROME_PID, "Meet – abc-defg-hij".into())],
             ..quiet(0)
@@ -559,21 +601,83 @@ mod tests {
 
     #[test]
     fn safari_counts_only_while_safari_runs() {
+        let (safari_id, safari_mic) = (MACOS.safari.unwrap(), MACOS.safari_mic.unwrap());
+        let meet = |s: &Snapshot| classify_with(&MACOS, s).meet;
         let safari = Snapshot {
-            mic_users: Some(vec![user(WEBKIT_GPU_PID, SAFARI_MIC_BUNDLE)]),
+            mic_users: Some(vec![user(WEBKIT_GPU_PID, safari_mic)]),
             device_running: true,
-            apps: vec![(SAFARI_PID, SAFARI_BUNDLE.into())],
+            apps: vec![(SAFARI_PID, safari_id.into())],
             titles: vec![(SAFARI_PID, "Meet – abc-defg-hij".into())],
             ..quiet(0)
         };
-        assert_eq!(meet_in_call(&safari), Some("abc-defg-hij".into()));
+        assert_eq!(meet(&safari).filter(MeetSignal::starts_call).and_then(|m| m.name), Some("abc-defg-hij".into()));
         let not_running = Snapshot { apps: vec![], ..safari };
-        assert_eq!(classify(&not_running).meet, None);
+        assert_eq!(meet(&not_running), None);
         let agent_only = Snapshot {
             apps: vec![(SAFARI_PID + 100, "com.apple.Safari.SafeBrowsing.Service".into())],
             ..not_running
         };
-        assert_eq!(classify(&agent_only).meet, None);
+        assert_eq!(meet(&agent_only), None);
+    }
+
+    // Windows table
+
+    fn win_snapshot(mic: &[(i32, &str)], apps: &[(i32, &str)], titles: &[(i32, &str)]) -> Snapshot {
+        Snapshot {
+            now: 0,
+            mic_users: Some(mic.iter().map(|(pid, b)| MicUser { pid: *pid, bundle_id: (*b).into() }).collect()),
+            device_running: !mic.is_empty(),
+            apps: apps.iter().map(|(p, b)| (*p, (*b).into())).collect(),
+            zoom_meeting_process: false,
+            titles: titles.iter().map(|(p, t)| (*p, (*t).into())).collect(),
+            co_pet_recording: false,
+        }
+    }
+
+    #[test]
+    fn windows_zoom_meeting_starts_a_call() {
+        let s = win_snapshot(&[(10, "zoom.exe")], &[(10, "zoom.exe")], &[(10, "Zoom Meeting")]);
+        assert!(classify_with(&WINDOWS, &s).zoom.unwrap().starts_call());
+    }
+
+    #[test]
+    fn windows_meet_in_chrome_counts_the_audio_process_by_exe_name() {
+        // Chrome's audio service is a separate chrome.exe; the window belongs to another pid.
+        let s = win_snapshot(
+            &[(77, "chrome.exe")],
+            &[(5, "chrome.exe"), (77, "chrome.exe")],
+            &[(5, "Meet - Weekly sync - Google Chrome")],
+        );
+        let meet = classify_with(&WINDOWS, &s).meet.unwrap();
+        assert!(meet.starts_call());
+        assert_eq!(meet.name.as_deref(), Some("Weekly sync"));
+    }
+
+    #[test]
+    fn windows_meet_in_edge_with_a_profile_name() {
+        let s = win_snapshot(
+            &[(8, "msedge.exe")],
+            &[(8, "msedge.exe")],
+            &[(8, "Meet - Weekly sync - Work - Microsoft\u{200b} Edge")],
+        );
+        assert_eq!(classify_with(&WINDOWS, &s).meet.unwrap().name.as_deref(), Some("Weekly sync"));
+    }
+
+    #[test]
+    fn edge_titles_keep_meet_codes_whole() {
+        assert_eq!(meet_name("Meet - abc-defg-hij - Microsoft\u{200b} Edge"), Some("abc-defg-hij".into()));
+        assert_eq!(meet_name("Meet - abc-defg-hij - Work - Microsoft Edge"), Some("abc-defg-hij".into()));
+        assert_eq!(meet_name("Meet – Weekly sync - planning"), Some("Weekly sync - planning".into()));
+    }
+
+    #[test]
+    fn windows_table_ignores_macos_ids() {
+        let s = win_snapshot(
+            &[(10, MACOS.zoom), (20, MACOS.safari_mic.unwrap())],
+            &[(10, MACOS.zoom), (30, MACOS.safari.unwrap())],
+            &[(10, "Zoom Meeting"), (30, "Meet – abc-defg-hij")],
+        );
+        assert_eq!(classify_with(&WINDOWS, &s), Signals { zoom: None, meet: None });
     }
 
     // Starting a call
@@ -886,7 +990,7 @@ mod tests {
             now,
             mic_users: None,
             device_running: true,
-            apps: vec![(ZOOM_PID, ZOOM_BUNDLE.into())],
+            apps: vec![(ZOOM_PID, ZOOM.into())],
             zoom_meeting_process: marker,
             titles: vec![],
             co_pet_recording: rec,

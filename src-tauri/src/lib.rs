@@ -218,6 +218,7 @@ pub fn run() {
             commands::recategorize,
             commands::make_rule_from_item,
             commands::set_pinned,
+            commands::edit_item,
             commands::archive,
             commands::trash,
             commands::undo_event,

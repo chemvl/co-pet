@@ -4,14 +4,16 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row, Tra
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-use crate::db::{categories, new_id, now_ms, search, tasks, undo, Db};
+use crate::capture;
+use crate::db::{categories, new_id, now_ms, search, settings, tasks, undo, Db};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::model::{
-    Actor, Counts, Cursor, ItemDetail, ItemEvent, ItemPage, ItemQuery, ItemRow, ItemSummary,
-    NewItem, TriageUpdate,
+    Actor, Counts, Cursor, ItemDetail, ItemEdit, ItemEvent, ItemPage, ItemQuery, ItemRow,
+    ItemSummary, NewItem, TriageUpdate,
 };
 use crate::paths::Paths;
+use crate::triage::secrets;
 
 /// Every `items` column, in the order `map_row` reads them.
 const COLS: &str = "id, kind, title, summary, tags, payload_text, payload_html, url, file_path, \
@@ -28,7 +30,7 @@ const LIST_COLS: &str = "id, kind, title, summary, tags, NULL, NULL, url, file_p
     deleted_at, added_by, task_suggestion, meeting_id";
 
 /// Columns `undo_event` may restore from `before_json`.
-const UNDOABLE: [&str; 7] = [
+const UNDOABLE: [&str; 15] = [
     "category_id",
     "triage_source",
     "triage_reason",
@@ -36,7 +38,18 @@ const UNDOABLE: [&str; 7] = [
     "status",
     "deleted_at",
     "tags",
+    "title",
+    "kind",
+    "payload_text",
+    "payload_html",
+    "content_hash",
+    "summary",
+    "task_suggestion",
+    "sensitive",
 ];
+
+/// Longest title `edit_item` accepts (same as a meeting rename).
+const EDIT_TITLE_MAX: usize = 200;
 
 /// The items agents may see (MCP): live, not trashed, not sensitive, triaged (a just-captured
 /// secret is not flagged yet) and in a live category not hidden from agents. Columns are
@@ -423,6 +436,73 @@ pub fn set_pinned(conn: &mut Connection, id: &str, pinned: bool) -> AppResult<St
     )?;
     tx.commit()?;
     Ok(event)
+}
+
+/// Title and text edits from Home. Content changes only on live `text`/`richtext`/`code` items
+/// that are not sensitive. Kind is detected again, the HTML is dropped, the hash is recomputed,
+/// the secrets guard runs again, and the stale summary and task suggestion are cleared; category
+/// and tags stay. One `edit` event (actor `user`) whose `before_json` holds the changed columns
+/// and no `after_json`, so a typed secret never lands in the event log. Nothing changed → `None`.
+pub fn edit_item(conn: &mut Connection, id: &str, edit: &ItemEdit) -> AppResult<Option<String>> {
+    let tx = conn.transaction()?;
+    let row = get_row(&tx, id)?;
+    if row.status == "trashed" || row.deleted_at.is_some() || row.meeting_id.is_some() {
+        return Err(AppError::Code("invalid"));
+    }
+    let now = now_ms();
+    let mut before = serde_json::Map::new();
+    if let Some(title) = &edit.title {
+        let title = title.trim();
+        if title.is_empty() || title.chars().count() > EDIT_TITLE_MAX {
+            return Err(AppError::Code("invalid"));
+        }
+        if title != row.title {
+            tx.execute("UPDATE items SET title = ?2 WHERE id = ?1", params![id, title])?;
+            before.insert("title".into(), json!(row.title));
+        }
+    }
+    if let Some(text) = edit.content.as_deref() {
+        if text.trim().is_empty()
+            || row.sensitive
+            || !matches!(row.kind.as_str(), "text" | "richtext" | "code")
+        {
+            return Err(AppError::Code("invalid"));
+        }
+        if row.payload_text.as_deref() != Some(text) {
+            let old_hash: String =
+                tx.query_row("SELECT content_hash FROM items WHERE id = ?1", [id], |r| r.get(0))?;
+            // Rich text becomes plain text, as capture classifies typed text.
+            let kind = if capture::looks_like_code(text) { "code" } else { "text" };
+            let probe = ItemRow {
+                payload_text: Some(text.to_owned()),
+                payload_html: None,
+                ..row.clone()
+            };
+            let sensitive = settings::get::<bool>(&tx, "privacy.secretDetection")?
+                && secrets::is_sensitive_item(&probe);
+            tx.execute(
+                "UPDATE items SET kind = ?2, payload_text = ?3, payload_html = NULL, \
+                 content_hash = ?4, summary = NULL, task_suggestion = NULL, sensitive = ?5 \
+                 WHERE id = ?1",
+                params![id, kind, text, capture::text_hash(text), sensitive],
+            )?;
+            before.insert("kind".into(), json!(row.kind));
+            before.insert("payload_text".into(), json!(row.payload_text));
+            before.insert("payload_html".into(), json!(row.payload_html));
+            before.insert("content_hash".into(), json!(old_hash));
+            before.insert("summary".into(), json!(row.summary));
+            before.insert("task_suggestion".into(), json!(row.task_suggestion));
+            before.insert("sensitive".into(), json!(row.sensitive));
+        }
+    }
+    if before.is_empty() {
+        return Ok(None);
+    }
+    tx.execute("UPDATE items SET updated_at = ?2 WHERE id = ?1", params![id, now])?;
+    reindex(&tx, id)?;
+    let event = add_event(&tx, id, ("user", None), "edit", Some(&Value::Object(before)), None, now)?;
+    tx.commit()?;
+    Ok(Some(event))
 }
 
 /// Sets `status` (and `deleted_at`) on each item, recording `action` per item.
@@ -1041,6 +1121,109 @@ mod tests {
             undo_event(&mut conn, &events[0]),
             Err(AppError::Code("alreadyUndone"))
         ));
+    }
+
+    fn edit(title: Option<&str>, content: Option<&str>) -> ItemEdit {
+        ItemEdit { title: title.map(Into::into), content: content.map(Into::into) }
+    }
+
+    fn edit_events(conn: &Connection, id: &str) -> Vec<(String, Option<String>, Option<String>)> {
+        let mut stmt = conn
+            .prepare("SELECT id, before_json, after_json FROM item_events WHERE item_id = ?1 AND action = 'edit'")
+            .unwrap();
+        stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn edit_rewrites_text_index_and_undo_restores() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Call mum", "call mum zebra", "h1")).unwrap();
+        let mut u = sensitive_update("read");
+        u.sensitive = false;
+        u.summary = Some("old summary".into());
+        update_triage(&mut conn, &id, &u).unwrap();
+
+        let event = edit_item(&mut conn, &id, &edit(Some("  Call dad "), Some("call dad okapi"))).unwrap();
+        assert_eq!(found(&conn, "okapi"), vec![id.clone()]);
+        assert!(found(&conn, "zebra").is_empty());
+        let row = get_row(&conn, &id).unwrap();
+        assert_eq!(row.title, "Call dad");
+        assert_eq!(row.summary, None);
+        assert_eq!(row.task_suggestion, None);
+        assert_eq!(row.category_id, "read");
+        let hash: String =
+            conn.query_row("SELECT content_hash FROM items WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
+        assert_eq!(hash, capture::text_hash("call dad okapi"));
+        let events = edit_events(&conn, &id);
+        assert_eq!(events.len(), 1);
+        assert_eq!(Some(&events[0].0), event.as_ref());
+        assert_eq!(events[0].2, None);
+
+        undo_event(&mut conn, &events[0].0).unwrap();
+        let row = get_row(&conn, &id).unwrap();
+        assert_eq!(row.title, "Call mum");
+        assert_eq!(row.payload_text.as_deref(), Some("call mum zebra"));
+        assert_eq!(row.summary.as_deref(), Some("old summary"));
+        assert!(!row.sensitive);
+        assert_eq!(found(&conn, "zebra"), vec![id.clone()]);
+
+        assert_eq!(edit_item(&mut conn, &id, &edit(Some("Call mum"), Some("call mum zebra"))).unwrap(), None);
+        assert_eq!(edit_events(&conn, &id).len(), 1);
+    }
+
+    #[test]
+    fn edit_flags_typed_secret_sensitive() {
+        let db = db();
+        let mut conn = db.conn();
+        let id = insert_item(&mut conn, &new_text("Release", "plain words", "h1")).unwrap();
+        let secret = format!("deploy with sk-ant-api03-{}", "a".repeat(40));
+        edit_item(&mut conn, &id, &edit(None, Some(&secret))).unwrap().unwrap();
+        assert!(get_row(&conn, &id).unwrap().sensitive);
+        assert!(found(&conn, "deploy").is_empty());
+        assert_eq!(found(&conn, "release"), vec![id.clone()]);
+        let paths = Paths::new("/tmp/copet-test".into());
+        assert!(get_item_detail(&conn, &id, &paths).unwrap().payload_text.is_none());
+        let events = edit_events(&conn, &id);
+        assert!(!events[0].1.as_deref().unwrap().contains("sk-ant"));
+        assert_eq!(events[0].2, None);
+    }
+
+    #[test]
+    fn edit_rejects_uneditable() {
+        let db = db();
+        let mut conn = db.conn();
+        let invalid = |r: AppResult<Option<String>>| matches!(r, Err(AppError::Code("invalid")));
+        let note = insert_item(&mut conn, &new_text("Note", "body", "h1")).unwrap();
+        assert!(invalid(edit_item(&mut conn, &note, &edit(Some(""), None))));
+        assert!(invalid(edit_item(&mut conn, &note, &edit(Some("   "), None))));
+        assert!(invalid(edit_item(&mut conn, &note, &edit(Some(&"x".repeat(201)), None))));
+        assert!(invalid(edit_item(&mut conn, &note, &edit(None, Some("  \n")))));
+
+        let link = insert_item(
+            &mut conn,
+            &NewItem {
+                kind: "url".into(),
+                title: "Link".into(),
+                url: Some("https://example.com".into()),
+                source_kind: "drop".into(),
+                content_hash: "h2".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(invalid(edit_item(&mut conn, &link, &edit(None, Some("text")))));
+
+        let secret = insert_item(&mut conn, &new_text("Secret", "body", "h3")).unwrap();
+        update_triage(&mut conn, &secret, &sensitive_update("unsorted")).unwrap();
+        assert!(invalid(edit_item(&mut conn, &secret, &edit(None, Some("new body")))));
+
+        trash(&mut conn, &[note.clone()], &Actor::User).unwrap();
+        assert!(invalid(edit_item(&mut conn, &note, &edit(Some("Renamed"), None))));
+        assert!(edit_events(&conn, &note).is_empty());
     }
 
     #[test]

@@ -256,6 +256,8 @@ async fn triage_item(app: &AppHandle, id: &str) -> AppResult<()> {
         }
         (item, crate::db::rules::list_active(&conn)?, Policy::read(&conn)?)
     };
+    // What triage read: a later user edit of either wins over this run's result.
+    let (read_title, read_text) = (item.title.clone(), item.payload_text.clone());
     let categories = crate::db::categories::list(&db.conn())?;
     let route = crate::ai::route(app, crate::ai::Purpose::Triage);
     policy.blocked = route.as_ref().err().copied();
@@ -273,12 +275,24 @@ async fn triage_item(app: &AppHandle, id: &str) -> AppResult<()> {
         "unsorted" => PetReaction::new("tilt"),
         category => PetReaction { category: Some(category.to_owned()), ..PetReaction::new("idea") },
     };
-    let update = into_update(item, extract_status, decision);
+    let mut update = into_update(item, extract_status, decision);
     {
         let mut conn = db.conn();
+        let current = items::get_row(&conn, id)?;
         // A category the user picked while this item was being sorted wins.
-        if items::get_row(&conn, id)?.triage_status != "pending" {
+        if current.triage_status != "pending" {
             return Ok(());
+        }
+        // The user edited the text meanwhile: sort the new text instead.
+        if current.payload_text != read_text {
+            if let Some(queue) = app.try_state::<TriageQueue>() {
+                queue.enqueue(id.to_owned());
+            }
+            return Ok(());
+        }
+        // A title the user typed meanwhile wins over the model's.
+        if current.title != read_title {
+            update.title = None;
         }
         items::update_triage(&mut conn, id, &update)?;
     }

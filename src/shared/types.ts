@@ -32,6 +32,12 @@ export interface CategoryPatch {
   excludeFromMcp?: boolean;
 }
 
+/** `edit_item`: omitted fields keep their value. */
+export interface ItemEdit {
+  title?: string;
+  content?: string;
+}
+
 export type ItemKind = 'file' | 'image' | 'url' | 'text' | 'richtext' | 'code' | 'screenshot';
 export type SourceKind = 'drop' | 'clipboard' | 'screenshot' | 'note' | 'selection';
 export type ExtractStatus = 'pending' | 'done' | 'failed' | 'skipped';
@@ -81,7 +87,7 @@ export interface ItemSummary {
 }
 
 export type EventAction =
-  | 'captured' | 'recategorize' | 'tag' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'restore';
+  | 'captured' | 'recategorize' | 'tag' | 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'restore' | 'edit';
 
 export interface ItemEvent {
   id: string;

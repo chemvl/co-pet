@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
-  HotkeyAction, ItemDetail, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
+  HotkeyAction, ItemDetail, ItemEdit, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskStatus, TaskSummary,
   ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, UpdateStatus, RecordingStatus,
   MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider, CallDetectionStatus, StorageLocations,
@@ -134,6 +134,8 @@ export const petStatus = () => invoke<PetStatus>('pet_status');
 // Step 11 — Home
 export const openHome = (route?: string) => invoke<void>('open_home', { route: route ?? null });
 export const setPinned = (id: string, pinned: boolean) => invoke<{ eventIds: string[] }>('set_pinned', { id, pinned });
+/** Rejects with `"invalid"` or `"notFound"`. */
+export const editItem = (id: string, edit: ItemEdit) => invoke<{ eventIds: string[] }>('edit_item', { id, edit });
 export const archive = (ids: string[]) => invoke<{ eventIds: string[] }>('archive', { ids });
 export const trash = (ids: string[]) => invoke<{ eventIds: string[] }>('trash', { ids });
 export const undoEvent = (eventId: string) => invoke<void>('undo_event', { eventId });

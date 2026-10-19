@@ -157,6 +157,14 @@ pub struct CategoryPatch {
     pub exclude_from_mcp: Option<bool>,
 }
 
+/// `edit_item`: `None` fields keep their value.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemEdit {
+    pub title: Option<String>,
+    pub content: Option<String>,
+}
+
 // ---------- IPC ----------
 
 #[derive(Debug, Clone, Serialize)]

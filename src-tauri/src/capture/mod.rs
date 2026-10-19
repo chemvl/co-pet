@@ -195,7 +195,7 @@ fn prepare(lang: Lang, paths: &Paths, input: CaptureInput, source: &CaptureSourc
             NewItem {
                 kind: kind.into(),
                 title: text_title(&plain),
-                content_hash: hash_str(&format!("text:{}", plain.trim())),
+                content_hash: text_hash(&plain),
                 payload_text: Some(plain),
                 payload_html: html,
                 ..text_source(source)
@@ -208,7 +208,7 @@ fn prepare(lang: Lang, paths: &Paths, input: CaptureInput, source: &CaptureSourc
             NewItem {
                 kind: "text".into(),
                 title: text_title(&text),
-                content_hash: hash_str(&format!("text:{}", text.trim())),
+                content_hash: text_hash(&text),
                 payload_text: Some(text),
                 ..text_source(source)
             }
@@ -379,6 +379,11 @@ fn timed_title(lang: Lang, key: &str) -> String {
 
 fn hash_str(s: &str) -> String {
     hex::encode(Sha256::digest(s.as_bytes()))
+}
+
+/// The dedupe hash of captured or edited plain text.
+pub(crate) fn text_hash(plain: &str) -> String {
+    hash_str(&format!("text:{}", plain.trim()))
 }
 
 #[cfg(test)]

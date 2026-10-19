@@ -473,8 +473,23 @@ INSERT INTO settings (key, value, updated_at) VALUES
   ('transcribe.autoStop', 'true', 0);
 "#;
 
+/// Schema v14: `item_events` accepts the `edit` action (title/text edits from Home). Rebuilt to
+/// widen its CHECK; no table or trigger references it.
+const V14: &str = r#"
+CREATE TABLE item_events_v3 (
+  id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES items(id), at INTEGER NOT NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user','triage','agent')),
+  client_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('captured','recategorize','pin','unpin','archive','unarchive','trash','restore','tag','edit')),
+  before_json TEXT, after_json TEXT, undone_at INTEGER, updated_at INTEGER NOT NULL);
+INSERT INTO item_events_v3 SELECT id, item_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at FROM item_events;
+DROP TABLE item_events;
+ALTER TABLE item_events_v3 RENAME TO item_events;
+CREATE INDEX item_events_item ON item_events(item_id, at DESC);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13), M::up(V14)])
 });
 
 #[cfg(test)]
@@ -518,6 +533,40 @@ mod tests {
         assert!(c
             .execute("INSERT INTO export_status (export_id, external_id, synced_done, checked_at) VALUES ('t:asana','9',2,0)", [])
             .is_err());
+    }
+
+    #[test]
+    fn v14_item_events_accept_edit() {
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 13).unwrap();
+        c.execute_batch(
+            "INSERT INTO items (id, kind, title, source_kind, content_hash, captured_at, updated_at)
+               VALUES ('i1', 'text', 'Note', 'drop', 'h', 1, 1);
+             INSERT INTO item_events (id, item_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at)
+               VALUES ('e1', 'i1', 5, 'agent', 'c1', 'tag', '{\"tags\":[]}', '{\"tags\":[\"a\"]}', 8, 6);",
+        )
+        .unwrap();
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        let event: (String, i64, String, Option<String>, String, String, String, Option<i64>, i64) = c
+            .query_row(
+                "SELECT item_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at
+                   FROM item_events WHERE id = 'e1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            event,
+            ("i1".into(), 5, "agent".into(), Some("c1".into()), "tag".into(), "{\"tags\":[]}".into(), "{\"tags\":[\"a\"]}".into(), Some(8), 6)
+        );
+        let insert = |id: &str, action: &str| {
+            c.execute(
+                "INSERT INTO item_events (id, item_id, at, actor, action, updated_at) VALUES (?1, 'i1', 7, 'user', ?2, 7)",
+                [id, action],
+            )
+        };
+        assert!(insert("e2", "edit").is_ok());
+        assert!(insert("e3", "rename").is_err());
     }
 
     #[test]

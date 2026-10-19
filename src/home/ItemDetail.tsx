@@ -12,7 +12,7 @@ import { useLang, useT } from '../shared/i18n';
 import { copyItems, transcribeItem } from '../shared/ipc';
 import { useAddedBy, useAiStatus, useCategories, useSetting } from '../shared/queries';
 import { useToast } from '../shared/Toast';
-import type { ItemDetail as Item } from '../shared/types';
+import type { ItemEdit, ItemDetail as Item } from '../shared/types';
 import { CategoryTag } from './CategoryTag';
 import { useDelayed } from './hooks';
 import { KindTile, LocalPill } from './ItemRow';
@@ -35,7 +35,14 @@ export function ItemDetail({ id, mode, onBack }: ItemDetailProps): ReactElement 
   const t = useT();
   const q = useQuery(itemQuery(id));
   const slow = useDelayed(q.isPending, 400);
-  if (q.data) return mode === 'page' ? <ItemPage item={q.data} onBack={onBack} /> : <ItemPane item={q.data} />;
+  if (q.data) {
+    // Keyed by id so an open editor never carries over to another item.
+    return mode === 'page' ? (
+      <ItemPage key={q.data.id} item={q.data} onBack={onBack} />
+    ) : (
+      <ItemPane key={q.data.id} item={q.data} />
+    );
+  }
   if (q.isError) {
     return (
       <div className="hm-detailmsg">
@@ -57,6 +64,7 @@ function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactE
   const t = useT();
   const lang = useLang();
   useSetSelection(undefined, [item.id]);
+  const editor = useItemEditor(item);
   return (
     <div className="hm-item">
       <div className="hm-item__bar">
@@ -66,19 +74,26 @@ function ItemPage({ item, onBack }: { item: Item; onBack?: () => void }): ReactE
           </Button>
         ) : null}
         <div className="hm-item__head">
-          <div className="heading hm-ellipsis">{item.title}</div>
+          {editor.editing ? <EditTitle editor={editor} /> : <div className="heading hm-ellipsis">{item.title}</div>}
           <div className="caption hm-muted hm-ellipsis">{detailMeta(item, t, lang)}</div>
           {item.fileAvailable ? null : <div className="caption hm-muted">{t('item.fileElsewhere')}</div>}
         </div>
-        <ConvertButton item={item} />
-        <TranscribeButton item={item} />
-        <CopyButton item={item} />
-        <OpenButton item={item} />
-        <MoreMenu item={item} />
+        {editor.editing ? (
+          <EditActions editor={editor} size="sm" />
+        ) : (
+          <>
+            <ConvertButton item={item} />
+            <TranscribeButton item={item} />
+            <CopyButton item={item} />
+            <OpenButton item={item} />
+            <EditButton item={item} editor={editor} size="sm" variant="quiet" />
+            <MoreMenu item={item} />
+          </>
+        )}
       </div>
       <div className="hm-item__body">
         <section className="hm-item__doc" aria-label={t('item.content')}>
-          <ContentTabs item={item} />
+          <ContentTabs item={item} editor={editor} />
           <Summary item={item} />
         </section>
         <aside className="hm-item__side" aria-label={t('item.properties')}>
@@ -113,12 +128,13 @@ function ItemPane({ item }: { item: Item }): ReactElement {
   const t = useT();
   const lang = useLang();
   const actions = useItemActions();
+  const editor = useItemEditor(item);
   return (
     <div className="hm-det">
       <div className="hm-det__head">
         <KindTile item={item} large />
         <div className="hm-det__title">
-          <h2 className="heading hm-det__h">{item.title}</h2>
+          {editor.editing ? <EditTitle editor={editor} /> : <h2 className="heading hm-det__h">{item.title}</h2>}
           <div className="caption hm-muted">{detailMeta(item, t, lang)}</div>
           {item.fileAvailable ? null : <div className="caption hm-muted">{t('item.fileElsewhere')}</div>}
         </div>
@@ -144,12 +160,19 @@ function ItemPane({ item }: { item: Item }): ReactElement {
         <Tags item={item} />
       </div>
       <div className="hm-det__actions">
-        <ConvertButton item={item} size="md" />
-        <TranscribeButton item={item} size="md" />
-        <CopyButton item={item} size="md" />
-        <OpenButton item={item} size="md" />
+        {editor.editing ? (
+          <EditActions editor={editor} size="md" />
+        ) : (
+          <>
+            <ConvertButton item={item} size="md" />
+            <TranscribeButton item={item} size="md" />
+            <CopyButton item={item} size="md" />
+            <OpenButton item={item} size="md" />
+            <EditButton item={item} editor={editor} size="md" variant="secondary" />
+          </>
+        )}
       </div>
-      <ContentTabs item={item} compact />
+      <ContentTabs item={item} editor={editor} compact />
       <Summary item={item} />
       <WhyBox item={item} variant="line" />
       <div>
@@ -165,6 +188,149 @@ function ItemPane({ item }: { item: Item }): ReactElement {
 }
 
 // ---------- shared parts ----------
+
+/** Meeting items follow their meeting; trashed items are read-only. */
+function canEditTitle(item: Item): boolean {
+  return item.meetingId == null && item.status !== 'trashed';
+}
+
+interface ItemEditor {
+  editing: boolean;
+  title: string;
+  content: string;
+  /** Whether this edit includes the content; decided when editing starts. */
+  contentEditable: boolean;
+  canSave: boolean;
+  start(): void;
+  cancel(): void;
+  save(): Promise<void>;
+  setTitle(title: string): void;
+  setContent(content: string): void;
+}
+
+/** Inline title/content editing. Unsaved changes are dropped on Cancel or when the item changes. */
+function useItemEditor(item: Item): ItemEditor {
+  const actions = useItemActions();
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [contentEditable, setContentEditable] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const canSave = !busy && title.trim() !== '' && (!contentEditable || content.trim() !== '');
+  return {
+    editing,
+    title,
+    content,
+    contentEditable,
+    canSave,
+    start() {
+      setTitle(item.title);
+      setContent(item.payloadText ?? '');
+      // Text kinds only; a sensitive item's content is hidden, so it can't be edited.
+      const textKind = item.kind === 'text' || item.kind === 'richtext' || item.kind === 'code';
+      setContentEditable(textKind && !item.sensitive);
+      setEditing(true);
+    },
+    cancel() {
+      setEditing(false);
+    },
+    async save() {
+      if (!canSave) return;
+      const edit: ItemEdit = {};
+      if (title.trim() !== item.title) edit.title = title.trim();
+      if (contentEditable && content !== (item.payloadText ?? '')) edit.content = content;
+      if (edit.title === undefined && edit.content === undefined) {
+        setEditing(false);
+        return;
+      }
+      setBusy(true);
+      const ok = await actions.edit(item, edit);
+      setBusy(false);
+      if (ok) setEditing(false);
+    },
+    setTitle,
+    setContent,
+  };
+}
+
+function EditTitle({ editor }: { editor: ItemEditor }): ReactElement {
+  const t = useT();
+  return (
+    <input
+      className="hm-edit-title heading"
+      aria-label={t('item.editTitle')}
+      autoFocus
+      autoComplete="off"
+      value={editor.title}
+      onChange={(e) => editor.setTitle(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void editor.save();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          editor.cancel();
+        }
+      }}
+    />
+  );
+}
+
+function EditContent({ editor, kind, compact }: { editor: ItemEditor; kind: Item['kind']; compact?: boolean }): ReactElement {
+  const t = useT();
+  return (
+    <textarea
+      className={`hm-paper hm-edit-content ${kind === 'code' ? 'code' : 'body'}${compact ? ' hm-edit-content--compact' : ''}`}
+      aria-label={t('item.content')}
+      rows={compact ? 8 : 16}
+      value={editor.content}
+      onChange={(e) => editor.setContent(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          editor.cancel();
+        } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          void editor.save();
+        }
+      }}
+    />
+  );
+}
+
+function EditActions({ editor, size }: { editor: ItemEditor; size: ButtonProps['size'] }): ReactElement {
+  const t = useT();
+  return (
+    <>
+      <Button variant="quiet" size={size} onClick={editor.cancel}>
+        {t('common.cancel')}
+      </Button>
+      <Button variant="primary" size={size} disabled={!editor.canSave} onClick={() => void editor.save()}>
+        {t('common.save')}
+      </Button>
+    </>
+  );
+}
+
+function EditButton({
+  item,
+  editor,
+  size,
+  variant,
+}: {
+  item: Item;
+  editor: ItemEditor;
+  size: ButtonProps['size'];
+  variant: ButtonProps['variant'];
+}): ReactElement | null {
+  const t = useT();
+  if (!canEditTitle(item)) return null;
+  return (
+    <Button variant={variant} size={size} onClick={editor.start}>
+      {t('common.edit')}
+    </Button>
+  );
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }): ReactElement {
   return (
@@ -344,9 +510,16 @@ function SensitiveBox(): ReactElement {
   );
 }
 
-function ContentTabs({ item, compact }: { item: Item; compact?: boolean }): ReactElement {
+function ContentTabs({ item, editor, compact }: { item: Item; editor?: ItemEditor; compact?: boolean }): ReactElement {
   const t = useT();
   const [tab, setTab] = useState<'preview' | 'text'>('preview');
+  if (editor?.editing && editor.contentEditable) {
+    return (
+      <div className={`hm-content${compact ? ' hm-content--compact' : ''}`}>
+        <EditContent editor={editor} kind={item.kind} compact={compact} />
+      </div>
+    );
+  }
   return (
     <div className={`hm-content${compact ? ' hm-content--compact' : ''}`}>
       <SegmentedControl

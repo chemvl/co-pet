@@ -432,6 +432,21 @@ pub fn set_pinned(
     Ok(crate::model::EventIds { event_ids: vec![event] })
 }
 
+/// Rejects with `invalid` or `notFound`.
+#[tauri::command]
+pub fn edit_item(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: String,
+    edit: crate::model::ItemEdit,
+) -> AppResult<crate::model::EventIds> {
+    let event = crate::db::items::edit_item(&mut db.conn(), &id, &edit)?;
+    if event.is_some() {
+        crate::db::items::notify_changed(&app, vec![id]);
+    }
+    Ok(crate::model::EventIds { event_ids: event.into_iter().collect() })
+}
+
 #[tauri::command]
 pub fn archive(
     app: AppHandle,

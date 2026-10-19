@@ -6,10 +6,10 @@ import { useCallback, useMemo } from 'react';
 import { categoryLabelOf } from '../shared/categories';
 import { errorMessage } from '../shared/errors';
 import { useT } from '../shared/i18n';
-import { archive, createTask, makeRuleFromItem, recategorize, setPinned, trash, undoEvent, undoTaskEvent } from '../shared/ipc';
+import { archive, createTask, editItem, makeRuleFromItem, recategorize, setPinned, trash, undoEvent, undoTaskEvent } from '../shared/ipc';
 import { useCategories } from '../shared/queries';
 import { useToast } from '../shared/Toast';
-import type { CategoryId, ItemSummary } from '../shared/types';
+import type { CategoryId, ItemEdit, ItemSummary } from '../shared/types';
 import { ruleTargetOf } from './itemText';
 import { navigate } from './router';
 
@@ -18,6 +18,8 @@ export interface ItemActions {
   archive(items: ItemSummary[]): Promise<void>;
   trash(items: ItemSummary[]): Promise<void>;
   togglePin(item: ItemSummary): Promise<void>;
+  /** Saves a title/content edit; true when it saved (the editor then closes). */
+  edit(item: ItemSummary, edit: ItemEdit): Promise<boolean>;
   /** Creates a task titled with the item's task suggestion (else its title) and opens it. */
   convertToTask(item: ItemSummary): Promise<void>;
   undo(eventIds: string[]): Promise<void>;
@@ -98,6 +100,17 @@ export function useItemActions(): ItemActions {
       trash: (items) => withUndo(() => trash(items.map((i) => i.id)), t('toast.trashed')),
       togglePin: (item) =>
         withUndo(() => setPinned(item.id, !item.pinned), t(item.pinned ? 'toast.unpinned' : 'toast.pinned')),
+      async edit(item, edit) {
+        try {
+          const { eventIds } = await editItem(item.id, edit);
+          refresh();
+          if (eventIds.length) show({ message: t('toast.edited'), undo: () => void undo(eventIds) });
+          return true;
+        } catch (err) {
+          show({ message: errorMessage(t, err) });
+          return false;
+        }
+      },
       async convertToTask(item) {
         const refreshTasks = () => {
           void qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -122,6 +135,6 @@ export function useItemActions(): ItemActions {
       },
       undo,
     }),
-    [categories, fail, qc, show, t, undo, withUndo],
+    [categories, fail, qc, refresh, show, t, undo, withUndo],
   );
 }

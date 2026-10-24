@@ -38,7 +38,6 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         "tray.pausePet" => ("Pause pet", "Tạm dừng thú cưng"),
         "tray.resumePet" => ("Resume pet", "Tiếp tục thú cưng"),
         "tray.settings" => ("Settings", "Cài đặt"),
-        "tray.restartToUpdate" => ("Restart to update to {version}", "Khởi động lại để cập nhật lên {version}"),
         "tray.quit" => ("Quit Co-pet", "Thoát Co-pet"),
         "quit.recording.title" => ("Stop recording and quit?", "Dừng ghi âm và thoát?"),
         "quit.recording.body" => (
@@ -47,10 +46,6 @@ pub fn tr(lang: Lang, key: &str) -> &'static str {
         ),
         "quit.recording.ok" => ("Stop and quit", "Dừng và thoát"),
         "quit.recording.cancel" => ("Keep recording", "Tiếp tục ghi"),
-        "update.recording" => (
-            "Stop the recording before restarting.",
-            "Hãy dừng ghi âm trước khi khởi động lại.",
-        ),
         "category.todo" => ("To-do", "Việc cần làm"),
         "category.read" => ("Read later", "Đọc sau"),
         "category.reference" => ("Reference", "Tài liệu"),

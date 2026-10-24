@@ -449,8 +449,8 @@ export interface CalendarInfo { id: string; title: string; account: string }
 /** `pet_status`: the current `pet-visibility` and `pet-flags.sleep` values. */
 export interface PetStatus { hidden: boolean; reason: 'fullscreen' | 'user' | null; sleep: boolean }
 
-/** `backend_status`: whether this build has a Supabase URL and key. */
-export interface BackendStatus { configured: boolean }
+/** `backend_status`: whether the user entered their own Supabase project, and its URL. */
+export interface BackendStatus { configured: boolean; url: string | null }
 
 /** Where this Mac stands with the sync master key. */
 export type KeyState = 'none' | 'ready' | 'needsSetup' | 'needsRecovery' | 'unknown';
@@ -476,17 +476,6 @@ export interface SyncStatus {
   lastSyncedAt: number | null;
   pending: number;
   blobsPending: number;
-}
-
-export type UpdateState = 'idle' | 'checking' | 'downloading' | 'ready' | 'upToDate' | 'failed';
-
-/** The updater's state (`update_status`). `progress` is 0–1 while downloading. */
-export interface UpdateStatus {
-  state: UpdateState;
-  version: string | null;
-  notes: string | null;
-  progress: number | null;
-  error: string | null;
 }
 
 /** Where the models and the data live (`storage_locations`). `pendingDataDir` moves at the next start;
@@ -667,8 +656,6 @@ export interface EventPayloads {
   'account-changed': { error: 'oauthExpired' | 'otherAccount' | string | null };
   /** The sync engine's state changed or a sync finished. */
   'sync-status': SyncStatus;
-  /** The updater's state changed. */
-  'update-status': UpdateStatus;
   /** The recorder's state changed. */
   'recording-status': RecordingStatus;
   /** Pet window only, every 100 ms while recording: track levels 0–1 (0 for a track that is off). */

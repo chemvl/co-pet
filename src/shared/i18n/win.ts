@@ -6,7 +6,7 @@ export const enWin: Partial<Record<I18nKey, string>> = {
   'common.showInFinder': 'Show in File Explorer',
   'tray.altDragHint': 'Ctrl + drag to drop as a file',
   'error.otherAccount': "This PC's data belongs to another Co-pet account. To switch, use Delete everything in Settings › Data first.",
-  'error.noAudioSource': 'Recording needs microphone access. Allow it in Settings › Privacy & security › Microphone.',
+  'error.noAudioSource': 'Recording needs microphone access. Turn it on for Co-pet in Settings › Privacy & security › Microphone.',
   'error.audioGone': "This meeting's audio is no longer on this PC.",
   'notice.recSystemMissing': "Meeting audio couldn't be captured. Recording your microphone only.",
   'rec.consent.body': 'Co-pet records your microphone and the meeting audio on this PC. Recordings never leave it.',
@@ -50,7 +50,7 @@ export const enWin: Partial<Record<I18nKey, string>> = {
 export const viWin: Partial<Record<I18nKey, string>> = {
   'common.showInFinder': 'Hiện trong File Explorer',
   'tray.altDragHint': 'Giữ Ctrl và kéo để thả thành file',
-  'error.noAudioSource': 'Ghi âm cần quyền truy cập micro. Hãy cho phép trong Cài đặt › Quyền riêng tư & bảo mật › Micro.',
+  'error.noAudioSource': 'Ghi âm cần quyền truy cập micro. Hãy bật quyền này cho Co-pet trong Cài đặt › Quyền riêng tư & bảo mật › Micro.',
   'error.audioGone': 'Âm thanh của cuộc họp này không còn trên máy tính này.',
   'notice.recSystemMissing': 'Không thu được âm thanh cuộc họp. Chỉ ghi micro của bạn.',
   'rec.consent.body': 'Co-pet ghi âm micro của bạn và âm thanh cuộc họp trên máy tính này. Bản ghi không bao giờ rời khỏi máy.',

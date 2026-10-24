@@ -1,7 +1,7 @@
 //! Where the data folder and the models folder live. `locations.json` in the Tauri app data
 //! folder (`Paths::base`) points to them; it sits outside the DB because the DB itself moves
 //! and Delete everything wipes the DB but keeps the models. The models move live; the data
-//! moves at the next start, before the DB opens.
+//! moves at the next start, before the DB opens. Unmoved, both sit in [`default_root`].
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -24,11 +24,15 @@ use crate::transcribe::worker::TranscribeQueue;
 pub const LOCATIONS_FILE: &str = "locations.json";
 pub const DATA_FOLDER: &str = "Co-pet data";
 pub const MODELS_FOLDER: &str = "Co-pet models";
+/// The MSIX package's default data folder, in the home folder.
+#[cfg(windows)]
+const PACKAGED_ROOT: &str = "Co-pet";
 /// Data entries that move; tmp/ is recreated empty at startup.
 const DATA_ENTRIES: [&str; 5] = ["copet.db", "copet.db-wal", "copet.db-shm", "library", "recordings"];
 const WRITE_TEST: &str = ".copet-write-test";
 
-/// `locations.json`. `None` folders are the defaults: `base` for data, `base/models` for models.
+/// `locations.json`. `None` folders are the defaults: `default_root` for data, `default_root/models`
+/// for models.
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Locations {
@@ -38,6 +42,17 @@ pub struct Locations {
     pub pending_data_dir: Option<PathBuf>,
     /// The error code of the last failed startup move.
     pub move_error: Option<String>,
+}
+
+/// The default data folder: `base`, or `%USERPROFILE%\Co-pet` in the MSIX package, whose writes
+/// under `%APPDATA%` are virtualized into the package and so hidden from agents and Explorer.
+#[cfg_attr(not(windows), allow(unused_variables))]
+pub fn default_root(app: &AppHandle, base: &Path) -> AppResult<PathBuf> {
+    #[cfg(windows)]
+    if crate::platform::win::package::is_packaged() {
+        return Ok(app.path().home_dir()?.join(PACKAGED_ROOT));
+    }
+    Ok(base.to_path_buf())
 }
 
 /// Reads `locations.json`; missing or unreadable gives the defaults.
@@ -291,16 +306,17 @@ fn wait_for_db(_db: &Path) {}
 
 /// Resolves the locations at startup, running a pending data move first. A failed move keeps
 /// the data where it was and records `moveError`. Error `dataFolderMissing` when the data
-/// folder is gone (an unplugged drive); a pending move then waits for it too.
-pub fn startup(base: &Path) -> AppResult<Locations> {
+/// folder is gone (an unplugged drive); a pending move then waits for it too. `default_root` is
+/// the data folder while `locations.json` names none.
+pub fn startup(base: &Path, default_root: &Path) -> AppResult<Locations> {
     let mut loc = load(base);
     if loc.data_dir.as_deref().is_some_and(|d| !d.exists()) {
         return Err(AppError::Code("dataFolderMissing"));
     }
     let Some(target) = loc.pending_data_dir.clone() else { return Ok(loc) };
-    let from = loc.data_dir.clone().unwrap_or_else(|| base.to_path_buf());
+    let from = loc.data_dir.clone().unwrap_or_else(|| default_root.to_path_buf());
     let mut next = loc.clone();
-    next.data_dir = (target != base).then(|| target.clone());
+    next.data_dir = (target != default_root).then(|| target.clone());
     next.pending_data_dir = None;
     next.move_error = None;
     let result = if target == from {
@@ -348,8 +364,9 @@ fn glob_escape(s: &str) -> String {
     out
 }
 
-/// A moved data folder is outside the `$APPDATA` scopes in `tauri.conf.json` and the default
-/// capability: grants the asset protocol and the opener for it at runtime.
+/// A moved data folder, or the MSIX package's default one, is outside the `$APPDATA` scopes in
+/// `tauri.conf.json` and the default capability: grants the asset protocol and the opener for it
+/// at runtime.
 pub fn grant_scopes(app: &AppHandle, paths: &Paths) -> AppResult<()> {
     if paths.root == paths.base {
         return Ok(());
@@ -372,9 +389,9 @@ pub fn view(paths: &Paths) -> StorageLocations {
     let models = paths.models();
     StorageLocations {
         data_dir: paths.root.to_string_lossy().into_owned(),
-        data_default: paths.root == paths.base,
+        data_default: paths.root == paths.default_root,
         pending_data_dir: loc.pending_data_dir.map(|p| p.to_string_lossy().into_owned()),
-        models_default: models == paths.base.join("models"),
+        models_default: models == paths.default_root.join("models"),
         models_dir: models.to_string_lossy().into_owned(),
         move_error: loc.move_error,
     }
@@ -394,7 +411,7 @@ fn picked_dir(dir: &str, name: &str) -> AppResult<PathBuf> {
 /// `notEnoughSpace`, `moveFailed`.
 pub async fn set_models_dir(app: &AppHandle, dir: Option<String>) -> AppResult<StorageLocations> {
     let paths = app.state::<Paths>().inner().clone();
-    let default = paths.base.join("models");
+    let default = paths.default_root.join("models");
     let target = match dir {
         None => default.clone(),
         Some(d) => picked_dir(&d, MODELS_FOLDER)?,
@@ -456,14 +473,14 @@ pub async fn set_models_dir(app: &AppHandle, dir: Option<String>) -> AppResult<S
 /// `folderInUse`, `folderNotWritable`, `notEnoughSpace`.
 pub fn set_data_dir(paths: &Paths, dir: Option<String>) -> AppResult<StorageLocations> {
     let target = match dir {
-        None => paths.base.clone(),
+        None => paths.default_root.clone(),
         Some(d) => picked_dir(&d, DATA_FOLDER)?,
     };
     let mut loc = load(&paths.base);
     if target == paths.root {
         loc.pending_data_dir = None;
     } else {
-        if target != paths.base && (target.starts_with(&paths.root) || paths.root.starts_with(&target)) {
+        if target != paths.default_root && (target.starts_with(&paths.root) || paths.root.starts_with(&target)) {
             return Err(AppError::Code("invalid"));
         }
         if holds_data(&target) {
@@ -569,7 +586,7 @@ mod tests {
         let target = dir.path().join("D").join(DATA_FOLDER);
         seed(&base);
         save(&base, &Locations { pending_data_dir: Some(target.clone()), ..Default::default() }).unwrap();
-        let loc = startup(&base).unwrap();
+        let loc = startup(&base, &base).unwrap();
         assert_eq!(loc, Locations { data_dir: Some(target.clone()), ..Default::default() });
         assert_eq!(load(&base), loc, "persisted");
         assert!(seeded(&target));
@@ -584,11 +601,29 @@ mod tests {
         seed(&data);
         let l = Locations { data_dir: Some(data.clone()), pending_data_dir: Some(base.clone()), ..Default::default() };
         save(&base, &l).unwrap();
-        let loc = startup(&base).unwrap();
+        let loc = startup(&base, &base).unwrap();
         assert_eq!(loc.data_dir, None);
         assert_eq!(loc.pending_data_dir, None);
         assert!(seeded(&base));
         assert!(empty(&data));
+    }
+
+    #[test]
+    fn startup_moves_back_to_a_default_outside_base() {
+        // The MSIX package: `locations.json` in the app data folder, the data in the home folder.
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base");
+        let home = dir.path().join("home").join("Co-pet");
+        let data = dir.path().join("D").join(DATA_FOLDER);
+        seed(&data);
+        let l = Locations { data_dir: Some(data.clone()), pending_data_dir: Some(home.clone()), ..Default::default() };
+        save(&base, &l).unwrap();
+        let loc = startup(&base, &home).unwrap();
+        assert_eq!(loc, Locations::default());
+        assert_eq!(load(&base), loc, "persisted in base");
+        assert!(seeded(&home));
+        assert!(empty(&data));
+        assert!(empty(&base));
     }
 
     #[test]
@@ -600,7 +635,7 @@ mod tests {
         std::fs::create_dir_all(&target).unwrap();
         std::fs::write(target.join("copet.db"), b"other").unwrap();
         save(&base, &Locations { pending_data_dir: Some(target.clone()), ..Default::default() }).unwrap();
-        let loc = startup(&base).unwrap();
+        let loc = startup(&base, &base).unwrap();
         assert_eq!(loc.move_error.as_deref(), Some("folderInUse"));
         assert_eq!((loc.data_dir, loc.pending_data_dir), (None, None));
         assert_eq!(load(&base).move_error.as_deref(), Some("folderInUse"));
@@ -614,7 +649,7 @@ mod tests {
         let base = dir.path().join("base");
         let gone = dir.path().join("D").join(DATA_FOLDER);
         save(&base, &Locations { data_dir: Some(gone), ..Default::default() }).unwrap();
-        assert!(matches!(startup(&base), Err(AppError::Code("dataFolderMissing"))));
+        assert!(matches!(startup(&base, &base), Err(AppError::Code("dataFolderMissing"))));
     }
 
     #[test]

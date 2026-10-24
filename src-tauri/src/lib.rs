@@ -26,7 +26,6 @@ mod export;
 mod agent;
 mod account;
 mod sync;
-mod updater;
 mod storage;
 pub mod transcribe;
 
@@ -64,7 +63,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(hotkeys::Hotkeys::default())
         .manage(platform::fullscreen::Visibility::default())
         .manage(platform::idle::Sleep::default())
@@ -78,11 +76,13 @@ pub fn run() {
             platform::pet_window::set_in_task_switcher(app.handle(), false)?;
             let handle = app.handle().clone();
             let base = handle.path().app_data_dir()?;
-            let paths = match storage::startup(&base) {
+            let default_root = storage::default_root(&handle, &base)?;
+            let paths = match storage::startup(&base, &default_root) {
                 Ok(loc) => {
-                    let mut paths = Paths::new(loc.data_dir.clone().unwrap_or_else(|| base.clone()));
+                    let mut paths = Paths::new(loc.data_dir.clone().unwrap_or_else(|| default_root.clone()));
                     paths.base = base.clone();
-                    paths.set_models(loc.models_dir.clone().unwrap_or_else(|| base.join("models")));
+                    paths.set_models(loc.models_dir.clone().unwrap_or_else(|| default_root.join("models")));
+                    paths.default_root = default_root;
                     paths
                 }
                 Err(AppError::Code("dataFolderMissing")) => {
@@ -97,7 +97,7 @@ pub fn run() {
             let db = Db::open(&paths.db)?;
             paths.clear_tmp()?;
             app.manage(paths);
-            // Before any window opens: a moved data folder needs runtime scopes.
+            // Before any window opens: a data folder outside `$APPDATA` needs runtime scopes.
             storage::grant_scopes(&handle, &app.state::<Paths>())?;
             app.manage(db);
             app.manage(ai::KeyCache::default());
@@ -112,8 +112,6 @@ pub fn run() {
             // After Paths, Db, Downloader and LlmServer: the worker uses all of them.
             app.manage(triage::start(&handle));
             tray_icon::create(&handle)?;
-            app.manage(updater::Updates::default());
-            updater::start(&handle);
             hotkeys::init(&handle);
             platform::fullscreen::start(&handle);
             platform::idle::start(&handle);
@@ -137,7 +135,7 @@ pub fn run() {
             } else {
                 windows::open_onboarding(&handle)?;
             }
-            // Installed builds register `copet://` from the NSIS installer; dev builds register at runtime.
+            // The MSIX package registers `copet://` through its manifest; dev builds register at runtime.
             #[cfg(all(windows, debug_assertions))]
             if let Err(e) = app.deep_link().register_all() {
                 eprintln!("[links] register: {e}");
@@ -254,6 +252,8 @@ pub fn run() {
             commands::whats_next,
             commands::next_action,
             commands::backend_status,
+            commands::set_backend,
+            commands::clear_backend,
             commands::integrations_status,
             commands::connect_oauth,
             commands::connect_token,
@@ -289,9 +289,6 @@ pub fn run() {
             commands::sync_status,
             commands::sync_now,
             commands::diary_week,
-            commands::update_status,
-            commands::update_check,
-            commands::update_install,
             commands::storage_locations,
             commands::set_models_dir,
             commands::set_data_dir,

@@ -1,17 +1,17 @@
 // Shared react-query hooks for settings, categories, the local-model status, the export
 // integrations, the MCP clients and the account. Each hook keeps its cache live from Rust
 // events: `settings-changed`, `categories-changed`, `integration-changed`, `exports-changed`,
-// `agents-changed` and `account-changed` invalidate their query; `ai-status`, `sync-status`,
-// `update-status` and `recording-status` replace theirs in place.
+// `agents-changed` and `account-changed` invalidate their query; `ai-status`, `sync-status`
+// and `recording-status` replace theirs in place.
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { useT } from './i18n';
 import {
   accountStatus, aiStatus, speechStatus, syncStatus, backendStatus, getSettings, integrationsStatus, listCategories, listMcpClients, on,
-  recordingStatus, updateStatus,
+  recordingStatus,
   setSetting,
 } from './ipc';
-import type { AiStatus, Json, RecordingStatus, SpeechStatus, SyncStatus, UpdateStatus } from './types';
+import type { AiStatus, Json, RecordingStatus, SpeechStatus, SyncStatus } from './types';
 
 export const SETTINGS_KEY = ['settings'] as const;
 export const AI_STATUS_KEY = ['aiStatus'] as const;
@@ -25,7 +25,6 @@ export const AGENTS_KEY = ['agents'] as const;
 export const MCP_CLIENTS_KEY = [...AGENTS_KEY, 'clients'] as const;
 export const ACCOUNT_KEY = ['account'] as const;
 export const SYNC_KEY = ['sync'] as const;
-export const UPDATE_KEY = ['update'] as const;
 export const STORAGE_KEY = ['storage'] as const;
 
 export type Settings = Record<string, Json>;
@@ -35,10 +34,10 @@ const settingsSubscribed = new WeakSet<QueryClient>();
 const aiSubscribed = new WeakSet<QueryClient>();
 const categoriesSubscribed = new WeakSet<QueryClient>();
 const integrationsSubscribed = new WeakSet<QueryClient>();
+const backendSubscribed = new WeakSet<QueryClient>();
 const agentsSubscribed = new WeakSet<QueryClient>();
 const accountSubscribed = new WeakSet<QueryClient>();
 const syncSubscribed = new WeakSet<QueryClient>();
-const updateSubscribed = new WeakSet<QueryClient>();
 
 export function useSettings() {
   const qc = useQueryClient();
@@ -144,8 +143,17 @@ export function useIntegrations() {
   return useQuery({ queryKey: INTEGRATIONS_KEY, queryFn: integrationsStatus });
 }
 
-/** Whether this build can sign in through the backend (OAuth). */
+/** The user's own Supabase project, if any (accounts, sync, OAuth). `account-changed` (sent
+ *  after `set_backend` / `clear_backend`) refreshes it. */
 export function useBackendStatus() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (backendSubscribed.has(qc)) return;
+    backendSubscribed.add(qc);
+    void on('account-changed', () => {
+      void qc.invalidateQueries({ queryKey: BACKEND_KEY });
+    });
+  }, [qc]);
   return useQuery({ queryKey: BACKEND_KEY, queryFn: backendStatus, staleTime: Infinity });
 }
 
@@ -184,17 +192,6 @@ export function useSyncStatus() {
     void on('sync-status', (s) => qc.setQueryData<SyncStatus>(SYNC_KEY, s));
   }, [qc]);
   return useQuery({ queryKey: SYNC_KEY, queryFn: syncStatus, staleTime: Infinity });
-}
-
-/** The updater's status (`update_status`), replaced in place by `update-status`. */
-export function useUpdateStatus() {
-  const qc = useQueryClient();
-  useEffect(() => {
-    if (updateSubscribed.has(qc)) return;
-    updateSubscribed.add(qc);
-    void on('update-status', (s) => qc.setQueryData<UpdateStatus>(UPDATE_KEY, s));
-  }, [qc]);
-  return useQuery({ queryKey: UPDATE_KEY, queryFn: updateStatus, staleTime: Infinity });
 }
 
 /** "Added by {name}" for an `addedBy` client id; an id unknown on this Mac reads "Added by agent". */

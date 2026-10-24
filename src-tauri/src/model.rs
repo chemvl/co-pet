@@ -477,11 +477,12 @@ pub struct PetStatus {
     pub sleep: bool,
 }
 
-/// `backend_status`: whether this build has a Supabase URL and key.
+/// `backend_status`: whether the user entered their own Supabase project, and its URL.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackendStatus {
     pub configured: bool,
+    pub url: Option<String>,
 }
 
 /// Where this Mac stands with the sync master key (see `account::keys::key_state`).
@@ -519,7 +520,7 @@ pub struct AccountStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncState {
-    /// No Supabase project in this build, or signed out.
+    /// No Supabase project set in Settings › Account, or signed out.
     Off,
     /// `privacy.localOnly` is on.
     Paused,
@@ -542,29 +543,6 @@ pub struct SyncStatus {
     pub last_synced_at: Option<i64>,
     pub pending: i64,
     pub blobs_pending: i64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum UpdateState {
-    Idle,
-    Checking,
-    Downloading,
-    Ready,
-    UpToDate,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateStatus {
-    pub state: UpdateState,
-    pub version: Option<String>,
-    pub notes: Option<String>,
-    /// 0–1 while downloading.
-    pub progress: Option<f64>,
-    /// `updateFailed` | `localOnly` when `state` is `failed`.
-    pub error: Option<String>,
 }
 
 /// Who made an item or task change; maps to the `actor` / `client_id` columns of

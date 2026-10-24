@@ -21,8 +21,8 @@ const THEME: &str = "ui.theme";
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Stops a running recording (it is queued and transcribed next launch), the model server and
-/// the MCP HTTP server. Used by `quit` and before an update installs.
-pub async fn shutdown(app: &AppHandle) {
+/// the MCP HTTP server. Used by `quit`.
+async fn shutdown(app: &AppHandle) {
     if let Some(rec) = app.try_state::<Recorder>() {
         if rec.is_active() {
             if let Err(e) = rec.stop(app).await {
@@ -120,11 +120,27 @@ async fn signals() {
 }
 
 /// Matches the login item to `general.openAtLogin`. Debug builds only log: a login item pointing
-/// at `target/debug` would start a dev binary without its dev server at every login.
+/// at `target/debug` would start a dev binary without its dev server at every login. The MSIX
+/// package uses its manifest's startup task (the plugin's HKCU `Run` entry is virtualized there);
+/// when the user or a policy overrides it, the setting follows the task instead.
 pub fn apply_autostart(app: &AppHandle) {
     let want = settings::read::<bool>(app, OPEN_AT_LOGIN).unwrap_or(true);
     if cfg!(debug_assertions) {
         eprintln!("[autostart] debug build: login item left as is (setting says {want})");
+        return;
+    }
+    #[cfg(windows)]
+    if crate::platform::win::package::is_packaged() {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || match crate::platform::win::package::set_startup_task(want) {
+            Ok(on) if on != want => {
+                if let Err(e) = settings::set(&app, OPEN_AT_LOGIN, &Value::Bool(on)) {
+                    eprintln!("[autostart] saving {OPEN_AT_LOGIN}: {e}");
+                }
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("[autostart] startup task: {e}"),
+        });
         return;
     }
     let launcher = app.autolaunch();

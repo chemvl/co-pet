@@ -18,7 +18,7 @@ const status = (patch: Partial<AccountStatus>): AccountStatus => ({
 });
 
 describe('accountView', () => {
-  it('checks the build before anything else', () => {
+  it('checks for a Supabase project before anything else', () => {
     expect(accountView(status({ configured: false }))).toBe('notConfigured');
     expect(accountView(status({ configured: false, signedIn: false, keyState: 'none' }))).toBe('notConfigured');
   });
@@ -48,7 +48,10 @@ describe('accountError', () => {
     expect(accountError(t, 'keyExists')).toBe('Sync was just turned on from another computer. Enter that recovery key instead.');
     expect(accountError(t, 'signedOut')).toBe('You were signed out. Sign in again to keep syncing.');
     expect(accountError(t, 'decrypt')).toBe("Co-pet couldn't decrypt that data.");
-    for (const code of ['oauthExpired', 'network', 'localOnly', 'invalid', 'notFound']) {
+    for (const code of [
+      'oauthExpired', 'network', 'localOnly', 'invalid', 'notFound', 'notConfigured',
+      'invalidUrl', 'invalidKey', 'secretKey', 'backendUnreachable', 'backendRejected',
+    ]) {
       expect(accountError(t, code)).not.toBe(code);
       expect(accountError(vi, code)).not.toBe(code);
     }

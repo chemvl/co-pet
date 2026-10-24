@@ -96,10 +96,10 @@ fn start_url(base: &str, p: Provider, state: &str, challenge: &str) -> AppResult
 /// Opens the provider's consent page in the browser. `localOnly`, `notConfigured`.
 pub fn start(app: &AppHandle, p: Provider) -> AppResult<()> {
     backend::ensure_network(app)?;
-    let b = backend::config().ok_or(AppError::Code("notConfigured"))?;
+    let b = backend::current(app)?.ok_or(AppError::Code("notConfigured"))?;
     let state = random_b64()?;
     let verifier = random_b64()?;
-    let url = start_url(b.url, p, &state, &challenge(&verifier))?;
+    let url = start_url(&b.url, p, &state, &challenge(&verifier))?;
     app.state::<OAuthPending>().lock().insert(state, p, verifier, Instant::now());
     app.opener().open_url(url.as_str(), None::<&str>).map_err(|e| AppError::msg(e.to_string()))
 }
@@ -145,10 +145,10 @@ pub async fn finish(app: AppHandle, state: String, error: Option<String>) {
 /// handoff) is `oauthExpired`.
 async fn claim_token(app: &AppHandle, p: Provider, state: &str, verifier: &str) -> AppResult<()> {
     backend::ensure_network(app)?;
-    let b = backend::config().ok_or(AppError::Code("notConfigured"))?;
+    let b = backend::current(app)?.ok_or(AppError::Code("notConfigured"))?;
     let res = backend::http()
         .post(format!("{}/functions/v1/oauth/claim", b.url))
-        .header("apikey", b.key)
+        .header("apikey", &b.key)
         .json(&json!({ "state": state, "verifier": verifier }))
         .send()
         .await?;

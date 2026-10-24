@@ -1,6 +1,6 @@
 // `bun run set-version <x.y.z>`: writes one version to tauri.conf.json, Cargo.toml, package.json and
-// the `copet` package entry of Cargo.lock.
-// `readVersions()` is used by `scripts/release.ts` to check the three agree.
+// the `copet` package entry of Cargo.lock. Numeric only, each part up to 65535: the MSIX package
+// version is `<x.y.z>.0` (scripts/package-msix.ts, which uses `readVersions()` to check all three agree).
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -10,7 +10,7 @@ const CARGO_TOML = join(root, "src-tauri/Cargo.toml");
 const CARGO_LOCK = join(root, "src-tauri/Cargo.lock");
 const PACKAGE_JSON = join(root, "package.json");
 
-const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
 const CARGO_VERSION_RE = /^version = "([^"]*)"/m;
 const LOCK_VERSION_RE = /^(name = "copet"\nversion = )"[^"]*"/m;
 
@@ -44,8 +44,8 @@ function setVersion(version: string) {
 
 if (import.meta.main) {
   const version = process.argv[2];
-  if (!version || !VERSION_RE.test(version)) {
-    console.error("usage: bun run set-version <x.y.z> (optionally -prerelease)");
+  if (!version || !VERSION_RE.test(version) || version.split(".").some((n) => Number(n) > 65535)) {
+    console.error("usage: bun run set-version <x.y.z> (numbers up to 65535, no prerelease suffix)");
     process.exit(1);
   }
   setVersion(version);

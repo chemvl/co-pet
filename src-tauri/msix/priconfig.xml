@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- MakePri config for scripts/package-msix.ts. It indexes a directory that holds only Assets\, so
+     the scale-* / targetsize-* / altform-* logo variants resolve and no binary gets indexed. No
+     <packaging> section: everything goes into the one resources.pri of the single package. -->
+<resources targetOsVersion="10.0.0" majorVersion="1">
+  <index root="\" startIndexAt="\">
+    <default>
+      <qualifier name="Language" value="en-US"/>
+      <qualifier name="Contrast" value="standard"/>
+      <qualifier name="Scale" value="100"/>
+      <qualifier name="HomeRegion" value="001"/>
+      <qualifier name="TargetSize" value="256"/>
+      <qualifier name="LayoutDirection" value="LTR"/>
+      <qualifier name="Theme" value="dark"/>
+      <qualifier name="AlternateForm" value=""/>
+      <qualifier name="DXFeatureLevel" value="DX9"/>
+      <qualifier name="Configuration" value=""/>
+      <qualifier name="DeviceFamily" value="Universal"/>
+      <qualifier name="Custom" value=""/>
+    </default>
+    <indexer-config type="folder" foldernameAsQualifier="true" filenameAsQualifier="true" qualifierDelimiter="."/>
+  </index>
+</resources>

@@ -4,7 +4,7 @@ Co-pet is a desktop companion that lives on the edge of your screen as an animat
 
 It is local-first: items, tasks and the triage model live on your computer. Nothing leaves the machine unless you turn on a feature that needs the network, and synced data is end-to-end encrypted.
 
-Platforms: macOS 13+ on Apple Silicon and Windows 11 x64. UI in English and Vietnamese.
+Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code (macOS 13+ on Apple Silicon) stays in the repo and builds for development, but isn't distributed. UI in English and Vietnamese.
 
 ## What it does
 
@@ -15,7 +15,7 @@ Platforms: macOS 13+ on Apple Silicon and Windows 11 x64. UI in English and Viet
 - **Export** — push tasks to Notion or Asana through a retrying queue.
 - **Transcribe** — records meetings on this computer and turns them into a transcript, summary and tasks; offers to record Zoom and Google Meet calls (Settings › Transcribe).
 - **MCP server** — AI agents (Claude Code, Cursor, Codex, Gemini CLI, or any MCP client) can search items and manage tasks through the bundled `copet-mcp` sidecar, with per-client write approval and an undoable activity log.
-- **Accounts and sync** — optional sign-in (email code or Google) and end-to-end encrypted sync between your computers through Supabase.
+- **Accounts and sync** — optional sign-in (email code or Google) and end-to-end encrypted sync between your computers through a Supabase project you run yourself (see [Bring your own backend](#bring-your-own-backend)).
 
 ## Repository layout
 
@@ -24,8 +24,8 @@ Platforms: macOS 13+ on Apple Silicon and Windows 11 x64. UI in English and Viet
 | `src-tauri/` | Rust core (Tauri 2): database, capture, triage, tasks, export, MCP socket API, accounts, sync |
 | `src/` | React UI — `pet/` (the pet window), `home/` (Home window), `shared/` (IPC, types, i18n), `ds/` (design system) |
 | `src-mcp/` | `copet-mcp` sidecar (Bun + MCP SDK), compiled into `src-tauri/binaries/` |
-| `supabase/` | Backend for OAuth hand-off, account deletion and sync (migrations + Edge Functions) |
-| `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `render-icons.ts` |
+| `supabase/` | Backend for OAuth hand-off, account deletion and sync (migrations + Edge Functions), deployed by each user to their own Supabase project |
+| `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `build-local.ts`, `package-msix.ts`, `set-version.ts`, `publish-site.ts`, `render-icons.ts` |
 | `video/` | 60-second intro video (Remotion) built from the real design system and pet art — `cd video && bun run render` writes `out/co-pet-intro.mp4`; `bun run render:music` mixes in `public/music.mp3` |
 | `docs/` | Product brief, UI & UX guidelines, design boards, plans and handoff notes |
 
@@ -36,13 +36,14 @@ Platforms: macOS 13+ on Apple Silicon and Windows 11 x64. UI in English and Viet
 - macOS 13 or later on Apple Silicon, with Xcode Command Line Tools (`xcode-select --install`).
 - Windows 11 x64: Visual Studio 2022 Build Tools with "Desktop development with C++", [Rust](https://rustup.rs) stable (MSVC), [Bun](https://bun.sh) 1.4+, CMake 3.28+, Ninja, LLVM 17+ and the Vulkan SDK for whisper's GPU build (`winget install Kitware.CMake Ninja-build.Ninja LLVM.LLVM KhronosGroup.VulkanSDK`). Build Windows on Windows; cross-compiling from macOS isn't supported.
   On a Windows machine without a GPU driver that provides `vulkan-1.dll` (for example a VM), the test binaries need the Vulkan Runtime's `vulkan-1.dll` on `PATH` to start (CI adds the runtime its Vulkan SDK action installs).
-  Run every Windows build (`cargo`, `tauri dev`, `tauri build`, `build:prod`) from an "x64 Native Tools Command Prompt for VS 2022" (or after `call "<VS>\VC\Auxiliary\Build\vcvars64.bat"`), with Ninja, CMake and `C:\Program Files\LLVM\bin` on `PATH` and these variables set (Ninja because with the Visual Studio generator, whisper.cpp's Vulkan shader build exceeds the Windows path length limit):
+  Run every Windows build (`cargo`, `tauri dev`, `tauri build`, `package:msix`) from an "x64 Native Tools Command Prompt for VS 2022" (or after `call "<VS>\VC\Auxiliary\Build\vcvars64.bat"`), with Ninja, CMake and `C:\Program Files\LLVM\bin` on `PATH` and these variables set (Ninja because with the Visual Studio generator, whisper.cpp's Vulkan shader build exceeds the Windows path length limit):
 
   ```bat
   set CMAKE_GENERATOR=Ninja
   set VULKAN_SDK=C:\VulkanSDK\<version>
   set LIBCLANG_PATH=C:\Program Files\LLVM\bin
   ```
+- Windows only, for MSIX packages: the Windows 10/11 SDK (`makeappx.exe`, `makepri.exe`, `signtool.exe`).
 - [Rust](https://rustup.rs) (stable).
 - [Bun](https://bun.sh) 1.4 or later.
 - Optional, only for accounts/sync/OAuth: the [Supabase CLI](https://supabase.com/docs/guides/cli) and Docker (Docker Desktop or colima).
@@ -64,39 +65,38 @@ This builds the `copet-mcp` sidecar, starts Vite, compiles the Rust app and open
 
 Notes:
 
-- Dev mode uses the real app data folder `~/Library/Application Support/com.copet.app/` (database, library files, models). To start fresh use Settings › Data › Delete everything, or quit the app and remove that folder.
+- On macOS, dev mode uses the real app data folder `~/Library/Application Support/com.copet.app/` (database, library files, models). To start fresh use Settings › Data › Delete everything, or quit the app and remove that folder.
 - macOS asks for **Screen Recording** (screen capture) and **Accessibility** (send selection, paste back) the first time you use those features. The dev binary and the bundled app get separate grants.
-- Without a backend configured, the app runs fully local; Integrations shows "Use a token instead" for Notion/Asana and Settings › Account says sync isn't set up in this build. To build with a backend, see [Backend configuration](#backend-configuration).
+- Until you connect a backend in Settings › Account and sync, the app runs fully local; Integrations shows "Use a token instead" for Notion/Asana. See [Bring your own backend](#bring-your-own-backend).
 
 Windows notes:
 
-- The app data folder is `%APPDATA%\com.copet.app\` (database, library files, models).
+- In `tauri dev` the app data folder is `%APPDATA%\com.copet.app\` (database, library files, models). The packaged (MSIX) app uses `%USERPROFILE%\Co-pet\` instead.
 - `copet://` links work in `tauri dev` too: the dev app registers the scheme at runtime.
 - Windows has no Screen Recording or Accessibility prompts.
 - Calendar isn't available on Windows, so What's Next doesn't use calendar events.
-- To build and install the per-user installer, see [4. Build the app bundle](#4-build-the-app-bundle).
+- To build and install a sideloadable MSIX test package, see [4. Build the app](#4-build-the-app).
 
-### 4. Build the app bundle
+### 4. Build the app
 
-macOS:
+macOS (development only, not distributed):
 
 ```sh
-bun run tauri build --bundles app
+bun run build:local
 open src-tauri/target/release/bundle/macos/Co-pet.app
 ```
 
 Launch the bundle with `open`, not from a terminal — otherwise macOS attributes permissions to the terminal. `copet://` deep links (Notion/Asana OAuth, Google sign-in, item links) only work in the bundled app.
 
-Windows (per-user NSIS installer, no UAC; installs to `%LOCALAPPDATA%\Co-pet`):
+Windows (signed with a local self-signed certificate, for sideload testing):
 
 ```bat
-bun run tauri build
-src-tauri\target\release\bundle\nsis\Co-pet_<version>_x64-setup.exe
+bun run package:msix --dev-cert
 ```
 
-Local builds are unsigned: SmartScreen warns when the installer is downloaded onto another machine and run there.
+It builds the app and writes `src-tauri\target\release\msix\Co-pet_<x.y.z.0>_x64.msix`. Trust the certificate once with the admin PowerShell command it prints, then install with `Add-AppxPackage "<path-to-msix>"`. The packaged app keeps its data in `%USERPROFILE%\Co-pet\`.
 
-Step-by-step local builds for the team and signed releases: [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md).
+Step-by-step local builds and Microsoft Store releases: [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md).
 
 ### 5. Run the checks
 
@@ -107,44 +107,11 @@ bun run test
 bun run typecheck
 ```
 
-## Backend configuration
+## Bring your own backend
 
-Accounts, sync, Google sign-in and Notion/Asana OAuth go through Supabase. The app gets the backend from two variables that are **compiled in** (`option_env!` in `src-tauri/src/backend.rs`), not read when the app runs:
+Builds contain no backend. Accounts, sync, Google sign-in and Notion/Asana OAuth go through a Supabase project that each user deploys and connects themselves: paste its URL and **publishable** key in Settings › Account and sync. Co-pet saves them on this device only (never synced) and runs fully local until then. Never paste the service_role/secret key into the app. Notion and Asana personal tokens work without any backend.
 
-| Variable | Value |
-| --- | --- |
-| `COPET_SUPABASE_URL` | Local: `http://127.0.0.1:54321`. Hosted: `https://<ref>.supabase.co` |
-| `COPET_SUPABASE_KEY` | The **publishable (anon)** key. It ships inside the app, so never use the service_role/secret key |
-
-If either value is missing or empty, the build is local-only. Changing them triggers a rebuild (`src-tauri/build.rs`). Debug (`tauri dev`) and release (`tauri build`) builds keep their own values.
-
-### Env files
-
-Keep one file per environment in the repo root. Copy them from [`.env.example`](.env.example):
-
-```sh
-cp .env.example .env.dev    # local Supabase
-cp .env.example .env.prod   # hosted project
-```
-
-Pass the file explicitly with `bun --env-file`. Plain `bun run` doesn't load these files, so a release build never picks up dev values by accident:
-
-```sh
-bun --env-file=.env.dev run tauri dev                    # dev app against local Supabase
-bun --env-file=.env.prod run tauri build --bundles app   # ad-hoc signed bundle against the hosted project
-```
-
-Every `.env` and `.env.*` file is gitignored except the `.env.example` templates.
-
-| File | Used by | Contents |
-| --- | --- | --- |
-| `.env.example` | template (tracked) | `COPET_SUPABASE_URL`, `COPET_SUPABASE_KEY` |
-| `.env.dev` | `tauri dev`, or a test bundle against local Supabase | local URL and publishable key |
-| `.env.prod` | release `tauri build` | hosted URL and publishable key |
-| `supabase/functions/.env.example` | template (tracked) | Edge Function secrets |
-| `supabase/functions/.env.local` | `supabase functions serve` | `COPET_SERVICE_KEY`, Notion/Asana client ID and secret |
-
-The hosted project's function secrets go in `supabase secrets set`, not in a file. See [`supabase/README.md`](supabase/README.md).
+To deploy the backend to a hosted project (migrations, the `oauth` and `delete-account` functions, their secrets, your own Notion/Asana apps with redirect URL `https://<ref>.supabase.co/functions/v1/oauth/callback`, the `copet://auth/callback` redirect and the optional Google provider), follow [`supabase/README.md`](supabase/README.md). Function secrets go in `supabase secrets set` and stay in Supabase; none of them are part of the app.
 
 ### Local backend
 
@@ -153,42 +120,18 @@ supabase start        # applies supabase/migrations; prints the API URL and keys
 supabase status       # API URL (default http://127.0.0.1:54321), publishable key, secret (service_role) key
 ```
 
-Put the API URL and publishable key in `.env.dev`. Then serve the Edge Functions. Dummy Notion/Asana values are fine unless you test OAuth:
+Serve the Edge Functions. Dummy Notion/Asana values are fine unless you test OAuth:
 
 ```sh
 cp supabase/functions/.env.example supabase/functions/.env.local   # then fill in COPET_SERVICE_KEY
 supabase functions serve --env-file supabase/functions/.env.local
 ```
 
-In another terminal:
+Start the app with `bun run tauri dev`, open Settings › Account and sync, and paste `http://127.0.0.1:54321` and the local publishable key. Sign in with any email; the 6-digit code arrives in the local mail catcher at http://127.0.0.1:54324.
 
-```sh
-bun --env-file=.env.dev run tauri dev
-```
+Google sign-in and Notion/Asana OAuth return through `copet://` deep links. macOS delivers those only to the bundled app, so on macOS these flows can't finish in `tauri dev`. Use a hosted project to test them: `supabase/config.toml` has no Google provider and doesn't allow `copet://auth/callback`, and the local `oauth` function's redirect URI isn't reachable from Notion or Asana.
 
-Sign in from Settings › Account and sync with any email. The 6-digit code arrives in the local mail catcher at http://127.0.0.1:54324.
-
-### Hosted backend and Google sign-in
-
-1. Deploy the backend and set up the Google provider by following [`supabase/README.md`](supabase/README.md):
-   - Google Cloud OAuth client of type Web application, with redirect URI `https://<ref>.supabase.co/auth/v1/callback`.
-   - Dashboard › Authentication › Providers › Google enabled with that client ID and secret.
-   - `copet://auth/callback` added under Redirect URLs.
-
-   The Google client ID and secret stay in Supabase and are never part of the app.
-2. Put `https://<ref>.supabase.co` and the project's publishable key in `.env.prod`.
-3. Build and open the bundle:
-
-   ```sh
-   bun run build:prod   # bundle against the hosted project, signed with your Apple Development / Developer ID certificate
-   open src-tauri/target/release/bundle/macos/Co-pet.app
-   ```
-
-   On Windows, `build:prod` builds the unsigned NSIS installer and prints its path (`src-tauri\target\release\bundle\nsis\Co-pet_<version>_x64-setup.exe`); run it to install.
-
-Google sign-in and Notion/Asana OAuth return through `copet://` deep links. macOS delivers those only to the bundled app, so these flows can't finish in `tauri dev`. Use the hosted project to test them. `supabase/config.toml` has no Google provider and doesn't allow `copet://auth/callback`, and the local `oauth` function's redirect URI isn't reachable from Notion or Asana.
-
-The keychain trusts an app by its code signature. `build:prod` signs with the first "Developer ID Application" or "Apple Development" certificate in your login keychain (or `APPLE_SIGNING_IDENTITY`), so after you click **Always Allow** once per Co-pet keychain entry, rebuilt apps read it without asking. Ad-hoc builds (`signingIdentity: "-"`, used when no certificate exists) are a new app to the keychain on every build and ask for the login password again; within one launch the app reads each entry at most once.
+On macOS the keychain trusts an app by its code signature. `build:local` signs with the first "Developer ID Application" or "Apple Development" certificate in your login keychain (or `APPLE_SIGNING_IDENTITY`), so after you click **Always Allow** once per Co-pet keychain entry, rebuilt apps read it without asking. Ad-hoc builds (`signingIdentity: "-"`, used when no certificate exists) are a new app to the keychain on every build and ask for the login password again; within one launch the app reads each entry at most once.
 
 ## Connecting an AI agent
 

@@ -6,7 +6,7 @@ src-tauri/gen/
 src-tauri/binaries/
 .DS_Store
 
-# Backend config (see README › Backend configuration); templates stay tracked
+# Local config (maintainer scripts' .env, supabase/functions/.env.local); `.env.example` templates stay tracked
 .env
 .env.*
 !.env.example

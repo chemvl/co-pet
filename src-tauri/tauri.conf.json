@@ -29,10 +29,6 @@
       "desktop": {
         "schemes": ["copet"]
       }
-    },
-    "updater": {
-      "pubkey": "OWNER_UPDATER_PUBKEY",
-      "endpoints": ["https://updates.owner-domain.invalid/copet/latest.json"]
     }
   },
   "bundle": {

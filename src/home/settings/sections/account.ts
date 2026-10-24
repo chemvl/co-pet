@@ -5,7 +5,8 @@ import type { AccountStatus } from '../../../shared/types';
 
 export type AccountView = 'notConfigured' | 'signedOut' | 'needsSetup' | 'needsRecovery' | 'ready' | 'unknown';
 
-/** `notConfigured` comes first, so the section never shows the `notConfigured` error copy. */
+/** `notConfigured` (no Supabase project entered yet) comes first, so the section shows the
+ *  project form instead of the `notConfigured` error copy. */
 export function accountView(s: AccountStatus): AccountView {
   if (!s.configured) return 'notConfigured';
   if (!s.signedIn) return 'signedOut';

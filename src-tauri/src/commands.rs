@@ -803,8 +803,23 @@ pub async fn next_action(app: AppHandle, task_id: String, action: String, trigge
 // ---------- M4: export ----------
 
 #[tauri::command]
-pub fn backend_status() -> crate::model::BackendStatus {
-    crate::model::BackendStatus { configured: crate::backend::config().is_some() }
+pub fn backend_status(app: AppHandle) -> AppResult<crate::model::BackendStatus> {
+    crate::backend::status(&app)
+}
+
+/// Tests and saves the user's Supabase project. Rejects with `localOnly`, `invalidUrl`,
+/// `invalidKey`, `secretKey`, `backendUnreachable` or `backendRejected`.
+#[tauri::command]
+pub async fn set_backend(app: AppHandle, url: String, key: String) -> AppResult<crate::model::BackendStatus> {
+    crate::backend::set(&app, &url, &key).await?;
+    crate::backend::status(&app)
+}
+
+/// Forgets the project: signs out, forgets sync progress and OAuth-connected Notion/Asana.
+#[tauri::command]
+pub async fn clear_backend(app: AppHandle) -> AppResult<crate::model::BackendStatus> {
+    crate::backend::clear(&app).await?;
+    crate::backend::status(&app)
 }
 
 fn provider(s: &str) -> AppResult<crate::export::Provider> {
@@ -847,14 +862,14 @@ pub fn disconnect(app: AppHandle, db: State<'_, Db>, provider: String) -> AppRes
 #[tauri::command]
 pub async fn notion_data_sources(app: AppHandle) -> AppResult<Vec<crate::model::TargetOption>> {
     crate::backend::ensure_network(&app)?;
-    let token = crate::export::token(crate::export::Provider::Notion).await?;
+    let token = crate::export::token(&app, crate::export::Provider::Notion).await?;
     Ok(crate::export::notion::data_sources(&token, crate::i18n::lang(&app)).await?)
 }
 
 #[tauri::command]
 pub async fn notion_schema(app: AppHandle, id: String) -> AppResult<crate::model::NotionSchema> {
     crate::backend::ensure_network(&app)?;
-    let token = crate::export::token(crate::export::Provider::Notion).await?;
+    let token = crate::export::token(&app, crate::export::Provider::Notion).await?;
     Ok(crate::export::notion::schema(&token, &id).await?)
 }
 
@@ -868,7 +883,7 @@ pub async fn asana_options(
     use crate::export::asana;
     crate::backend::ensure_network(&app)?;
     let parent = || parent.as_deref().filter(|p| !p.is_empty()).ok_or(crate::error::AppError::Code("invalid"));
-    let token = crate::export::token(crate::export::Provider::Asana).await?;
+    let token = crate::export::token(&app, crate::export::Provider::Asana).await?;
     Ok(match level.as_str() {
         "workspace" => asana::workspaces(&token).await?,
         "project" => asana::projects(&token, parent()?).await?,
@@ -1099,23 +1114,4 @@ pub fn diary_week(db: State<'_, Db>, offset: Option<i64>) -> AppResult<crate::mo
         Some(o) => crate::db::diary::week(&conn, &chrono::Local, now, o),
         None => crate::db::diary::latest(&conn, &chrono::Local, now),
     }
-}
-
-// ---------- Phase 4 M7: updates ----------
-
-#[tauri::command]
-pub fn update_status(app: AppHandle) -> crate::model::UpdateStatus {
-    app.state::<crate::updater::Updates>().status()
-}
-
-/// Checks the feed now and downloads a found update. Rejects with `localOnly`.
-#[tauri::command]
-pub async fn update_check(app: AppHandle) -> AppResult<crate::model::UpdateStatus> {
-    crate::updater::check(&app).await
-}
-
-/// Installs the ready update and restarts. Rejects with `recording`, `noUpdate`, `updateFailed`.
-#[tauri::command]
-pub async fn update_install(app: AppHandle) -> AppResult<()> {
-    crate::updater::install(&app).await
 }

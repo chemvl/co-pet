@@ -69,8 +69,9 @@ const COPY: Record<ExportProvider, { connect: I18nKey; tokenLabel: I18nKey; toke
 };
 
 /**
- * Not connected (or needs a reconnect): "Connect <Provider>" through the browser when the build
- * has a backend, and "Use a token instead". The OAuth result arrives as `integration-changed`.
+ * Not connected (or needs a reconnect): "Connect <Provider>" through the browser once the user
+ * connected their own Supabase project (Settings › Account), and "Use a token instead". The
+ * OAuth result arrives as `integration-changed`.
  * `compact` (onboarding) keeps the footer's Continue the only primary button.
  */
 export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolean; compact?: boolean }): ReactElement {

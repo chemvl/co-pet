@@ -4,8 +4,9 @@
 mod macos;
 #[cfg(target_os = "macos")]
 use macos as os;
+// `pub(crate)` for `win::package`, which only Windows has (callers gate it with `cfg(windows)`).
 #[cfg(windows)]
-mod win;
+pub(crate) mod win;
 #[cfg(windows)]
 use win as os;
 

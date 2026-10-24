@@ -201,14 +201,14 @@ struct Ready {
     keys: Keys,
 }
 
-/// What a run needs, or the state to show instead. No network; while not configured or signed
-/// out not even the database.
+/// What a run needs, or the state to show instead, read afresh each run (the project may have
+/// been set or changed since). No network; while signed out not even the keychain's master key.
 fn ready(app: &AppHandle) -> Result<Ready, SyncState> {
     let fail = |what: &str, e: crate::error::AppError| {
         eprintln!("[sync] {what}: {e}");
         SyncState::Error
     };
-    let b = backend::config().ok_or(SyncState::Off)?;
+    let b = backend::current(app).map_err(|e| fail("backend", e))?.ok_or(SyncState::Off)?;
     let session = auth::stored_session().map_err(|e| fail("session", e))?.ok_or(SyncState::Off)?;
     if settings::read::<bool>(app, "privacy.localOnly").map_err(|e| fail("settings", e))? {
         return Err(SyncState::Paused);
@@ -762,7 +762,7 @@ mod tests {
     /// A user signed up (or signed in) with a password on the local stack.
     async fn password_session(b: &Backend, path: &str, email: &str) -> crate::account::auth::Session {
         let body = json!({ "email": email, "password": "e2e-Password-1" });
-        let resp = backend::http().post(format!("{}/auth/v1/{path}", b.url)).header("apikey", b.key).json(&body).send().await.unwrap();
+        let resp = backend::http().post(format!("{}/auth/v1/{path}", b.url)).header("apikey", &b.key).json(&body).send().await.unwrap();
         let v: Value = resp.error_for_status().unwrap().json().await.unwrap();
         crate::account::auth::Session {
             access_token: v["access_token"].as_str().unwrap().into(),
@@ -787,8 +787,8 @@ mod tests {
         use crate::sync::testing::file_item;
 
         let env = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} is not set"));
-        let (url, key): (&'static str, &'static str) = (env("COPET_E2E_URL").leak(), env("COPET_E2E_KEY").leak());
-        let backend = || Backend { url, key };
+        let (url, key) = (env("COPET_E2E_URL"), env("COPET_E2E_KEY"));
+        let backend = || Backend { url: url.clone(), key: key.clone() };
         let email = format!("sync-e2e-{}@example.com", hex::encode(&random32()[..6]));
 
         // Mac A signs up and turns sync on; Mac B signs in and unlocks with the recovery key.
@@ -834,7 +834,7 @@ mod tests {
         }
         let listed: Value = backend::http()
             .post(format!("{url}/storage/v1/object/list/blobs"))
-            .header("apikey", key)
+            .header("apikey", &key)
             .bearer_auth(&sa.access_token)
             .json(&json!({ "prefix": sa.user_id, "limit": 100 }))
             .send()

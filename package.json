@@ -7,14 +7,13 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "build:prod": "bun --env-file=.env.prod scripts/build-local.ts",
+    "build:local": "bun scripts/build-local.ts",
+    "package:msix": "bun scripts/package-msix.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src-mcp",
     "build:mcp": "bun scripts/build-mcp.ts",
     "set-version": "bun scripts/set-version.ts",
     "fetch:llama": "bun scripts/fetch-llama.ts",
-    "sign:llama": "bun scripts/sign-llama.ts",
-    "release": "bun scripts/release.ts",
     "publish:site": "bun scripts/publish-site.ts",
     "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png"
   },
@@ -41,7 +40,6 @@
     "@vitejs/plugin-react": "5.2.0",
     "typescript": "5.9.3",
     "vite": "7.3.7",
-    "vitest": "3.2.7",
-    "wrangler": "4.151.1"
+    "vitest": "3.2.7"
   }
 }

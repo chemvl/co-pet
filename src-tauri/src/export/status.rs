@@ -217,7 +217,7 @@ async fn sync_provider(app: &AppHandle, p: Provider) {
             return;
         }
     };
-    let mut access = match super::token(p).await.map_err(super::token_error) {
+    let mut access = match super::token(app, p).await.map_err(super::token_error) {
         Ok(a) => a,
         Err(ExportError::Unauthorized) => return reconnect(app, p),
         Err(_) => return,
@@ -231,7 +231,7 @@ async fn sync_provider(app: &AppHandle, p: Provider) {
         let mut read = remote.read(&access, &row.external_id).await;
         if read == Err(ExportError::Unauthorized) && !refreshed {
             refreshed = true;
-            read = match super::refreshed_token(p).await {
+            read = match super::refreshed_token(app, p).await {
                 Ok(fresh) => {
                     access = fresh;
                     remote.read(&access, &row.external_id).await

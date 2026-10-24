@@ -1,9 +1,4 @@
 fn main() {
-    // `backend::config()` reads these with `option_env!`.
-    println!("cargo:rerun-if-env-changed=COPET_SUPABASE_URL");
-    println!("cargo:rerun-if-env-changed=COPET_SUPABASE_KEY");
-    // `updater::FEED` (`scripts/release.ts --prefix copet-test`).
-    println!("cargo:rerun-if-env-changed=COPET_UPDATE_FEED");
     // A build script runs on the host: test the *target* OS.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         // `screencapturekit`'s Swift bridge loads `@rpath/libswift_Concurrency.dylib`; a dependency's

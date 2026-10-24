@@ -1,5 +1,5 @@
 //! D13: Screen Recording and Accessibility need no permission on Windows; the microphone comes from
-//! the CapabilityAccessManager consent registry; there is no calendar source (D10).
+//! the CapabilityAccessManager consent registry (`mic_consent`); there is no calendar source (D10).
 use windows::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -40,12 +40,21 @@ pub fn accessibility_trusted() -> bool {
 #[allow(dead_code)]
 pub fn request_accessibility() {}
 
+/// Co-pet's own consent entry: the package's in the MSIX package, else the "Let desktop apps
+/// access your microphone" switch.
+fn app_entry() -> String {
+    match super::package::package_family_name() {
+        Some(family) => format!(r"{MIC}\{family}"),
+        None => format!(r"{MIC}\NonPackaged"),
+    }
+}
+
 /// The device-wide switch (HKLM, set by an admin) overrides the user's own global switch when off.
 pub fn microphone_status() -> &'static str {
     let device = reg_sz(HKEY_LOCAL_MACHINE, MIC);
     let user = reg_sz(HKEY_CURRENT_USER, MIC);
     let global = device.as_deref().filter(|v| v.eq_ignore_ascii_case("Deny")).or(user.as_deref());
-    mic_consent::microphone_status(global, reg_sz(HKEY_CURRENT_USER, &format!(r"{MIC}\NonPackaged")).as_deref())
+    mic_consent::microphone_status(global, reg_sz(HKEY_CURRENT_USER, &app_entry()).as_deref())
 }
 
 /// Desktop apps get no in-app prompt: opens Settings › Privacy › Microphone when denied.

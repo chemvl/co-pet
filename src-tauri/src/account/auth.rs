@@ -121,7 +121,7 @@ fn authorize_url(base: &str, challenge: &str) -> String {
 pub(crate) async fn request_code(b: &Backend, email: &str) -> AppResult<()> {
     let req = backend::http()
         .post(format!("{}/auth/v1/otp", b.url))
-        .header("apikey", b.key)
+        .header("apikey", &b.key)
         .json(&otp_body(email));
     let res = send(req).await?;
     if let Some(code) = otp_error(res.status()) {
@@ -133,7 +133,7 @@ pub(crate) async fn request_code(b: &Backend, email: &str) -> AppResult<()> {
 
 /// `POST {url}/auth/v1{path}` returning a session; a 4xx is `client_error`.
 async fn grant(b: &Backend, path: &str, body: &Value, client_error: &'static str) -> AppResult<Session> {
-    let req = backend::http().post(format!("{}/auth/v1{path}", b.url)).header("apikey", b.key).json(body);
+    let req = backend::http().post(format!("{}/auth/v1{path}", b.url)).header("apikey", &b.key).json(body);
     let res = send(req).await?;
     if res.status().is_client_error() {
         return Err(AppError::Code(client_error));
@@ -197,7 +197,7 @@ pub async fn verify_email_code(app: &AppHandle, email: &str, code: &str) -> AppR
 pub fn google_start(app: &AppHandle) -> AppResult<()> {
     let b = server(app)?;
     let verifier = URL_SAFE_NO_PAD.encode(crypto::random32());
-    let url = authorize_url(b.url, &challenge(&verifier));
+    let url = authorize_url(&b.url, &challenge(&verifier));
     *app.state::<GooglePending>().lock() = Some((verifier, Instant::now()));
     app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))
 }

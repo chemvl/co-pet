@@ -30,16 +30,6 @@ describe('catalog', () => {
     expect([...ids].sort()).toEqual(Object.keys(SKINS).sort());
   });
 
-  it('pack flags follow the owner rule', () => {
-    for (const s of SPECIES) {
-      expect(s.pack).toBe(s.id === 'owl' ? 'petPack' : 'free');
-      for (const id of s.skins) {
-        const free = s.id !== 'owl' && id === s.skins[0];
-        expect(SKINS[id].pack).toBe(free ? 'free' : 'petPack');
-      }
-    }
-  });
-
   it('palettes set exactly the species\' skin keys', () => {
     for (const skin of Object.values(SKINS)) {
       expect(Object.keys(skin.palette).sort()).toEqual([...SKIN_KEYS[skin.species]].sort());

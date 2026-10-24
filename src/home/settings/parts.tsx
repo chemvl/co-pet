@@ -88,7 +88,7 @@ export function StillCat({ look, skin, label }: { look: Species; skin: SkinId; l
   return <CatArt look={look} skin={skin} parts={IDLE.parts} motion={null} mirrored={false} reducedMotion label={label} />;
 }
 
-/** One tile per species, each drawn in its resolved skin; Pet pack species carry a tag. */
+/** One tile per species, each drawn in its resolved skin. */
 export function SpeciesTiles(props: { value: Species; skin: SkinId; onChange: (s: Species) => void; labelledBy?: string }) {
   const t = useT();
   return (
@@ -103,7 +103,6 @@ export function SpeciesTiles(props: { value: Species; skin: SkinId; onChange: (s
         >
           <span className="st-tile__art"><StillCat look={s.id} skin={resolveSkin(s.id, props.skin)} /></span>
           {t(s.label)}
-          {s.pack === 'petPack' ? <span className="st-tile__tag">{t('pet.pack.petPack')}</span> : null}
         </button>
       ))}
     </div>
@@ -126,7 +125,6 @@ export function SkinSwatches(props: { species: Species; value: SkinId; onChange:
         >
           <span className="st-swatch__dot" style={{ background: swatchOf(entry.id) }} aria-hidden="true" />
           {t(entry.label)}
-          {entry.pack === 'petPack' ? <span className="st-swatch__tag">{t('pet.pack.petPack')}</span> : null}
         </button>
       ))}
     </div>

@@ -42,9 +42,23 @@ pub fn start(app: &AppHandle) {
     http::start(app);
 }
 
-/// The bundled `copet-mcp` (`copet-mcp.exe` on Windows), next to the app executable.
+/// The bundled `copet-mcp` (`copet-mcp.exe` on Windows), next to the app executable. Co-pet
+/// spawns this one itself; agents run [`mcp_command`].
 pub fn mcp_exe() -> AppResult<PathBuf> {
     Ok(std::env::current_exe()?.with_file_name(format!("copet-mcp{}", std::env::consts::EXE_SUFFIX)))
+}
+
+/// The `copet-mcp` agents run: the Agents screen's stdio command, client configs and `claude mcp
+/// add`. The MSIX package's install folder is closed to other apps and changes with every update,
+/// so there it is the manifest's `copet-mcp.exe` app execution alias in
+/// `%LOCALAPPDATA%\Microsoft\WindowsApps`; elsewhere [`mcp_exe`].
+#[cfg_attr(not(windows), allow(unused_variables))]
+pub fn mcp_command(app: &AppHandle) -> AppResult<PathBuf> {
+    #[cfg(windows)]
+    if crate::platform::win::package::is_packaged() {
+        return Ok(app.path().local_data_dir()?.join(r"Microsoft\WindowsApps\copet-mcp.exe"));
+    }
+    mcp_exe()
 }
 
 pub fn status(app: &AppHandle) -> AppResult<McpStatus> {
@@ -57,7 +71,7 @@ pub fn status(app: &AppHandle) -> AppResult<McpStatus> {
         paused,
         http_state: app.state::<http::McpHttp>().state(),
         http_url: format!("http://127.0.0.1:{port}/mcp"),
-        stdio_command: format!("{} --stdio", mcp_exe()?.display()),
+        stdio_command: format!("{} --stdio", mcp_command(app)?.display()),
     })
 }
 
@@ -70,7 +84,7 @@ pub fn set_paused(app: &AppHandle, paused: bool) -> AppResult<()> {
 
 fn setup(app: &AppHandle) -> AppResult<clients::Setup<'static>> {
     static CLAUDE: clients::LoginShell = clients::LoginShell;
-    Ok(clients::Setup { home: app.path().home_dir()?, command: mcp_exe()?, claude: &CLAUDE })
+    Ok(clients::Setup { home: app.path().home_dir()?, command: mcp_command(app)?, claude: &CLAUDE })
 }
 
 /// Runs `f` on the blocking pool (config files, the login shell, SQLite).

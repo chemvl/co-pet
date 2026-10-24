@@ -108,7 +108,6 @@ export function PetRoomPage(): ReactElement {
         <div>
           <span className="pr-k" id={skinId}>{t('petroom.skin')}</span>
           <SkinSwatches species={look.species} value={look.skin} onChange={(v) => void set('pet.skin', v)} labelledBy={skinId} />
-          <p className="pr-cap">{t('petroom.skinCaption')}</p>
         </div>
         <div>
           <span className="pr-k">{t('petroom.size')}</span>

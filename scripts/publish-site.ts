@@ -1,10 +1,10 @@
-// `COPET_SITE_REPO=<path> bun run publish:site`: copies site/copet/ over $COPET_SITE_REPO/copet/.
-// Never runs git. Every failure exits 1 with a one-line reason.
-import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// `COPET_STORE_ID=<id> COPET_SITE_REPO=<path> bun run publish:site`: copies site/copet/ over
+// $COPET_SITE_REPO/copet/, replacing `{{STORE_URL}}` in HTML files with the Microsoft Store listing.
+// Never runs git. Every failure exits 1 with a one-line reason, before anything is written.
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 
 const root = join(import.meta.dir, "..");
-const TAURI_CONF = join(root, "src-tauri/tauri.conf.json");
 const SITE_DIR = join(root, "site/copet");
 
 function fail(reason: string): never {
@@ -12,19 +12,30 @@ function fail(reason: string): never {
   process.exit(1);
 }
 
+const storeId = process.env.COPET_STORE_ID || fail("missing env: COPET_STORE_ID (Partner Center › Product identity › Store ID, e.g. 9NXXXXXXXXXX)");
+if (!/^9[A-Z0-9]{11}$/.test(storeId)) fail(`COPET_STORE_ID must be 12 characters starting with 9 (A-Z, 0-9): ${storeId}`);
 const repo = process.env.COPET_SITE_REPO || fail("missing env: COPET_SITE_REPO");
 if (!existsSync(repo)) fail(`COPET_SITE_REPO not found: ${repo}`);
 
-// Placeholder guard: owner literals from Task 7.1 must replace these before publishing.
-const PLACEHOLDERS = ["OWNER_UPDATER_PUBKEY", "owner-domain.invalid"];
-function guardFile(path: string) {
-  const text = readFileSync(path, "utf8");
-  for (const p of PLACEHOLDERS) if (text.includes(p)) fail(`placeholder ${p} in ${path.slice(root.length + 1)}`);
+const storeUrl = `https://apps.microsoft.com/detail/${storeId}`;
+const files: { rel: string; data: string | Buffer }[] = [];
+for (const e of readdirSync(SITE_DIR, { recursive: true, withFileTypes: true })) {
+  if (!e.isFile()) continue;
+  const path = join(e.parentPath, e.name);
+  const rel = relative(SITE_DIR, path);
+  if (!e.name.endsWith(".html")) {
+    files.push({ rel, data: readFileSync(path) });
+    continue;
+  }
+  const html = readFileSync(path, "utf8").replaceAll("{{STORE_URL}}", storeUrl);
+  if (html.includes("{{")) fail(`unreplaced {{ token in site/copet/${rel}`);
+  files.push({ rel, data: html });
 }
-guardFile(TAURI_CONF);
-for (const e of readdirSync(SITE_DIR, { recursive: true, withFileTypes: true }))
-  if (e.isFile()) guardFile(join(e.parentPath, e.name));
 
 const dest = join(repo, "copet");
-cpSync(SITE_DIR, dest, { recursive: true });
-console.log(`Copied. Commit and push in ${repo}.`);
+for (const f of files) {
+  const out = join(dest, f.rel);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, f.data);
+}
+console.log(`Copied with Store link ${storeUrl}. Commit and push in ${repo}.`);

@@ -1,5 +1,5 @@
 //! Helper processes live in a kill-on-close Job Object, so they die with Co-pet even when it
-//! is killed or the updater ends it with `process::exit` (Windows doesn't reparent orphans).
+//! is killed or ended with `process::exit` (Windows doesn't reparent orphans).
 use std::sync::LazyLock;
 
 use windows::Win32::Foundation::HANDLE;

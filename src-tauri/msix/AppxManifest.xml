@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Template rendered by scripts/package-msix.ts, which fills in the Identity name, publisher and
+     version and the publisher display name (XML-escaped) at packaging time. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+
+  <Identity
+    Name="{{IDENTITY_NAME}}"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Co-pet</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+    <PackageDependency
+      Name="Microsoft.VCLibs.140.00.UWPDesktop"
+      MinVersion="14.0.33519.0"
+      Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+    <Resource Language="vi-vn" />
+  </Resources>
+
+  <Applications>
+    <Application Id="CoPet" Executable="copet.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Co-pet"
+        Description="Desktop pet inbox"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- `copet://` links start (or reach) copet.exe with the URI as its only argument. -->
+        <uap3:Extension Category="windows.protocol">
+          <uap3:Protocol Name="copet" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Co-pet</uap:DisplayName>
+          </uap3:Protocol>
+        </uap3:Extension>
+        <!-- Launch at login, off until the app enables it through the StartupTask API. -->
+        <desktop:Extension Category="windows.startupTask" Executable="copet.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="CoPetStartup" Enabled="false" DisplayName="Co-pet" />
+        </desktop:Extension>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="copet.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="copet.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+
+    <!-- The MCP sidecar (a console exe speaking stdio). External MCP clients start it through the
+         alias %LOCALAPPDATA%\Microsoft\WindowsApps\copet-mcp.exe; it has no Start menu entry. -->
+    <Application Id="CoPetMcp" Executable="copet-mcp.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Co-pet MCP"
+        Description="Co-pet MCP server for AI agents"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="copet-mcp.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="copet-mcp.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <DeviceCapability Name="microphone" />
+  </Capabilities>
+</Package>

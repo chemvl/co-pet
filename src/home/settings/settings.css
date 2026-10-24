@@ -74,7 +74,6 @@
 .st-swatch__dot { width: 32px; height: 32px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong); box-sizing: border-box; }
 .st-swatch[aria-pressed="true"] .st-swatch__dot { outline: 2px solid var(--clover); outline-offset: 2px; }
 .st-swatch[aria-pressed="true"] { font-weight: 600; }
-.st-tile__tag, .st-swatch__tag { padding: 0 6px; border-radius: var(--radius-pill); background: var(--peach-soft); color: var(--ink); font: 500 11px/16px var(--font-sans); white-space: nowrap; }
 
 /* excluded apps */
 .st-apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }

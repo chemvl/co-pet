@@ -488,8 +488,18 @@ ALTER TABLE item_events_v3 RENAME TO item_events;
 CREATE INDEX item_events_item ON item_events(item_id, at DESC);
 "#;
 
+/// Schema v15: the user's own Supabase project (`backend.supabaseUrl`, `backend.supabaseKey`;
+/// `""` = not configured, the app stays local). Device-only: not in `SYNCED_SETTINGS`. Drops
+/// `updates.autoCheck` (updates come from the Microsoft Store).
+const V15: &str = r#"
+INSERT INTO settings (key, value, updated_at) VALUES
+  ('backend.supabaseUrl', '""', 0),
+  ('backend.supabaseKey', '""', 0);
+DELETE FROM settings WHERE key = 'updates.autoCheck';
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13), M::up(V14)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13), M::up(V14), M::up(V15)])
 });
 
 #[cfg(test)]
@@ -586,7 +596,6 @@ mod tests {
             ("ai.cloudMeetings", "false"),
             ("whatsNext.calendar", "false"),
             ("whatsNext.calendarExcluded", "[]"),
-            ("updates.autoCheck", "true"),
         ] {
             let got: String = c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).unwrap();
             assert_eq!(got, value, "{key}");
@@ -599,5 +608,23 @@ mod tests {
         assert_eq!(queued("pet.speaks"), 1);
         c.execute("UPDATE settings SET value='true' WHERE key='ai.provider'", []).unwrap();
         assert_eq!(queued("ai.provider"), 0);
+    }
+
+    #[test]
+    fn v15_seeds_backend_and_drops_auto_update() {
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 14).unwrap();
+        let value = |c: &Connection, key: &str| -> Option<String> {
+            c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).ok()
+        };
+        assert_eq!(value(&c, "updates.autoCheck").as_deref(), Some("true"));
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        assert_eq!(value(&c, "backend.supabaseUrl").as_deref(), Some("\"\""));
+        assert_eq!(value(&c, "backend.supabaseKey").as_deref(), Some("\"\""));
+        assert_eq!(value(&c, "updates.autoCheck"), None);
+        c.execute("DELETE FROM sync_outbox", []).unwrap();
+        c.execute("UPDATE settings SET value='\"https://x.supabase.co\"' WHERE key='backend.supabaseUrl'", []).unwrap();
+        let queued: i64 = c.query_row("SELECT count(*) FROM sync_outbox", [], |r| r.get(0)).unwrap();
+        assert_eq!(queued, 0, "the backend stays on this device");
     }
 }

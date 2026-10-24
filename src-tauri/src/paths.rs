@@ -1,6 +1,8 @@
 //! App data layout. `base` is the Tauri app data folder (`~/Library/Application Support/com.copet.app/`
 //! on macOS, `%APPDATA%\com.copet.app\` on Windows) and holds `locations.json`, which can point
-//! the data folder (`root`) and the models folder elsewhere (see `storage.rs`).
+//! the data folder (`root`) and the models folder elsewhere (see `storage.rs`). Unmoved, the data
+//! sits in `default_root` and the models in `default_root/models`; `default_root` is `base`, or
+//! `%USERPROFILE%\Co-pet` in the MSIX package.
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -8,8 +10,10 @@ use crate::error::AppResult;
 
 #[derive(Debug, Clone)]
 pub struct Paths {
-    /// The Tauri app data folder: `locations.json` and the default data and models folders.
+    /// The Tauri app data folder: `locations.json`.
     pub base: PathBuf,
+    /// The default data folder, which also holds the default models folder (`storage::default_root`).
+    pub default_root: PathBuf,
     pub root: PathBuf,
     pub db: PathBuf,
     pub library: PathBuf,
@@ -28,6 +32,7 @@ impl Paths {
     pub fn new(root: PathBuf) -> Self {
         Paths {
             base: root.clone(),
+            default_root: root.clone(),
             db: root.join("copet.db"),
             library: root.join("library"),
             thumbs: root.join("library").join("thumbs"),

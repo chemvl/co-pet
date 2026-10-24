@@ -11,6 +11,7 @@ pub mod keys;
 pub mod locale;
 pub mod mic_users;
 pub mod ocr;
+pub mod package;
 pub mod pasteboard;
 pub mod permissions;
 pub mod pet_window;

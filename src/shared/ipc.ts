@@ -5,7 +5,7 @@ import type {
   AiStatus, SpeechPackId, SpeechStatus, BackendStatus, ExportProvider, ExportTarget, NotionSchema, ProviderStatus, TargetOption, TaskExportState, CaptureResult, Category, CategoryId, CategoryPatch, Counts, DragPlan, EventPayloads, HitRegion,
   HotkeyAction, ItemDetail, ItemEdit, ItemPage, ItemQuery, Json, NewTask, NextAction, NextCard, NextTrigger, PermissionsStatus, CalendarInfo,
   PetStatus, Placement, Rule, RuleView, Example, Edge, TaskCreated, TaskDetail, TaskPatch, TaskQuery, TaskStatus, TaskSummary,
-  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, UpdateStatus, RecordingStatus,
+  ActivityRow, HttpClientCreated, KnownMcpClient, McpClientView, McpStatus, McpToken, AccountStatus, SyncStatus, RecordingStatus,
   MeetingDetail, MeetingSummary, DiaryWeek, AiProvider, CloudProvider, KeyProvider, CallDetectionStatus, StorageLocations,
 } from './types';
 
@@ -217,6 +217,12 @@ export const nextAction = (taskId: string, action: NextAction, trigger: NextTrig
 
 // Phase 2 M4 — export
 export const backendStatus = () => invoke<BackendStatus>('backend_status');
+/** Tests the user's Supabase project and saves it; another project signs out first. Rejects with
+ *  `"localOnly"`, `"invalidUrl"`, `"invalidKey"`, `"secretKey"`, `"backendUnreachable"` or
+ *  `"backendRejected"`. */
+export const setBackend = (url: string, key: string) => invoke<BackendStatus>('set_backend', { url, key });
+/** Forgets the project: signs out and disconnects Notion/Asana connected through it. */
+export const clearBackend = () => invoke<BackendStatus>('clear_backend');
 export const integrationsStatus = () => invoke<ProviderStatus[]>('integrations_status');
 /** Opens the provider's consent page; the result arrives as `integration-changed`.
  *  Rejects with `"localOnly"` or `"notConfigured"`. */
@@ -292,10 +298,6 @@ export const copyConcealedText = (text: string) => invoke<void>('copy_concealed_
 export const syncStatus = () => invoke<SyncStatus>('sync_status');
 /** Runs a sync (after one in progress) and resolves with the status it ended in. */
 export const syncNow = () => invoke<SyncStatus>('sync_now');
-
-export const updateStatus = () => invoke<UpdateStatus>('update_status');
-export const checkForUpdates = () => invoke<UpdateStatus>('update_check');
-export const installUpdate = () => invoke<void>('update_install');
 
 // ---------- events ----------
 export function on<K extends keyof EventPayloads>(

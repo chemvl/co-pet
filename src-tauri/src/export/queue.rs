@@ -236,7 +236,7 @@ async fn run_job(app: &AppHandle, job: Job) {
     let provider = prepared.as_ref().ok().map(|(p, _, _)| *p);
     let done = prepared.as_ref().ok().map(|(_, _, payload)| payload.done);
     let result = match prepared {
-        Ok((p, target, payload)) => super::export(p, &target, &payload).await,
+        Ok((p, target, payload)) => super::export(app, p, &target, &payload).await,
         Err(e) => Err(e),
     };
     if let Err(ExportError::Invalid(msg)) = &result {

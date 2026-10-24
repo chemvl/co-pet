@@ -20,10 +20,10 @@ use crate::sync;
 pub(crate) const CLOUD_PHRASES: [&str; 3] = ["delete cloud data", "xoá dữ liệu đám mây", "xóa dữ liệu đám mây"];
 
 /// The backend for an account call: `localOnly` while Local-only mode is on, `notConfigured`
-/// in a build without a Supabase project.
+/// until the user entered their own Supabase project.
 fn server(app: &AppHandle) -> AppResult<Backend> {
     backend::ensure_network(app)?;
-    backend::config().ok_or(AppError::Code("notConfigured"))
+    backend::current(app)?.ok_or(AppError::Code("notConfigured"))
 }
 
 /// Sends `req`; a transport failure (offline, DNS, timeout) is `network`.
@@ -35,10 +35,11 @@ async fn send(req: reqwest::RequestBuilder) -> AppResult<reqwest::Response> {
 }
 
 pub async fn status(app: &AppHandle) -> AppResult<AccountStatus> {
-    let (user_id, email, device_name, last_synced_at) = {
+    let (configured, user_id, email, device_name, last_synced_at) = {
         let db = app.state::<Db>();
         let conn = db.conn();
         (
+            backend::config(&conn)?.is_some(),
             settings::get::<Option<String>>(&conn, "sync.userId")?,
             settings::get::<Option<String>>(&conn, "sync.email")?,
             settings::get::<Option<String>>(&conn, "sync.deviceName")?,
@@ -46,8 +47,9 @@ pub async fn status(app: &AppHandle) -> AppResult<AccountStatus> {
         )
     };
     Ok(AccountStatus {
-        configured: backend::config().is_some(),
-        signed_in: auth::stored_session()?.is_some(),
+        configured,
+        // Not signed in without a project, even with a session an older build left behind.
+        signed_in: configured && auth::stored_session()?.is_some(),
         email,
         user_id,
         key_state: keys::key_state(app).await,
@@ -80,7 +82,7 @@ pub async fn delete_cloud_data(app: &AppHandle, confirmation: &str) -> AppResult
 async fn delete_account(b: &Backend, access_token: &str) -> AppResult<()> {
     let req = backend::http()
         .post(format!("{}/functions/v1/delete-account", b.url))
-        .header("apikey", b.key)
+        .header("apikey", &b.key)
         .bearer_auth(access_token);
     send(req).await?.error_for_status()?;
     Ok(())
@@ -146,7 +148,7 @@ mod tests {
     #[ignore = "needs a local Supabase stack (COPET_E2E_URL, COPET_E2E_KEY, COPET_E2E_MAIL)"]
     async fn local_stack_end_to_end() {
         let env = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} is not set"));
-        let b = Backend { url: env("COPET_E2E_URL").leak(), key: env("COPET_E2E_KEY").leak() };
+        let b = Backend { url: env("COPET_E2E_URL"), key: env("COPET_E2E_KEY") };
         let mail = env("COPET_E2E_MAIL");
         let email = format!("e2e-{}@example.com", hex::encode(&random32()[..6]));
         let mut keychain: HashMap<String, String> = HashMap::new();

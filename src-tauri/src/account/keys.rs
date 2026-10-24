@@ -58,7 +58,7 @@ struct WrappedRow {
 
 /// PostgREST as the signed-in user (row-level security limits it to their own row).
 fn rest(b: &Backend, s: &Session, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-    req.header("apikey", b.key).bearer_auth(&s.access_token)
+    req.header("apikey", &b.key).bearer_auth(&s.access_token)
 }
 
 /// The user's wrapped master key; `None` before any Mac turned sync on.

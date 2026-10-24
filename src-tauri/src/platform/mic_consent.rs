@@ -1,12 +1,13 @@
 //! Windows microphone consent (`…\CapabilityAccessManager\ConsentStore\microphone`): the global
-//! switch and the "Let desktop apps access your microphone" switch. Pure, so it is tested on
-//! every OS; only `win::permissions` reads the registry.
+//! switch and Co-pet's own switch, which is the package's entry (`<PackageFamilyName>`) in the
+//! MSIX package and the "Let desktop apps access your microphone" switch (`NonPackaged`)
+//! otherwise. Pure, so it is tested on every OS; only `win::permissions` reads the registry.
 #![cfg_attr(not(windows), allow(dead_code))]
 
-/// `"denied"` when either switch is `Deny`, else `"granted"` (desktop apps get no per-app prompt).
-pub fn microphone_status(global: Option<&str>, desktop_apps: Option<&str>) -> &'static str {
+/// `"denied"` when either switch is `Deny`, else `"granted"` (Co-pet gets no in-app prompt).
+pub fn microphone_status(global: Option<&str>, app: Option<&str>) -> &'static str {
     let deny = |v: Option<&str>| v.is_some_and(|v| v.eq_ignore_ascii_case("Deny"));
-    if deny(global) || deny(desktop_apps) {
+    if deny(global) || deny(app) {
         "denied"
     } else {
         "granted"

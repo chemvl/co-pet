@@ -208,22 +208,22 @@ fn merge_refreshed(old: ProviderToken, fresh: BackendToken) -> ProviderToken {
 
 /// The keychain access token, refreshed through the backend `/oauth/refresh` when it expires
 /// within 60 s. `notConnected` when there is none.
-pub async fn token(p: Provider) -> AppResult<String> {
+pub async fn token(app: &AppHandle, p: Provider) -> AppResult<String> {
     let t = stored(p)?;
     if needs_refresh(&t, crate::db::now_ms()) {
-        return Ok(refresh(p, t).await?.access_token);
+        return Ok(refresh(app, p, t).await?.access_token);
     }
     Ok(t.access_token)
 }
 
-/// Runs the refresh grant through the backend and stores the result. A `4xx` from the function
-/// (revoked grant) is `unauthorized`.
-async fn refresh(p: Provider, old: ProviderToken) -> AppResult<ProviderToken> {
-    let b = backend::config().ok_or(AppError::Code("notConfigured"))?;
+/// Runs the refresh grant through the user's project and stores the result. `notConfigured`
+/// without a project; a `4xx` from the function (revoked grant) is `unauthorized`.
+async fn refresh(app: &AppHandle, p: Provider, old: ProviderToken) -> AppResult<ProviderToken> {
+    let b = backend::current(app)?.ok_or(AppError::Code("notConfigured"))?;
     let refresh_token = old.refresh_token.clone().ok_or(AppError::Code("unauthorized"))?;
     let res = backend::http()
         .post(format!("{}/functions/v1/oauth/refresh", b.url))
-        .header("apikey", b.key)
+        .header("apikey", &b.key)
         .json(&json!({ "provider": p.as_str(), "refreshToken": refresh_token }))
         .send()
         .await?;
@@ -278,11 +278,11 @@ async fn export_with(p: Provider, token: &str, target: &ExportTarget, payload: &
 }
 
 /// Creates the page/task. On `Unauthorized` with a refresh token, refreshes once and retries.
-pub async fn export(p: Provider, target: &ExportTarget, payload: &ExportPayload) -> Result<Exported, ExportError> {
-    let access = token(p).await.map_err(token_error)?;
+pub async fn export(app: &AppHandle, p: Provider, target: &ExportTarget, payload: &ExportPayload) -> Result<Exported, ExportError> {
+    let access = token(app, p).await.map_err(token_error)?;
     match export_with(p, &access, target, payload).await {
         Err(ExportError::Unauthorized) => {
-            let fresh = refreshed_token(p).await?;
+            let fresh = refreshed_token(app, p).await?;
             export_with(p, &fresh, target, payload).await
         }
         r => r,
@@ -290,12 +290,12 @@ pub async fn export(p: Provider, target: &ExportTarget, payload: &ExportPayload)
 }
 
 /// A fresh access token through the backend refresh grant; `Unauthorized` without a refresh token.
-pub(crate) async fn refreshed_token(p: Provider) -> Result<String, ExportError> {
+pub(crate) async fn refreshed_token(app: &AppHandle, p: Provider) -> Result<String, ExportError> {
     let t = stored(p).map_err(token_error)?;
     if t.refresh_token.is_none() {
         return Err(ExportError::Unauthorized);
     }
-    Ok(refresh(p, t).await.map_err(token_error)?.access_token)
+    Ok(refresh(app, p, t).await.map_err(token_error)?.access_token)
 }
 
 /// The source item's `url` for a `url` item, else `copet://item/<id>` with a live source item,

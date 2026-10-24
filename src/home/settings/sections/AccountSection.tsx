@@ -1,22 +1,26 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useId, useState, type ReactElement } from 'react';
 import { Button, StatusPill } from '../../../ds';
 import { useLang, useT } from '../../../shared/i18n';
 import {
-  confirmRecoveryKey, copyConcealedText, createRecoveryKey, deleteCloudData, enterRecoveryKey, on, saveTextFile,
-  sendEmailCode, signInGoogle, signOut, syncNow, verifyEmailCode,
+  clearBackend, confirmRecoveryKey, copyConcealedText, createRecoveryKey, deleteCloudData, enterRecoveryKey, on, saveTextFile,
+  sendEmailCode, setBackend, signInGoogle, signOut, syncNow, verifyEmailCode,
 } from '../../../shared/ipc';
-import { ACCOUNT_KEY, useAccountStatus, useSetSetting, useSetting, useSyncStatus } from '../../../shared/queries';
+import {
+  ACCOUNT_KEY, BACKEND_KEY, useAccountStatus, useBackendStatus, useSetSetting, useSetting, useSyncStatus,
+} from '../../../shared/queries';
 import { pendingText, syncPill } from '../../../shared/sync';
 import { useToast } from '../../../shared/Toast';
 import type { AccountStatus } from '../../../shared/types';
 import { relativeTime } from '../../agents/activityText';
 import { useNow } from '../../hooks';
 import { QueryState } from '../../InboxPage';
-import { Group, SettingRow, TypedConfirmDialog, useCopied } from '../parts';
+import { Dialog, Group, SettingRow, TypedConfirmDialog, useCopied } from '../parts';
 import { accountError, accountView } from './account';
 
 const KEY_FILE_NAME = 'Co-pet recovery key.txt';
+const SETUP_GUIDE_URL = 'https://mrdeeds88.github.io/copet/support/#self-host';
 
 /** Runs one account action at a time: clears the error first, shows a failure as `error`. */
 interface Run {
@@ -63,23 +67,25 @@ export function AccountSection({ onNavigate }: { onNavigate: (route: string) => 
 
   if (!status) return <QueryState q={statusQuery} loading={t('settings.account.loading')} />;
   const view = accountView(status);
+  const localOnlyRow = localOnly ? (
+    <div className="st-row">
+      <p className="st-body st-row__text">{t('settings.account.localOnly')}</p>
+      <Button size="sm" onClick={() => onNavigate('settings/privacy')}>{t('settings.account.openPrivacy')}</Button>
+    </div>
+  ) : null;
   if (view === 'notConfigured') {
     return (
-      <Group title={t('settings.account')}>
-        <p className="st-body">{t('settings.account.notConfigured')}</p>
-      </Group>
+      <>
+        {localOnlyRow}
+        <BackendSection localOnly={localOnly} />
+      </>
     );
   }
 
   const r: Run = { busy, run, fail };
   return (
     <>
-      {localOnly ? (
-        <div className="st-row">
-          <p className="st-body st-row__text">{t('settings.account.localOnly')}</p>
-          <Button size="sm" onClick={() => onNavigate('settings/privacy')}>{t('settings.account.openPrivacy')}</Button>
-        </div>
-      ) : null}
+      {localOnlyRow}
       <fieldset className="st-fieldset" disabled={localOnly}>
         {view === 'signedOut' ? <SignedOut r={r} onEventError={setError} /> : null}
         {view === 'needsSetup' ? <NeedsSetup status={status} r={r} /> : null}
@@ -98,7 +104,181 @@ export function AccountSection({ onNavigate }: { onNavigate: (route: string) => 
         ) : null}
         {error ? <p className="st-error" role="alert">{error}</p> : null}
       </fieldset>
+      <BackendSection localOnly={localOnly} />
     </>
+  );
+}
+
+/**
+ * The user's own Supabase project: a form until one is saved (Save tests it first), then its URL
+ * with Change and Disconnect. Disconnect works offline; saving needs Local-only mode off.
+ */
+function BackendSection({ localOnly }: { localOnly: boolean }): ReactElement | null {
+  const t = useT();
+  const qc = useQueryClient();
+  const { data: backend } = useBackendStatus();
+  const [editing, setEditing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  if (!backend) return null;
+
+  const refresh = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: BACKEND_KEY }),
+      qc.invalidateQueries({ queryKey: ACCOUNT_KEY }),
+    ]);
+  };
+
+  if (!backend.configured || editing) {
+    return (
+      <Group
+        title={t('settings.account.backendTitle')}
+        desc={backend.configured ? t('settings.account.backendChangeHint') : t('settings.account.notConfigured')}
+      >
+        <BackendForm
+          initialUrl={backend.url ?? ''}
+          disabled={localOnly}
+          onSaved={async () => {
+            setEditing(false);
+            await refresh();
+          }}
+          onCancel={backend.configured ? () => setEditing(false) : undefined}
+        />
+      </Group>
+    );
+  }
+
+  return (
+    <Group title={t('settings.account.backendTitle')}>
+      <SettingRow label={t('settings.account.backendLabel')} desc={backend.url ?? ''}>
+        <div className="st-acct__actions">
+          <Button size="sm" disabled={localOnly} onClick={() => setEditing(true)}>
+            {t('settings.account.backendChange')}
+          </Button>
+          <Button size="sm" variant="quiet" onClick={() => setDisconnecting(true)}>
+            {t('settings.account.backendDisconnect')}
+          </Button>
+        </div>
+      </SettingRow>
+      {disconnecting ? <DisconnectDialog onDone={refresh} onClose={() => setDisconnecting(false)} /> : null}
+    </Group>
+  );
+}
+
+function BackendForm(p: {
+  initialUrl: string;
+  disabled: boolean;
+  onSaved: () => Promise<void>;
+  onCancel?: () => void;
+}): ReactElement {
+  const t = useT();
+  const { show } = useToast();
+  const urlId = useId();
+  const keyId = useId();
+  const [url, setUrl] = useState(p.initialUrl);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = url.trim() !== '' && key.trim() !== '' && !busy && !p.disabled;
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await setBackend(url.trim(), key.trim());
+      setKey('');
+      await p.onSaved();
+    } catch (e) {
+      setError(accountError(t, e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="st-acct__form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) void save();
+      }}
+    >
+      <fieldset className="st-fieldset" disabled={p.disabled}>
+        <label className="st-row__label" htmlFor={urlId}>{t('settings.account.backendUrl')}</label>
+        <input
+          id={urlId}
+          inputMode="url"
+          className="st-input st-input--wide"
+          placeholder="https://abcd.supabase.co"
+          autoComplete="off"
+          spellCheck={false}
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <label className="st-row__label" htmlFor={keyId}>{t('settings.account.backendKey')}</label>
+        <input
+          id={keyId}
+          className="st-input st-input--wide"
+          placeholder="sb_publishable_…"
+          autoComplete="off"
+          spellCheck={false}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+        />
+        <p className="st-desc">{t('settings.account.backendKeyHelp')}</p>
+        <div className="st-acct__actions">
+          <Button type="submit" variant="primary" size="sm" disabled={!ready}>
+            {t('settings.account.backendSave')}
+          </Button>
+          {p.onCancel ? (
+            <Button variant="quiet" size="sm" onClick={p.onCancel}>{t('common.cancel')}</Button>
+          ) : null}
+        </div>
+      </fieldset>
+      <button
+        type="button"
+        className="hm-link"
+        onClick={() => void openUrl(SETUP_GUIDE_URL).catch((e) => show({ message: accountError(t, e) }))}
+      >
+        {t('settings.account.backendGuide')}
+      </button>
+      {error ? <p className="st-error" role="alert">{error}</p> : null}
+    </form>
+  );
+}
+
+function DisconnectDialog({ onDone, onClose }: { onDone: () => Promise<void>; onClose: () => void }): ReactElement {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirm = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await clearBackend();
+      await onDone();
+      onClose();
+    } catch (e) {
+      setError(accountError(t, e));
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      title={t('settings.account.backendDisconnectTitle')}
+      role="alertdialog"
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="quiet" autoFocus onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => void confirm()}>
+            {t('settings.account.backendDisconnect')}
+          </Button>
+        </>
+      }
+    >
+      <p className="st-body">{t('settings.account.backendDisconnectBody')}</p>
+      {error ? <p className="st-error" role="alert">{error}</p> : null}
+    </Dialog>
   );
 }
 

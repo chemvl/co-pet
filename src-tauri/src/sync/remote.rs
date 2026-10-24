@@ -158,7 +158,7 @@ impl<C: Credentials> SupabaseRemote<C> {
         let mut renewed = false;
         loop {
             let resp = build(&self.b, &session)
-                .header("apikey", self.b.key)
+                .header("apikey", &self.b.key)
                 .bearer_auth(&session.access_token)
                 .send()
                 .await

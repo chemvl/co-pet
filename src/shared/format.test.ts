@@ -9,12 +9,16 @@ describe('format', () => {
     expect(formatDate(new Date(2025, 9, 17), 'vi')).toBe('T6, 17/10');
     expect(formatDate(new Date(2025, 9, 17), 'en')).toBe('Fri 17 Oct');
     expect(formatDate(new Date(2025, 9, 19), 'vi')).toBe('CN, 19/10');
+    expect(formatDate(new Date(2025, 9, 17), 'zh')).toBe('10月17日 周五');
+    expect(formatDate(new Date(2025, 9, 17), 'es')).toBe('vie 17 oct');
   });
   it('names ISO weekdays per language', () => {
     expect(formatWeekday(1, 'en')).toBe('Mon');
     expect(formatWeekday(7, 'en')).toBe('Sun');
     expect(formatWeekday(1, 'vi')).toBe('T2');
     expect(formatWeekday(7, 'vi')).toBe('CN');
+    expect(formatWeekday(1, 'zh')).toBe('周一');
+    expect(formatWeekday(6, 'es')).toBe('sáb');
   });
   it('formats 24-hour time', () => {
     expect(formatTime(new Date(2026, 9, 17, 14, 0))).toBe('14:00');
@@ -24,11 +28,15 @@ describe('format', () => {
     expect(formatSize(1.9e9, 'vi')).toBe('1,9 GB');
     expect(formatSize(1.9e9, 'en')).toBe('1.9 GB');
     expect(formatSize(2.4e6, 'vi')).toBe('2,4 MB');
+    expect(formatSize(2.4e6, 'es')).toBe('2,4 MB');
+    expect(formatSize(2.4e6, 'zh')).toBe('2.4 MB');
     expect(formatSize(12_345, 'en')).toBe('12 KB');
   });
   it('formats estimates', () => {
     expect(formatEstimate(10, 'en')).toBe('~10 min');
     expect(formatEstimate(10, 'vi')).toBe('~10 phút');
+    expect(formatEstimate(90, 'zh')).toBe('~1 小时 30 分钟');
+    expect(formatEstimate(90, 'es')).toBe('~1 h 30 min');
     expect(formatEstimate(59, 'en')).toBe('~59 min');
   });
   it('formats estimates from an hour in hours and minutes', () => {
@@ -61,5 +69,7 @@ describe('format', () => {
     expect(formatWeekRange('2026-10-12', '2026-10-18', 'vi', 2026)).toBe('12/10 – 18/10');
     expect(formatWeekRange('2025-12-29', '2026-01-04', 'en', 2026)).toBe('29 Dec 2025 – 4 Jan');
     expect(formatWeekRange('2025-12-29', '2026-01-04', 'vi', 2026)).toBe('29/12/2025 – 4/1');
+    expect(formatWeekRange('2025-12-29', '2026-01-04', 'zh', 2026)).toBe('2025年12月29日 – 1月4日');
+    expect(formatWeekRange('2025-12-29', '2026-01-04', 'es', 2026)).toBe('29 dic 2025 – 4 ene');
   });
 });

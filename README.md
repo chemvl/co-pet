@@ -4,7 +4,7 @@ Co-pet is a desktop companion that lives on the edge of your screen as an animat
 
 It is local-first: items, tasks and the triage model live on your computer. Nothing leaves the machine unless you turn on a feature that needs the network, and synced data is end-to-end encrypted.
 
-Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code (macOS 13+ on Apple Silicon) stays in the repo and builds for development, but isn't distributed. UI in English and Vietnamese.
+Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code (macOS 13+ on Apple Silicon) stays in the repo and builds for development, but isn't distributed. UI in English, Vietnamese, Simplified Chinese and Spanish.
 
 ## What it does
 
@@ -141,6 +141,7 @@ Open Home › Agents and click **Add to Claude Code / Cursor / Codex / Gemini CL
 
 - [Product brief](docs/Desktop%20Pet%20Inbox%20%E2%80%94%20Product%20Brief.md)
 - [UI & UX guidelines](docs/Co-pet%20%E2%80%94%20UI%20%26%20UX%20guidelines.md)
+- [Landing page guidelines](docs/Co-pet%20%E2%80%94%20Landing%20page%20guidelines.md)
 - [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md)
 - [Phase 2 plan](docs/handoff/copet-phase2-plan.md) and session handoffs in `docs/handoff/`
 

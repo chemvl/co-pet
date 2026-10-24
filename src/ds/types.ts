@@ -12,7 +12,8 @@ export type IconName =
   | 'paw';
 export type CategoryId = 'todo' | 'read' | 'reference' | 'code' | 'design' | 'idea' | 'contact' | 'meeting' | 'unsorted';
 export type ItemKind = 'file' | 'image' | 'url' | 'text' | 'richtext' | 'code' | 'screenshot' | 'audio' | 'meeting';
-export type Lang = 'en' | 'vi';
+/** Co-pet addition: zh, es (CategoryChip falls back to the English name; callers pass `label`). */
+export type Lang = 'en' | 'vi' | 'zh' | 'es';
 export type Status = 'exported' | 'synced' | 'pending' | 'exporting' | 'failed' | 'due' | 'overdue' | 'local' | 'sensitive' | 'agent';
 
 export interface IconProps { name: IconName; size?: number; label?: string; strokeWidth?: number; className?: string }

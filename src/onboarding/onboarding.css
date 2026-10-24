@@ -15,6 +15,10 @@ html[data-platform="windows"] .ob-top { padding: 0 0 0 24px; min-height: 44px; }
 .ob-st.is-on i { background: var(--clover); color: var(--on-clover); border-color: var(--clover); }
 .ob-st.is-done i { background: var(--clover-soft); color: var(--clover); border-color: var(--clover); }
 .ob-sep { width: 16px; height: 1px; background: var(--line-strong); }
+.ob-lang { flex: none; height: 32px; box-sizing: border-box; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised); padding: 0 10px; font: 500 13px/20px var(--font-sans); color: var(--ink); }
+[data-theme="dark"] .ob-lang { color-scheme: dark; }
+[data-theme="light"] .ob-lang { color-scheme: light; }
+.ob-lang:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .ob-body { flex: 1 1 0; min-height: 0; display: flex; }
 

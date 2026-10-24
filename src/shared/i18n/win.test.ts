@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { en, type I18nKey } from './en';
-import { translate, type Lang } from './index';
+import { LANGS, translate, type Lang } from './index';
 
-const MAC_WORDING = /\bMacs?\b|macOS|Finder|System Settings|[Kk]eychain|[Mm]áy Mac|Cài đặt [Hh]ệ thống|[⌘⌥⌃]/;
+const MAC_WORDING = /\bMacs?\b|macOS|Finder|System Settings|[Kk]eychain|[Mm]áy Mac|Cài đặt [Hh]ệ thống|访达|系统设置|钥匙串|Ajustes del Sistema|[Ll]lavero|[⌘⌥⌃]/;
 
 // Rendered only on macOS, so they keep their Mac wording.
 const MAC_ONLY: Partial<Record<I18nKey, true>> = {
@@ -15,7 +15,7 @@ const MAC_ONLY: Partial<Record<I18nKey, true>> = {
 };
 
 describe('Windows wording overlay', () => {
-  test.each<Lang>(['en', 'vi'])('no Mac wording on Windows in %s', (lang) => {
+  test.each<Lang>(LANGS)('no Mac wording on Windows in %s', (lang) => {
     const leaks = (Object.keys(en) as I18nKey[])
       .filter((key) => !MAC_ONLY[key])
       .filter((key) => MAC_WORDING.test(translate(lang, key, undefined, 'windows')));

@@ -87,7 +87,7 @@ export const retranscribeMeeting = (id: string, language: string) =>
   invoke<void>('retranscribe_meeting', { id, language });
 export const deleteMeeting = (id: string) => invoke<void>('delete_meeting', { id });
 /** Re-summarizes a done meeting in `lang` (notes only). Rejects with `busy` or `invalid`. */
-export const resummarizeMeeting = (id: string, lang: 'en' | 'vi' | 'zh') =>
+export const resummarizeMeeting = (id: string, lang: 'en' | 'vi' | 'zh' | 'es') =>
   invoke<void>('resummarize_meeting', { id, lang });
 /** Queues a skipped or failed summary again. Rejects with `invalid` otherwise. */
 export const summarizeMeeting = (id: string) => invoke<void>('summarize_meeting', { id });

@@ -46,6 +46,8 @@ pub fn parse_data_sources(v: &Value, lang: Lang) -> Vec<TargetOption> {
     let untitled = match lang {
         Lang::En => "Untitled",
         Lang::Vi => "Không có tiêu đề",
+        Lang::Zh => "无标题",
+        Lang::Es => "Sin título",
     };
     v["results"]
         .as_array()

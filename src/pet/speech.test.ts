@@ -17,6 +17,8 @@ describe('speech', () => {
     const cases = [
       ['en', { category: 'Reference' }],
       ['vi', { category: 'Tham khảo' }],
+      ['zh', { category: '参考资料' }],
+      ['es', { category: 'Referencia' }],
     ] as const;
     for (const [lang, params] of cases) {
       for (const line of Object.keys(SPEECH_LINES) as SpeechLine[]) {

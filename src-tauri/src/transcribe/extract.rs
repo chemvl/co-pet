@@ -102,23 +102,16 @@ pub fn chunks(lines: &[String]) -> Vec<String> {
     out
 }
 
-fn lang_code(lang: Lang) -> &'static str {
-    match lang {
-        Lang::En => "en",
-        Lang::Vi => "vi",
-    }
-}
-
 fn known(code: &str) -> Option<&'static str> {
-    ["en", "vi", "zh"].into_iter().find(|c| *c == code)
+    ["en", "vi", "zh", "es"].into_iter().find(|c| *c == code)
 }
 
-/// The summary language for setting `setting` (`en|vi|zh`, `meeting` = the meeting's first
+/// The summary language for setting `setting` (`en|vi|zh|es`, `meeting` = the meeting's first
 /// language, empty = the UI language).
 pub fn target_lang(setting: &str, m: &MeetingRow, ui: Lang) -> &'static str {
     match setting {
-        "meeting" => m.langs.first().and_then(|l| known(l)).unwrap_or(lang_code(ui)),
-        s => known(s).unwrap_or(lang_code(ui)),
+        "meeting" => m.langs.first().and_then(|l| known(l)).unwrap_or(ui.code()),
+        s => known(s).unwrap_or(ui.code()),
     }
 }
 
@@ -127,6 +120,7 @@ pub fn lang_name(code: &str) -> &'static str {
     match code {
         "vi" => "Vietnamese",
         "zh" => "Simplified Chinese",
+        "es" => "Spanish",
         _ => "English",
     }
 }
@@ -273,12 +267,12 @@ fn at_ms(s: &str) -> Option<i64> {
     (sec < 60 && (parts.len() == 2 || m < 60)).then_some(((h * 60 + m) * 60 + sec) * 1000)
 }
 
-/// The key of the speaker whose English or Vietnamese display name folds to `owner`'s.
+/// The key of the speaker whose display name in any UI language folds to `owner`'s.
 fn owner_key(m: &MeetingRow, owner: &str) -> Option<String> {
     let f = fold(owner);
     m.speakers
         .iter()
-        .find(|sp| fold(&display_name(sp, Lang::En)) == f || fold(&display_name(sp, Lang::Vi)) == f)
+        .find(|sp| Lang::ALL.into_iter().any(|l| fold(&display_name(sp, l)) == f))
         .map(|sp| sp.key.clone())
 }
 

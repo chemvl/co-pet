@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRoot } from 'react-dom/client';
 import '../ds';
-import { I18nProvider, type LangSetting } from '../shared/i18n';
+import { I18nProvider, langSetting } from '../shared/i18n';
 import { applyPlatformAttribute } from '../shared/platform';
 import { useSetting } from '../shared/queries';
 import { applyTheme } from '../shared/theme';
@@ -16,9 +16,8 @@ const queryClient = new QueryClient({
 
 function Root() {
   const language = useSetting<string>('ui.language', 'system');
-  const setting: LangSetting = language === 'en' || language === 'vi' ? language : 'system';
   return (
-    <I18nProvider setting={setting}>
+    <I18nProvider setting={langSetting(language)}>
       <PetApp />
     </I18nProvider>
   );

@@ -1,12 +1,12 @@
 // Onboarding window (plan Step 13): Your pet · Permissions · Local AI · Apps · Hotkeys.
 // Windows skips Permissions: it has no consent prompts for screen capture or accessibility.
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { Button, SegmentedControl } from '../ds';
+import { Button } from '../ds';
 import { useAiAction } from '../home/settings/ModelCards';
 import { WindowControls } from '../home/WindowControls';
 import { asSpecies, resolveSkin, type Species } from '../pet/catalog';
 import { errorText } from '../shared/errors';
-import { useLang, useT, type I18nKey } from '../shared/i18n';
+import { LANG_LABEL, LANGS, useLang, useT, type I18nKey } from '../shared/i18n';
 import { isWindows } from '../shared/platform';
 import { aiDownload, aiSelectModel, finishOnboarding } from '../shared/ipc';
 import { useAiStatus, useSetSetting, useSetting } from '../shared/queries';
@@ -105,15 +105,18 @@ export function OnboardingApp() {
             </Fragment>
           ))}
         </ol>
-        <SegmentedControl
-          label={t('settings.language')}
+        <select
+          className="ob-lang"
+          aria-label={t('settings.language')}
           value={lang}
-          onChange={(v) => void set('ui.language', v)}
-          options={[
-            { value: 'en', label: t('common.english') },
-            { value: 'vi', label: t('common.vietnamese') },
-          ]}
-        />
+          onChange={(e) => void set('ui.language', e.currentTarget.value)}
+        >
+          {LANGS.map((l) => (
+            <option key={l} value={l}>
+              {t(LANG_LABEL[l])}
+            </option>
+          ))}
+        </select>
         {isWindows && <WindowControls maximizable={false} />}
       </header>
 

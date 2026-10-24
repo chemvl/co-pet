@@ -22,7 +22,7 @@ use crate::platform::pasteboard::{self, TYPE_PLAIN};
 use crate::triage::secrets;
 
 /// Summary languages a user may ask for.
-const SUMMARY_LANGS: [&str; 3] = ["en", "vi", "zh"];
+const SUMMARY_LANGS: [&str; 4] = ["en", "vi", "zh", "es"];
 const TASK_TITLE_MAX: usize = 300;
 
 #[derive(Debug, Clone, PartialEq)]

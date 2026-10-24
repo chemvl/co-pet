@@ -1,5 +1,5 @@
-import { SegmentedControl, Switch } from '../../../ds';
-import { useT } from '../../../shared/i18n';
+import { Switch } from '../../../ds';
+import { LANG_LABEL, LANGS, useT } from '../../../shared/i18n';
 import { useSetSetting, useSetting } from '../../../shared/queries';
 import { HotkeyRows } from '../HotkeyRows';
 import { Group, SettingRow } from '../parts';
@@ -12,17 +12,20 @@ export function GeneralSection() {
   return (
     <>
       <Group title={t('settings.general')}>
-        <SettingRow label={t('settings.language')} desc={t('settings.general.languageDesc')}>
-          <SegmentedControl
-            label={t('settings.language')}
+        <SettingRow label={t('settings.language')} desc={t('settings.general.languageDesc')} htmlFor="st-language">
+          <select
+            id="st-language"
+            className="st-input"
             value={language}
-            onChange={(v) => void set('ui.language', v)}
-            options={[
-              { value: 'system', label: t('common.system') },
-              { value: 'en', label: t('common.english') },
-              { value: 'vi', label: t('common.vietnamese') },
-            ]}
-          />
+            onChange={(e) => void set('ui.language', e.currentTarget.value)}
+          >
+            <option value="system">{t('common.system')}</option>
+            {LANGS.map((l) => (
+              <option key={l} value={l}>
+                {t(LANG_LABEL[l])}
+              </option>
+            ))}
+          </select>
         </SettingRow>
         <Switch
           id="st-open-at-login"

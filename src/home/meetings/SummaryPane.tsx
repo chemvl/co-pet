@@ -17,10 +17,10 @@ import { MenuButton } from '../Menu';
 import { taskQuery } from '../queries';
 import { formatDay, speakerName } from './segments';
 
-export const SUMMARY_LANGS = ['en', 'vi', 'zh'] as const;
+export const SUMMARY_LANGS = ['en', 'vi', 'zh', 'es'] as const;
 export type SummaryLang = (typeof SUMMARY_LANGS)[number];
 
-export const LANG_NAME: Record<string, I18nKey> = { en: 'lang.en', vi: 'lang.vi', zh: 'lang.zh' };
+export const LANG_NAME: Record<string, I18nKey> = { en: 'lang.en', vi: 'lang.vi', zh: 'lang.zh', es: 'lang.es' };
 
 /** The language the summary is in now (English when unknown). */
 export function summaryLangOf(m: MeetingDetail): SummaryLang {

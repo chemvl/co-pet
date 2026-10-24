@@ -489,11 +489,12 @@ pub fn duration_min(ms: i64) -> i64 {
     ((ms + 30_000) / 60_000).max(1)
 }
 
-/// `45 min`, `1 h 5 min` / `45 phút`, `1 giờ 5 phút` (at least 1 minute).
+/// `45 min`, `1 h 5 min` / `45 phút`, `1 giờ 5 phút` / `45 分钟`, `1 小时 5 分钟` (at least 1 minute).
 fn duration_label(ms: i64, lang: Lang) -> String {
     let (min_unit, hour_unit) = match lang {
-        Lang::En => ("min", "h"),
+        Lang::En | Lang::Es => ("min", "h"),
         Lang::Vi => ("phút", "giờ"),
+        Lang::Zh => ("分钟", "小时"),
     };
     let total = duration_min(ms);
     let (h, m) = (total / 60, total % 60);

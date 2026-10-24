@@ -7,6 +7,7 @@ import { isWindows } from '../../../shared/platform';
 import { useAiStatus, useSetSetting, useSetting } from '../../../shared/queries';
 import type { MeetingLanguage } from '../../../shared/types';
 import { activeCloud, providerName } from '../../integrations/cloudModel';
+import type { SummaryLang } from '../../meetings/SummaryPane';
 import { Dialog, Group, SettingRow } from '../parts';
 import { SpeechModelCards } from '../SpeechModelCards';
 import { callsStatusLine } from './calls';
@@ -28,11 +29,12 @@ const MEETING_LANGUAGES: readonly { value: MeetingLanguage; label: I18nKey }[] =
 ];
 
 /** `meeting` follows the meeting's language. */
-const SUMMARY_LANGUAGES: readonly { value: 'meeting' | 'en' | 'vi' | 'zh'; label: I18nKey }[] = [
+const SUMMARY_LANGUAGES: readonly { value: 'meeting' | SummaryLang; label: I18nKey }[] = [
   { value: 'meeting', label: 'settings.transcribe.sameAsMeeting' },
   { value: 'en', label: 'lang.en' },
   { value: 'vi', label: 'lang.vi' },
   { value: 'zh', label: 'lang.zh' },
+  { value: 'es', label: 'lang.es' },
 ];
 
 export function TranscribeSection() {

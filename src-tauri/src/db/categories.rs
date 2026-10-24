@@ -67,10 +67,10 @@ fn get(conn: &Connection, id: &str) -> AppResult<Category> {
     .ok_or(AppError::Code("notFound"))
 }
 
-/// The English and Vietnamese names of a built-in id.
-fn builtin_names(id: &str) -> [&'static str; 2] {
+/// A built-in id's name in every UI language.
+fn builtin_names(id: &str) -> [&'static str; Lang::ALL.len()] {
     let key = format!("category.{id}");
-    [tr(Lang::En, &key), tr(Lang::Vi, &key)]
+    Lang::ALL.map(|l| tr(l, &key))
 }
 
 /// The name a live category shows in `lang`: its own, else the built-in name.
@@ -79,7 +79,7 @@ pub fn display_name(conn: &Connection, id: &str, lang: Lang) -> AppResult<String
     Ok(c.name.unwrap_or_else(|| tr(lang, &format!("category.{}", c.id)).to_string()))
 }
 
-/// The names a category shows: its own, or both languages' built-in names.
+/// The names a category shows: its own, or every language's built-in name.
 fn display_names(c: &Category) -> Vec<&str> {
     match &c.name {
         Some(name) => vec![name.as_str()],

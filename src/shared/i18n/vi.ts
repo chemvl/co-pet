@@ -66,6 +66,8 @@ export const vi: Record<keyof typeof en, string> = {
   'common.sorting': 'Đang phân loại…',
   'common.english': 'English',
   'common.vietnamese': 'Tiếng Việt',
+  'common.chinese': '简体中文',
+  'common.spanish': 'Español',
   'common.system': 'Theo hệ thống',
 
   'category.todo': 'Việc cần làm',
@@ -645,6 +647,7 @@ export const vi: Record<keyof typeof en, string> = {
   'lang.en': 'Tiếng Anh',
   'lang.vi': 'Tiếng Việt',
   'lang.zh': 'Tiếng Trung',
+  'lang.es': 'Tiếng Tây Ban Nha',
   'lang.viEn': 'Tiếng Việt + tiếng Anh',
   'settings.transcribe': 'Chuyển văn bản',
   'settings.transcribe.language': 'Ngôn ngữ cuộc họp',

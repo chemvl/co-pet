@@ -59,7 +59,7 @@ const detected = (app: CallApp, mode: CallDetected['mode'] = 'ask'): CallDetecte
 const ended = (app: CallApp, stopAtMs: number | null): CallEnded => ({ callId: `${app}:1`, app, stopAtMs });
 
 // Every call notice in both languages, for both apps.
-const COPY: Record<Lang, Record<CallApp, { offer: string; auto: string; stopping: string; ask: string }>> = {
+const COPY: Record<'en' | 'vi', Record<CallApp, { offer: string; auto: string; stopping: string; ask: string }>> = {
   en: {
     zoom: {
       offer: 'Zoom call started. Record it?',

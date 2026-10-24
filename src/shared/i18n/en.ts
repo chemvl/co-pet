@@ -1,4 +1,4 @@
-// Flat dotted keys. Add every new key to vi.ts in the same edit.
+// Flat dotted keys. Add every new key to vi.ts, zh.ts and es.ts in the same edit.
 // Rules: sentence case, no exclamation marks, no emoji, verb-first buttons.
 export const en = {
   'app.name': 'Co-pet',
@@ -65,6 +65,8 @@ export const en = {
   'common.sorting': 'Sorting…',
   'common.english': 'English',
   'common.vietnamese': 'Tiếng Việt',
+  'common.chinese': '简体中文',
+  'common.spanish': 'Español',
   'common.system': 'System',
 
   'category.todo': 'To-do',
@@ -644,6 +646,7 @@ export const en = {
   'lang.en': 'English',
   'lang.vi': 'Vietnamese',
   'lang.zh': 'Chinese',
+  'lang.es': 'Spanish',
   'lang.viEn': 'Vietnamese + English',
   'settings.transcribe': 'Transcribe',
   'settings.transcribe.language': 'Meeting language',

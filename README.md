@@ -25,9 +25,7 @@ Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code
 | `src/` | React UI — `pet/` (the pet window), `home/` (Home window), `shared/` (IPC, types, i18n), `ds/` (design system) |
 | `src-mcp/` | `copet-mcp` sidecar (Bun + MCP SDK), compiled into `src-tauri/binaries/` |
 | `supabase/` | Backend for OAuth hand-off, account deletion and sync (migrations + Edge Functions), deployed by each user to their own Supabase project |
-| `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `build-local.ts`, `package-msix.ts`, `set-version.ts`, `publish-site.ts`, `render-icons.ts`, `render-store-art.ts` (Store listing poster, box, super hero art and logos into `docs/store/`) |
-| `video/` | 60-second intro video (Remotion) built from the real design system and pet art — `cd video && bun run render` writes `out/co-pet-intro.mp4`; `bun run render:music` mixes in `public/music.mp3`, which isn't in the repo: supply your own licensed track |
-| `docs/` | Product brief, UI & UX guidelines, design boards, plans and handoff notes |
+| `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `build-local.ts`, `package-msix.ts`, `set-version.ts`, `render-icons.ts` |
 
 ## Run it locally
 
@@ -96,8 +94,6 @@ bun run package:msix --dev-cert
 
 It builds the app and writes `src-tauri\target\release\msix\Co-pet_<x.y.z.0>_x64.msix`. Trust the certificate once with the admin PowerShell command it prints, then install with `Add-AppxPackage "<path-to-msix>"`. The packaged app keeps its data in `%USERPROFILE%\Co-pet\`.
 
-Step-by-step local builds and Microsoft Store releases: [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md).
-
 ### 5. Run the checks
 
 ```sh
@@ -136,14 +132,6 @@ On macOS the keychain trusts an app by its code signature. `build:local` signs w
 ## Connecting an AI agent
 
 Open Home › Agents and click **Add to Claude Code / Cursor / Codex / Gemini CLI**, or copy the stdio command shown there into any MCP client. Agents can read right away; writes need **Approve writes** for that client. While the app runs it also serves MCP over HTTP at `http://127.0.0.1:4823/mcp` for clients holding a token created on the Agents screen.
-
-## Documentation
-
-- [Product brief](docs/Desktop%20Pet%20Inbox%20%E2%80%94%20Product%20Brief.md)
-- [UI & UX guidelines](docs/Co-pet%20%E2%80%94%20UI%20%26%20UX%20guidelines.md)
-- [Landing page guidelines](docs/Co-pet%20%E2%80%94%20Landing%20page%20guidelines.md)
-- [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md)
-- [Phase 2 plan](docs/handoff/copet-phase2-plan.md) and session handoffs in `docs/handoff/`
 
 ## License
 

@@ -14,9 +14,7 @@
     "build:mcp": "bun scripts/build-mcp.ts",
     "set-version": "bun scripts/set-version.ts",
     "fetch:llama": "bun scripts/fetch-llama.ts",
-    "publish:site": "bun scripts/publish-site.ts",
-    "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png",
-    "store-art": "bun scripts/render-store-art.ts"
+    "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png"
   },
   "dependencies": {
     "@crabnebula/tauri-plugin-drag": "2.1.0",

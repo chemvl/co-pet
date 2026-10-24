@@ -58,25 +58,11 @@
         <desktop:Extension Category="windows.startupTask" Executable="copet.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="CoPetStartup" Enabled="false" DisplayName="Co-pet" />
         </desktop:Extension>
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="copet.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="copet.exe" />
-          </uap3:AppExecutionAlias>
-        </uap3:Extension>
-      </Extensions>
-    </Application>
-
-    <!-- The MCP sidecar (a console exe speaking stdio). External MCP clients start it through the
-         alias %LOCALAPPDATA%\Microsoft\WindowsApps\copet-mcp.exe; it has no Start menu entry. -->
-    <Application Id="CoPetMcp" Executable="copet-mcp.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="Co-pet MCP"
-        Description="Co-pet MCP server for AI agents"
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png"
-        AppListEntry="none" />
-      <Extensions>
+        <!-- The MCP sidecar (a console exe speaking stdio). External MCP clients start it through the
+             alias %LOCALAPPDATA%\Microsoft\WindowsApps\copet-mcp.exe (agent::mcp_command). It hangs
+             off this application because a second Application would need AppListEntry="none",
+             which the Store rejects as a headless app, and an Application may declare only one
+             windows.appExecutionAlias extension, so copet.exe has no alias of its own. -->
         <uap3:Extension Category="windows.appExecutionAlias" Executable="copet-mcp.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
             <desktop:ExecutionAlias Alias="copet-mcp.exe" />

@@ -10,9 +10,9 @@ import { useToast } from '../../../shared/Toast';
 import { Group, StillCat } from '../parts';
 
 const LINKS = [
-  ['settings.about.privacy', 'https://mrdeeds88.github.io/copet/privacy/'],
-  ['settings.about.terms', 'https://mrdeeds88.github.io/copet/terms/'],
-  ['settings.about.support', 'https://mrdeeds88.github.io/copet/support/'],
+  ['settings.about.privacy', 'https://chemvl.com/copet/privacy/'],
+  ['settings.about.terms', 'https://chemvl.com/copet/terms/'],
+  ['settings.about.support', 'https://chemvl.com/copet/support/'],
 ] as const;
 
 export function AboutSection() {

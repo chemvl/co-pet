@@ -20,7 +20,7 @@ import { Dialog, Group, SettingRow, TypedConfirmDialog, useCopied } from '../par
 import { accountError, accountView } from './account';
 
 const KEY_FILE_NAME = 'Co-pet recovery key.txt';
-const SETUP_GUIDE_URL = 'https://mrdeeds88.github.io/copet/support/#self-host';
+const SETUP_GUIDE_URL = 'https://chemvl.com/copet/support/#self-host';
 
 /** Runs one account action at a time: clears the error first, shows a failure as `error`. */
 interface Run {

@@ -26,7 +26,7 @@ Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code
 | `src-mcp/` | `copet-mcp` sidecar (Bun + MCP SDK), compiled into `src-tauri/binaries/` |
 | `supabase/` | Backend for OAuth hand-off, account deletion and sync (migrations + Edge Functions), deployed by each user to their own Supabase project |
 | `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `build-local.ts`, `package-msix.ts`, `set-version.ts`, `publish-site.ts`, `render-icons.ts` |
-| `video/` | 60-second intro video (Remotion) built from the real design system and pet art — `cd video && bun run render` writes `out/co-pet-intro.mp4`; `bun run render:music` mixes in `public/music.mp3` |
+| `video/` | 60-second intro video (Remotion) built from the real design system and pet art — `cd video && bun run render` writes `out/co-pet-intro.mp4`; `bun run render:music` mixes in `public/music.mp3`, which isn't in the repo: supply your own licensed track |
 | `docs/` | Product brief, UI & UX guidelines, design boards, plans and handoff notes |
 
 ## Run it locally
@@ -143,3 +143,7 @@ Open Home › Agents and click **Add to Claude Code / Cursor / Codex / Gemini CL
 - [UI & UX guidelines](docs/Co-pet%20%E2%80%94%20UI%20%26%20UX%20guidelines.md)
 - [Build and release](docs/Co-pet%20%E2%80%94%20Build%20and%20release.md)
 - [Phase 2 plan](docs/handoff/copet-phase2-plan.md) and session handoffs in `docs/handoff/`
+
+## License
+
+[MIT](LICENSE)

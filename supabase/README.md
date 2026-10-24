@@ -17,7 +17,7 @@ Notion and Asana personal tokens ("Use a token instead" in Integrations) never n
 ## 1. Create the project
 
 1. Sign up at https://supabase.com and create a project. Note its **Project ref** (the `<ref>` in `https://<ref>.supabase.co`).
-2. Install the Supabase CLI (https://supabase.com/docs/guides/cli) and get this repository (`git clone https://github.com/mrdeeds88/co-pet`, or download it as a ZIP).
+2. Install the Supabase CLI (https://supabase.com/docs/guides/cli) and get this repository (`git clone https://github.com/chemvl/co-pet`, or download it as a ZIP).
 3. In the repository folder:
 
    ```sh

@@ -1,6 +1,6 @@
 [package]
 name = "copet"
-version = "1.0.0"
+version = "1.0.1"
 description = "Co-pet desktop pet inbox"
 edition = "2021"
 license = "MIT"

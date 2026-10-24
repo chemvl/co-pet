@@ -25,7 +25,7 @@ Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code
 | `src/` | React UI — `pet/` (the pet window), `home/` (Home window), `shared/` (IPC, types, i18n), `ds/` (design system) |
 | `src-mcp/` | `copet-mcp` sidecar (Bun + MCP SDK), compiled into `src-tauri/binaries/` |
 | `supabase/` | Backend for OAuth hand-off, account deletion and sync (migrations + Edge Functions), deployed by each user to their own Supabase project |
-| `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `build-local.ts`, `package-msix.ts`, `set-version.ts`, `publish-site.ts`, `render-icons.ts` |
+| `scripts/` | `fetch-llama.ts`, `build-mcp.ts`, `build-local.ts`, `package-msix.ts`, `set-version.ts`, `publish-site.ts`, `render-icons.ts`, `render-store-art.ts` (Store listing poster, box, super hero art and logos into `docs/store/`) |
 | `video/` | 60-second intro video (Remotion) built from the real design system and pet art — `cd video && bun run render` writes `out/co-pet-intro.mp4`; `bun run render:music` mixes in `public/music.mp3`, which isn't in the repo: supply your own licensed track |
 | `docs/` | Product brief, UI & UX guidelines, design boards, plans and handoff notes |
 

@@ -1,7 +1,7 @@
 {
   "name": "co-pet",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,8 @@
     "set-version": "bun scripts/set-version.ts",
     "fetch:llama": "bun scripts/fetch-llama.ts",
     "publish:site": "bun scripts/publish-site.ts",
-    "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png"
+    "icons": "bun scripts/render-icons.ts && tauri icon src-tauri/icons/app-icon.png",
+    "store-art": "bun scripts/render-store-art.ts"
   },
   "dependencies": {
     "@crabnebula/tauri-plugin-drag": "2.1.0",

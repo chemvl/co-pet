@@ -319,7 +319,7 @@ export type TaskAction = 'created' | 'edited' | 'done' | 'reopened' | 'snoozed' 
 export interface TaskEvent {
   id: string;
   at: number;
-  actor: 'user' | 'agent' | 'next' | 'meeting' | 'notion' | 'asana';
+  actor: 'user' | 'agent' | 'next' | 'meeting' | ExportProvider;
   clientId: string | null;
   action: TaskAction;
   /** JSON text of the changed columns before / after. */
@@ -489,7 +489,7 @@ export interface StorageLocations {
   moveError: string | null;
 }
 
-export type ExportProvider = 'notion' | 'asana';
+export type ExportProvider = 'notion' | 'asana' | 'google_tasks';
 export type ExportState = 'queued' | 'exporting' | 'exported' | 'failed';
 export type ExportErrorCode = 'rateLimited' | 'network' | 'unauthorized' | 'targetMissing' | 'invalid' | 'disconnected';
 
@@ -501,13 +501,13 @@ export interface TaskExportState {
   nextAttemptAt: number | null;
 }
 
-/** `config` is a `NotionConfig` (notion) or `AsanaConfig` (asana). */
+/** `config` is a `NotionConfig` (notion), `AsanaConfig` (asana) or `GoogleTasksConfig` (google_tasks). */
 export interface ExportTarget {
   id: string;
   provider: ExportProvider;
   accountLabel: string;
   targetLabel: string;
-  config: NotionConfig | AsanaConfig;
+  config: NotionConfig | AsanaConfig | GoogleTasksConfig;
 }
 
 /** `queued` / `failed` / `nextAttemptAt` / `lastError` cover this device's jobs. */
@@ -524,7 +524,7 @@ export interface ProviderStatus {
   lastError: ExportErrorCode | null;
 }
 
-/** A Notion data source or an Asana workspace / project / section. */
+/** A Notion data source, an Asana workspace / project / section, or a Google task list. */
 export interface TargetOption { id: string; label: string }
 
 export interface NotionStatusMap { prop: string; kind: 'status' | 'select'; todo: string; done: string }
@@ -541,6 +541,8 @@ export interface NotionMapping {
 export interface NotionConfig { dataSourceId: string; mapping: NotionMapping }
 
 export interface AsanaConfig { workspaceGid: string; projectGid: string; sectionGid: string | null }
+
+export interface GoogleTasksConfig { tasklistId: string }
 
 export interface NotionProp { name: string; kind: string; options: string[] }
 

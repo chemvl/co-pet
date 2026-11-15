@@ -221,7 +221,7 @@ export const backendStatus = () => invoke<BackendStatus>('backend_status');
  *  `"localOnly"`, `"invalidUrl"`, `"invalidKey"`, `"secretKey"`, `"backendUnreachable"` or
  *  `"backendRejected"`. */
 export const setBackend = (url: string, key: string) => invoke<BackendStatus>('set_backend', { url, key });
-/** Forgets the project: signs out and disconnects Notion/Asana connected through it. */
+/** Forgets the project: signs out and disconnects the exporters connected through it. */
 export const clearBackend = () => invoke<BackendStatus>('clear_backend');
 export const integrationsStatus = () => invoke<ProviderStatus[]>('integrations_status');
 /** Opens the provider's consent page; the result arrives as `integration-changed`.
@@ -237,7 +237,8 @@ export const notionSchema = (id: string) => invoke<NotionSchema>('notion_schema'
 /** `parent` is the workspace gid (`project`) or project gid (`section`). */
 export const asanaOptions = (level: 'workspace' | 'project' | 'section', parent?: string) =>
   invoke<TargetOption[]>('asana_options', { level, parent: parent ?? null });
-/** `config` is a `NotionConfig` / `AsanaConfig`. Rejects with `"invalid"` or `"notConnected"`. */
+export const googleTasksLists = () => invoke<TargetOption[]>('google_tasks_lists');
+/** `config` is a `NotionConfig` / `AsanaConfig` / `GoogleTasksConfig`. Rejects with `"invalid"` or `"notConnected"`. */
 export const setExportTarget = (provider: ExportProvider, config: ExportTarget['config'], targetLabel: string) =>
   invoke<ExportTarget>('set_export_target', { provider, config, targetLabel });
 /** Rejects with `"notConnected"`, `"noTarget"`, `"alreadyExported"` or `"notFound"`. */

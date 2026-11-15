@@ -74,7 +74,7 @@ export const shapes = {
     priority: priority.optional(),
   },
   complete_task: { id },
-  export_task: { id, provider: z.enum(['notion', 'asana']) },
+  export_task: { id, provider: z.enum(['notion', 'asana', 'google_tasks']) },
 } as const;
 
 export type ToolName = keyof typeof shapes;
@@ -110,7 +110,7 @@ const descriptions: Record<ToolName, string> = {
   create_task: `Creates a task in Co-pet. ${UNDO}`,
   update_task: `Changes a task's title, notes, due date, estimate or priority. ${UNDO}`,
   complete_task: `Marks a task done. ${UNDO}`,
-  export_task: `Sends a task to Notion or Asana. ${UNDO}`,
+  export_task: `Sends a task to Notion, Asana or Google Tasks. ${UNDO}`,
 };
 
 /// Registers the tools and the `item://{id}` and `meeting://{id}` resource templates on `server`.

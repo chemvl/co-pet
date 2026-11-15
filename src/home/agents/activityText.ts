@@ -5,7 +5,7 @@ import { errorMessage } from '../../shared/errors';
 import { formatDate } from '../../shared/format';
 import type { Lang, TFunction } from '../../shared/i18n';
 import type { ActivityRow, Category, ExportProvider } from '../../shared/types';
-import { PROVIDER_NAME } from '../integrations/model';
+import { isExportProvider, PROVIDER_NAME } from '../integrations/model';
 
 const MIN_MS = 60_000;
 const HOUR_MS = 60 * MIN_MS;
@@ -13,10 +13,6 @@ const DAY_MS = 24 * HOUR_MS;
 
 function str(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
-}
-
-function isProvider(v: unknown): v is ExportProvider {
-  return v === 'notion' || v === 'asana';
 }
 
 /** `detail.count` as "1 result" / "{n} results". */
@@ -75,7 +71,7 @@ export function activityText(row: ActivityRow, t: TFunction, categories?: readon
     case 'complete_task':
       return t('agents.act.complete', { title });
     case 'export_task':
-      return t('agents.act.export', { title, provider: isProvider(d.provider) ? PROVIDER_NAME[d.provider] : '' });
+      return t('agents.act.export', { title, provider: isExportProvider(d.provider) ? PROVIDER_NAME[d.provider] : '' });
     default:
       return t('agents.act.other', { tool: row.tool });
   }
@@ -92,7 +88,7 @@ export type ActivityAction =
 export function activityAction(row: ActivityRow): ActivityAction {
   if (row.tool === 'export_task' && row.resultUrl) {
     const p = row.detail.provider;
-    return isProvider(p) ? { kind: 'open', url: row.resultUrl, provider: p } : null;
+    return isExportProvider(p) ? { kind: 'open', url: row.resultUrl, provider: p } : null;
   }
   if (row.undoable) return row.undoneAt != null ? { kind: 'undone' } : { kind: 'undo' };
   return row.isWrite ? null : { kind: 'read' };

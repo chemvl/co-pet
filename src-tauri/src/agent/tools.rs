@@ -896,11 +896,9 @@ struct ExportArgs {
 }
 
 fn export_task(host: &impl Host, a: ExportArgs, log: &mut Entry, fx: &mut Vec<Effect>) -> ToolResult {
-    let p: Provider = a.provider.parse().map_err(|_| ToolError::invalid("provider must be notion or asana."))?;
-    let name = match p {
-        Provider::Notion => "Notion",
-        Provider::Asana => "Asana",
-    };
+    let p: Provider =
+        a.provider.parse().map_err(|_| ToolError::invalid("provider must be notion, asana or google_tasks."))?;
+    let name = p.name();
     if export::keychain_token(p)?.is_none() {
         return Err(ToolError::new(
             "notConnected",

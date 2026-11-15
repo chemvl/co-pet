@@ -1,5 +1,5 @@
-//! OS secret store: macOS keychain, Windows DPAPI files. Holds the Notion and
-//! Asana tokens (`notion`, `asana`: JSON `ProviderToken`), the AI provider keys (`ai.anthropic`,
+//! OS secret store: macOS keychain, Windows DPAPI files. Holds the exporter tokens (`notion`,
+//! `asana`, `google_tasks`: JSON `ProviderToken`), the AI provider keys (`ai.anthropic`,
 //! `ai.openai`, `ai.gemini`: the raw key), and from M8 the Supabase session and sync keys.
 //! Values never go to SQLite or the logs.
 //!
@@ -20,7 +20,8 @@ use crate::platform::secret_store;
 /// held across keychain calls so two threads never prompt for the same entry at once.
 static CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> = LazyLock::new(Default::default);
 
-/// The keychain value of the `notion` and `asana` accounts. No `Debug`, so it can't be logged.
+/// The keychain value of the exporter accounts (`export::Provider::as_str`). No `Debug`, so it
+/// can't be logged.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderToken {

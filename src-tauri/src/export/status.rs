@@ -1,12 +1,12 @@
 //! Two-way done/open sync for exported tasks. Every 5 min while the app runs, this Mac's live
-//! `exported` rows (≤100 per provider, least recently checked first) are read from Notion/Asana
-//! and reconciled with the local status; see `reconcile`.
+//! `exported` rows (≤100 per provider, least recently checked first) are read from Notion,
+//! Asana or Google Tasks and reconciled with the local status; see `reconcile`.
 use std::time::Duration;
 
 use rusqlite::{params, Connection};
 use tauri::{AppHandle, Manager};
 
-use super::{asana, notion, ExportError, Provider, RemoteState};
+use super::{asana, google_tasks, notion, ExportError, Provider, RemoteState};
 use crate::backend;
 use crate::db::{now_ms, tasks, Db};
 use crate::error::AppResult;
@@ -56,6 +56,7 @@ struct Row {
 enum Remote {
     Notion(NotionStatusMap),
     Asana,
+    GoogleTasks,
 }
 
 impl Remote {
@@ -63,6 +64,7 @@ impl Remote {
         match self {
             Remote::Notion(map) => notion::page_status(token, id, map).await,
             Remote::Asana => asana::task_status(token, id).await,
+            Remote::GoogleTasks => google_tasks::task_status(token, id).await,
         }
     }
 
@@ -70,14 +72,17 @@ impl Remote {
         match self {
             Remote::Notion(map) => notion::set_page_status(token, id, map, done).await,
             Remote::Asana => asana::set_task_status(token, id, done).await,
+            Remote::GoogleTasks => google_tasks::set_task_status(token, id, done).await,
         }
     }
 }
 
-/// Notion: `Some` only with a live target whose `mapping.status` is set. Asana: always `Some(Asana)`.
+/// Notion: `Some` only with a live target whose `mapping.status` is set. Asana and Google
+/// Tasks: always `Some`.
 fn remote_for(conn: &Connection, p: Provider) -> AppResult<Option<Remote>> {
     Ok(match p {
         Provider::Asana => Some(Remote::Asana),
+        Provider::GoogleTasks => Some(Remote::GoogleTasks),
         Provider::Notion => match super::target(conn, p)? {
             Some(t) => serde_json::from_value::<NotionConfig>(t.config)?.mapping.status.map(Remote::Notion),
             None => None,

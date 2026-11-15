@@ -498,8 +498,59 @@ INSERT INTO settings (key, value, updated_at) VALUES
 DELETE FROM settings WHERE key = 'updates.autoCheck';
 "#;
 
+/// Schema v16: the `google_tasks` exporter. `export_targets`, `task_exports` and `task_events`
+/// are rebuilt to widen their provider / actor CHECKs; the sync triggers of the first two are
+/// recreated after the copy, so it queues nothing.
+const V16: &str = r#"
+CREATE TABLE export_targets_v2 (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('notion','asana','google_tasks')),
+  account_label TEXT NOT NULL,
+  target_label TEXT NOT NULL,
+  config TEXT NOT NULL,
+  updated_at INTEGER NOT NULL, deleted_at INTEGER);
+INSERT INTO export_targets_v2 SELECT id, provider, account_label, target_label, config, updated_at, deleted_at FROM export_targets;
+DROP TABLE export_targets;
+ALTER TABLE export_targets_v2 RENAME TO export_targets;
+CREATE TABLE task_exports_v2 (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
+  provider TEXT NOT NULL CHECK (provider IN ('notion','asana','google_tasks')),
+  device_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','exporting','exported','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER,
+  error TEXT,
+  external_id TEXT, external_url TEXT,
+  activity_id TEXT,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER);
+INSERT INTO task_exports_v2 SELECT id, task_id, provider, device_id, state, attempts, next_attempt_at, error,
+  external_id, external_url, activity_id, created_at, updated_at, deleted_at FROM task_exports;
+DROP TABLE task_exports;
+ALTER TABLE task_exports_v2 RENAME TO task_exports;
+CREATE TRIGGER sync_export_targets_ins AFTER INSERT ON export_targets WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('export_targets', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_export_targets_upd AFTER UPDATE ON export_targets WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('export_targets', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_task_exports_ins AFTER INSERT ON task_exports WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('task_exports', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TRIGGER sync_task_exports_upd AFTER UPDATE ON task_exports WHEN (SELECT applying FROM sync_guard) = 0
+BEGIN INSERT INTO sync_outbox (tbl, id, queued_at) VALUES ('task_exports', NEW.id, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+  ON CONFLICT (tbl, id) DO UPDATE SET queued_at = excluded.queued_at; END;
+CREATE TABLE task_events_v4 (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), at INTEGER NOT NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user','agent','next','meeting','notion','asana','google_tasks')), client_id TEXT,
+  action TEXT NOT NULL CHECK (action IN ('created','edited','done','reopened','snoozed','trashed','restored')),
+  before_json TEXT, after_json TEXT, undone_at INTEGER, updated_at INTEGER NOT NULL);
+INSERT INTO task_events_v4 SELECT id, task_id, at, actor, client_id, action, before_json, after_json, undone_at, updated_at FROM task_events;
+DROP TABLE task_events;
+ALTER TABLE task_events_v4 RENAME TO task_events;
+CREATE INDEX task_events_task ON task_events(task_id, at DESC);
+"#;
+
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
-    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13), M::up(V14), M::up(V15)])
+    Migrations::new(vec![M::up(V1), M::up(V2), M::up(V3), M::up(V4), M::up(V5), M::up(V6), M::up(V7), M::up(V8), M::up(V9), M::up(V10), M::up(V11), M::up(V12), M::up(V13), M::up(V14), M::up(V15), M::up(V16)])
 });
 
 #[cfg(test)]
@@ -626,5 +677,44 @@ mod tests {
         c.execute("UPDATE settings SET value='\"https://x.supabase.co\"' WHERE key='backend.supabaseUrl'", []).unwrap();
         let queued: i64 = c.query_row("SELECT count(*) FROM sync_outbox", [], |r| r.get(0)).unwrap();
         assert_eq!(queued, 0, "the backend stays on this device");
+    }
+
+    #[test]
+    fn v16_accepts_google_tasks_and_keeps_rows() {
+        let mut c = Connection::open_in_memory().unwrap();
+        MIGRATIONS.to_version(&mut c, 15).unwrap();
+        c.execute_batch(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES ('t1', 'Task', 1, 1);
+             INSERT INTO export_targets (id, provider, account_label, target_label, config, updated_at)
+               VALUES ('asana', 'asana', 'me@x.y', 'Co-pet', '{}', 2);
+             INSERT INTO task_exports (id, task_id, provider, device_id, state, attempts, external_id, external_url, activity_id, created_at, updated_at)
+               VALUES ('t1:asana', 't1', 'asana', 'd1', 'exported', 1, '9', 'https://a/9', 'a1', 3, 4);
+             INSERT INTO task_events (id, task_id, at, actor, action, updated_at) VALUES ('e1', 't1', 5, 'asana', 'done', 5);
+             DELETE FROM sync_outbox;",
+        )
+        .unwrap();
+        MIGRATIONS.to_latest(&mut c).unwrap();
+        let count = |sql: &str| -> i64 { c.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(count("SELECT count(*) FROM sync_outbox"), 0, "the copy queues nothing");
+        let job: (String, String, Option<String>, Option<String>) = c
+            .query_row("SELECT provider, state, external_url, activity_id FROM task_exports WHERE id = 't1:asana'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .unwrap();
+        assert_eq!(job, ("asana".into(), "exported".into(), Some("https://a/9".into()), Some("a1".into())));
+        assert_eq!(count("SELECT count(*) FROM export_targets WHERE id = 'asana'"), 1);
+        assert_eq!(count("SELECT count(*) FROM task_events WHERE actor = 'asana'"), 1);
+        c.execute_batch(
+            "INSERT INTO export_targets (id, provider, account_label, target_label, config, updated_at)
+               VALUES ('google_tasks', 'google_tasks', 'me@x.y', 'My Tasks', '{\"tasklistId\":\"L1\"}', 6);
+             INSERT INTO task_exports (id, task_id, provider, device_id, state, created_at, updated_at)
+               VALUES ('t1:google_tasks', 't1', 'google_tasks', 'd1', 'queued', 6, 6);
+             INSERT INTO task_events (id, task_id, at, actor, action, updated_at) VALUES ('e2', 't1', 7, 'google_tasks', 'done', 7);",
+        )
+        .unwrap();
+        assert_eq!(count("SELECT count(*) FROM sync_outbox WHERE tbl IN ('export_targets', 'task_exports')"), 2);
+        assert!(c
+            .execute("INSERT INTO task_events (id, task_id, at, actor, action, updated_at) VALUES ('e3', 't1', 8, 'todoist', 'done', 8)", [])
+            .is_err());
     }
 }

@@ -17,6 +17,7 @@ import { aiDownload, aiPause, aiSelectModel, permissionsStatus, requestPermissio
 import { isWindows } from '../shared/platform';
 import { useIntegrations } from '../shared/queries';
 import { AsanaCard } from '../home/integrations/AsanaCard';
+import { GoogleTasksCard } from '../home/integrations/GoogleTasksCard';
 import { NotionCard } from '../home/integrations/NotionCard';
 import type { AiStatus } from '../shared/types';
 
@@ -215,7 +216,7 @@ export function AiStep(props: { look: Species; skin: SkinId; status: AiStatus | 
 /* ---------- 4 · Apps ---------- */
 
 /**
- * Optional Notion / Asana connection (the Integrations cards without target pickers). An OAuth
+ * Optional Notion / Asana / Google Tasks connection (the Integrations cards without target pickers). An OAuth
  * sign-in finishing now only emits `integration-changed`, which refreshes these cards; Home
  * stays closed until onboarding ends. Continue skips.
  */
@@ -226,6 +227,7 @@ export function AppsStep({ look, skin }: { look: Species; skin: SkinId }) {
     <SideLayout look={look} skin={skin} pose={poseFor('carrying')} title={t('onboarding.apps.title')}>
       <NotionCard status={statuses?.find((s) => s.provider === 'notion')} compact />
       <AsanaCard status={statuses?.find((s) => s.provider === 'asana')} compact />
+      <GoogleTasksCard status={statuses?.find((s) => s.provider === 'google_tasks')} compact />
       <p className="caption ob-caption">{t('onboarding.apps.caption')}</p>
     </SideLayout>
   );

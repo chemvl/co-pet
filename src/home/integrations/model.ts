@@ -6,9 +6,17 @@ import type {
   ExportProvider, NotionMapping, NotionProp, NotionSchema, NotionStatusMap, ProviderStatus, TaskExportState,
 } from '../../shared/types';
 
-export const PROVIDERS: readonly ExportProvider[] = ['notion', 'asana'];
+export const PROVIDERS: readonly ExportProvider[] = ['notion', 'asana', 'google_tasks'];
 
-export const PROVIDER_NAME: Readonly<Record<ExportProvider, string>> = { notion: 'Notion', asana: 'Asana' };
+export const PROVIDER_NAME: Readonly<Record<ExportProvider, string>> = {
+  notion: 'Notion',
+  asana: 'Asana',
+  google_tasks: 'Google Tasks',
+};
+
+export function isExportProvider(v: unknown): v is ExportProvider {
+  return typeof v === 'string' && (PROVIDERS as readonly string[]).includes(v);
+}
 
 /** Connected, not waiting for a reconnect, with a target: tasks can be exported. */
 export function isReady(s: ProviderStatus | undefined): boolean {

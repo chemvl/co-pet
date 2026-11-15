@@ -815,7 +815,7 @@ pub async fn set_backend(app: AppHandle, url: String, key: String) -> AppResult<
     crate::backend::status(&app)
 }
 
-/// Forgets the project: signs out, forgets sync progress and OAuth-connected Notion/Asana.
+/// Forgets the project: signs out, forgets sync progress and the OAuth-connected exporters.
 #[tauri::command]
 pub async fn clear_backend(app: AppHandle) -> AppResult<crate::model::BackendStatus> {
     crate::backend::clear(&app).await?;
@@ -890,6 +890,14 @@ pub async fn asana_options(
         "section" => asana::sections(&token, parent()?).await?,
         _ => return Err(crate::error::AppError::Code("invalid")),
     })
+}
+
+/// The connected account's Google task lists.
+#[tauri::command]
+pub async fn google_tasks_lists(app: AppHandle) -> AppResult<Vec<crate::model::TargetOption>> {
+    crate::backend::ensure_network(&app)?;
+    let token = crate::export::token(&app, crate::export::Provider::GoogleTasks).await?;
+    Ok(crate::export::google_tasks::lists(&token).await?)
 }
 
 /// Rejects with `invalid` (config shape) or `notConnected`.

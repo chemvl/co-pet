@@ -1,5 +1,6 @@
-// Pieces shared by the Notion and Asana cards: the card shell, the connect / reconnect block
-// (OAuth through the backend or a pasted token), Disconnect, and the queue line.
+// Pieces shared by the export provider cards: the card shell, the connect / reconnect block
+// (OAuth through the backend or, where the provider has one, a pasted token), Disconnect, and
+// the queue line.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Button, Icon, StatusPill } from '../../ds';
@@ -53,25 +54,33 @@ export function ProviderCard(p: {
   );
 }
 
-const COPY: Record<ExportProvider, { connect: I18nKey; tokenLabel: I18nKey; tokenHelp: I18nKey; placeholder: I18nKey }> = {
+interface TokenCopy { label: I18nKey; help: I18nKey; placeholder: I18nKey }
+
+/** `token` is null for a provider without personal tokens (OAuth only). */
+const COPY: Record<ExportProvider, { connect: I18nKey; token: TokenCopy | null }> = {
   notion: {
     connect: 'integrations.notion.connect',
-    tokenLabel: 'integrations.notion.tokenLabel',
-    tokenHelp: 'integrations.notion.tokenHelp',
-    placeholder: 'integrations.notion.tokenPlaceholder',
+    token: {
+      label: 'integrations.notion.tokenLabel',
+      help: 'integrations.notion.tokenHelp',
+      placeholder: 'integrations.notion.tokenPlaceholder',
+    },
   },
   asana: {
     connect: 'integrations.asana.connect',
-    tokenLabel: 'integrations.asana.tokenLabel',
-    tokenHelp: 'integrations.asana.tokenHelp',
-    placeholder: 'integrations.asana.tokenPlaceholder',
+    token: {
+      label: 'integrations.asana.tokenLabel',
+      help: 'integrations.asana.tokenHelp',
+      placeholder: 'integrations.asana.tokenPlaceholder',
+    },
   },
+  google_tasks: { connect: 'integrations.googleTasks.connect', token: null },
 };
 
 /**
  * Not connected (or needs a reconnect): "Connect <Provider>" through the browser once the user
- * connected their own Supabase project (Settings › Account), and "Use a token instead". The
- * OAuth result arrives as `integration-changed`.
+ * connected their own Supabase project (Settings › Account), and "Use a token instead" where the
+ * provider has tokens. The OAuth result arrives as `integration-changed`.
  * `compact` (onboarding) keeps the footer's Continue the only primary button.
  */
 export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolean; compact?: boolean }): ReactElement {
@@ -81,6 +90,7 @@ export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolea
   const { data: backend } = useBackendStatus();
   const oauth = backend?.configured === true;
   const copy = COPY[p.provider];
+  const tokenCopy = copy.token;
   const [tokenOpen, setTokenOpen] = useState(false);
   const [token, setToken] = useState('');
   const [pending, setPending] = useState(false);
@@ -127,19 +137,22 @@ export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolea
   return (
     <div className="in-connect">
       {pending ? <p className="caption in-muted in-m0" role="status">{t('integrations.pending')}</p> : null}
+      {!tokenCopy && backend?.configured === false ? (
+        <p className="caption in-muted in-m0">{t('integrations.needsBackend', { provider: PROVIDER_NAME[p.provider] })}</p>
+      ) : null}
       <div className="in-actions">
         {oauth ? (
           <Button variant={p.compact ? 'secondary' : 'primary'} size="sm" onClick={() => void startOauth()}>
             {connectLabel}
           </Button>
         ) : null}
-        {oauth && !tokenOpen ? (
+        {oauth && tokenCopy && !tokenOpen ? (
           <Button variant="quiet" size="sm" onClick={() => setTokenOpen(true)}>
             {t('integrations.useToken')}
           </Button>
         ) : null}
       </div>
-      {showToken ? (
+      {showToken && tokenCopy ? (
         <form
           className="in-token"
           onSubmit={(e) => {
@@ -152,8 +165,8 @@ export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolea
               id={tokenId}
               type="password"
               className="st-input in-token__input"
-              placeholder={t(copy.placeholder)}
-              aria-label={t(copy.tokenLabel)}
+              placeholder={t(tokenCopy.placeholder)}
+              aria-label={t(tokenCopy.label)}
               autoComplete="off"
               spellCheck={false}
               value={token}
@@ -163,7 +176,7 @@ export function ConnectSection(p: { provider: ExportProvider; reconnect?: boolea
               {p.reconnect && !oauth ? connectLabel : t('integrations.connect')}
             </Button>
           </div>
-          <p className="caption in-muted in-m0">{t(copy.tokenHelp)}</p>
+          <p className="caption in-muted in-m0">{t(tokenCopy.help)}</p>
         </form>
       ) : null}
       {error ? <p className="st-error" role="alert">{error}</p> : null}

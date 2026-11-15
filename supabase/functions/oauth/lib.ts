@@ -1,6 +1,6 @@
 // Pure helpers for the OAuth hand-off function (no I/O, testable with `deno test`).
 
-export type Provider = "notion" | "asana";
+export type Provider = "notion" | "asana" | "google_tasks";
 
 export interface TokenJson {
   accessToken: string;
@@ -12,8 +12,11 @@ export interface TokenJson {
 export const ASANA_SCOPES =
   "tasks:read tasks:write workspaces:read projects:read attachments:write users:read";
 
+/** Tasks, plus `openid email` so the app can label the account through the userinfo endpoint. */
+export const GOOGLE_TASKS_SCOPES = "openid email https://www.googleapis.com/auth/tasks";
+
 export function isProvider(v: unknown): v is Provider {
-  return v === "notion" || v === "asana";
+  return v === "notion" || v === "asana" || v === "google_tasks";
 }
 
 /** `state` and `challenge` are 32 random bytes in unpadded base64url: exactly 43 chars. */
@@ -52,6 +55,18 @@ export function authorizeUrl(
       ["state", state],
     ]);
   }
+  if (provider === "google_tasks") {
+    // `offline` asks for a refresh token; `consent` makes Google send one again on a reconnect.
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + q([
+      ["client_id", clientId],
+      ["response_type", "code"],
+      ["redirect_uri", redirectUri],
+      ["state", state],
+      ["scope", GOOGLE_TASKS_SCOPES],
+      ["access_type", "offline"],
+      ["prompt", "consent"],
+    ]);
+  }
   return "https://app.asana.com/-/oauth_authorize?" + q([
     ["client_id", clientId],
     ["response_type", "code"],
@@ -73,7 +88,8 @@ export function doneUrl(base: string, params: Record<string, string>): string {
 
 /**
  * Normalizes a provider token response. Notion labels the account with `workspace_name`,
- * Asana with `data.email`; refresh responses pass `withLabel = false` (the app keeps its label).
+ * Asana with `data.email`; Google has no label here (the app reads it from userinfo). Refresh
+ * responses pass `withLabel = false` (the app keeps its label).
  * Returns null when the response carries no access token.
  */
 export function normalizeToken(

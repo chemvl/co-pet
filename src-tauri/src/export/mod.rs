@@ -1,10 +1,11 @@
-//! Notion and Asana export: the providers, the payload sent for a task, keychain tokens (with
-//! refresh through the backend), the shared HTTP status mapping, and what the integration
-//! commands do. `queue` runs the jobs; `oauth` connects an account.
+//! Notion, Asana and Google Tasks export: the providers, the payload sent for a task, keychain
+//! tokens (with refresh through the backend), the shared HTTP status mapping, and what the
+//! integration commands do. `queue` runs the jobs; `oauth` connects an account.
 //!
 //! A new exporter = one module + one `Provider` variant + the match arms below.
 pub mod asana;
 pub mod file;
+pub mod google_tasks;
 pub mod notion;
 pub mod oauth;
 pub mod queue;
@@ -24,7 +25,7 @@ use crate::db::{categories, items, settings, tasks};
 use crate::error::{AppError, AppResult};
 use crate::events;
 use crate::i18n::Lang;
-use crate::model::{AsanaConfig, ExportTarget, ItemRow, NotionConfig, ProviderStatus, TaskExportState};
+use crate::model::{AsanaConfig, ExportTarget, GoogleTasksConfig, ItemRow, NotionConfig, ProviderStatus, TaskExportState};
 use crate::secrets::{self, ProviderToken};
 
 /// Source files above this size are not attached.
@@ -37,17 +38,33 @@ const REFRESH_MARGIN_MS: i64 = 60_000;
 pub enum Provider {
     Notion,
     Asana,
+    GoogleTasks,
 }
 
 impl Provider {
-    pub const ALL: [Provider; 2] = [Provider::Notion, Provider::Asana];
+    pub const ALL: [Provider; 3] = [Provider::Notion, Provider::Asana, Provider::GoogleTasks];
 
     /// Also the keychain account and the `export_targets.id`.
     pub fn as_str(self) -> &'static str {
         match self {
             Provider::Notion => "notion",
             Provider::Asana => "asana",
+            Provider::GoogleTasks => "google_tasks",
         }
+    }
+
+    /// The product name.
+    pub fn name(self) -> &'static str {
+        match self {
+            Provider::Notion => "Notion",
+            Provider::Asana => "Asana",
+            Provider::GoogleTasks => "Google Tasks",
+        }
+    }
+
+    /// Whether a pasted personal token can connect it. Google has none: OAuth only.
+    pub fn accepts_token(self) -> bool {
+        !matches!(self, Provider::GoogleTasks)
     }
 }
 
@@ -58,6 +75,7 @@ impl FromStr for Provider {
         match s {
             "notion" => Ok(Provider::Notion),
             "asana" => Ok(Provider::Asana),
+            "google_tasks" => Ok(Provider::GoogleTasks),
             _ => Err(AppError::Code("invalid")),
         }
     }
@@ -151,14 +169,17 @@ pub(crate) async fn send(req: RequestBuilder) -> Result<Value, ExportError> {
 /// Retry-After when the header is missing or not a number of seconds.
 const DEFAULT_RETRY_AFTER_S: u64 = 30;
 
-/// `429` (and Notion's `529`) → `RateLimited(Retry-After, at least 1 s, default 30 s)`;
-/// `401`/`403` → `Unauthorized`; `404` → `TargetMissing`; other `4xx` → `Invalid(body)`; the
-/// rest → `Retryable`.
+/// `429` (and Notion's `529`), and Google's `403` with a `rateLimitExceeded` /
+/// `userRateLimitExceeded` reason → `RateLimited(Retry-After, at least 1 s, default 30 s)`;
+/// other `401`/`403` → `Unauthorized`; `404` → `TargetMissing`; other `4xx` → `Invalid(body)`;
+/// the rest → `Retryable`.
 pub fn classify(status: u16, retry_after: Option<&str>, body: String) -> ExportError {
+    let rate_limited = || retry_after.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(DEFAULT_RETRY_AFTER_S).max(1);
     match status {
-        429 | 529 => ExportError::RateLimited(
-            retry_after.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(DEFAULT_RETRY_AFTER_S).max(1),
-        ),
+        429 | 529 => ExportError::RateLimited(rate_limited()),
+        403 if body.contains("\"rateLimitExceeded\"") || body.contains("\"userRateLimitExceeded\"") => {
+            ExportError::RateLimited(rate_limited())
+        }
         401 | 403 => ExportError::Unauthorized,
         404 => ExportError::TargetMissing,
         400..=499 => ExportError::Invalid(body),
@@ -195,7 +216,8 @@ fn needs_refresh(t: &ProviderToken, now: i64) -> bool {
     t.refresh_token.is_some() && t.expires_at.is_some_and(|at| at < now + REFRESH_MARGIN_MS)
 }
 
-/// The refreshed token; a `null` refresh token in the response keeps the stored one (Asana).
+/// The refreshed token; a `null` refresh token in the response keeps the stored one (Asana,
+/// Google).
 fn merge_refreshed(old: ProviderToken, fresh: BackendToken) -> ProviderToken {
     ProviderToken {
         access_token: fresh.access_token,
@@ -258,6 +280,7 @@ pub async fn me(p: Provider, token: &str) -> Result<String, ExportError> {
     match p {
         Provider::Notion => notion::me(token).await,
         Provider::Asana => asana::me(token).await,
+        Provider::GoogleTasks => google_tasks::me(token).await,
     }
 }
 
@@ -273,6 +296,10 @@ async fn export_with(p: Provider, token: &str, target: &ExportTarget, payload: &
         Provider::Asana => {
             let cfg: AsanaConfig = serde_json::from_value(target.config.clone()).map_err(invalid)?;
             asana::export(token, &cfg, payload).await
+        }
+        Provider::GoogleTasks => {
+            let cfg: GoogleTasksConfig = serde_json::from_value(target.config.clone()).map_err(invalid)?;
+            google_tasks::export(token, &cfg, payload).await
         }
     }
 }
@@ -416,8 +443,11 @@ pub fn keychain_token(p: Provider) -> AppResult<Option<ProviderToken>> {
 }
 
 /// Validates `token` with `me()` and stores it as a `token` connection. A rejected token is
-/// `invalidToken`.
+/// `invalidToken`; a provider without personal tokens is `invalid`.
 pub async fn connect_token(app: &AppHandle, p: Provider, token: &str) -> AppResult<()> {
+    if !p.accepts_token() {
+        return Err(AppError::Code("invalid"));
+    }
     backend::ensure_network(app)?;
     let token = token.trim();
     if token.is_empty() {
@@ -477,6 +507,13 @@ pub fn set_target(
         Provider::Asana => {
             let c: AsanaConfig = serde_json::from_value(config).map_err(invalid)?;
             if c.workspace_gid.trim().is_empty() || c.project_gid.trim().is_empty() {
+                return Err(AppError::Code("invalid"));
+            }
+            serde_json::to_value(c)?
+        }
+        Provider::GoogleTasks => {
+            let c: GoogleTasksConfig = serde_json::from_value(config).map_err(invalid)?;
+            if c.tasklist_id.trim().is_empty() {
                 return Err(AppError::Code("invalid"));
             }
             serde_json::to_value(c)?
@@ -626,6 +663,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn google_rate_limit_403_is_not_unauthorized() {
+        let body = r#"{"error":{"code":403,"errors":[{"reason":"userRateLimitExceeded"}]}}"#;
+        assert_eq!(classify(403, None, body.into()), ExportError::RateLimited(30));
+        let body = r#"{"error":{"code":403,"errors":[{"reason":"rateLimitExceeded"}]}}"#;
+        assert_eq!(classify(403, Some("5"), body.into()), ExportError::RateLimited(5));
+        let body = r#"{"error":{"code":403,"errors":[{"reason":"insufficientPermissions"}]}}"#;
+        assert_eq!(classify(403, None, body.into()), ExportError::Unauthorized);
+    }
+
+    #[test]
     fn retry_after_never_zero() {
         assert_eq!(classify(429, Some("0"), String::new()), ExportError::RateLimited(1));
         assert_eq!(classify(429, Some(" "), String::new()), ExportError::RateLimited(30));
@@ -716,5 +763,19 @@ pub(crate) mod tests {
         assert_eq!(s.target.unwrap().target_label, "Co-pet › Sprint");
         assert_eq!(retry(&conn, Some(Provider::Asana), 3).unwrap(), vec![a]);
         assert!(set_target(&conn, Provider::Asana, json!({ "workspaceGid": "" , "projectGid": "p" }), "x", "y", 4).is_err());
+    }
+
+    #[test]
+    fn google_tasks_target_and_queue() {
+        let db = Db::open_in_memory().unwrap();
+        let conn = db.conn();
+        assert!(set_target(&conn, Provider::GoogleTasks, json!({ "tasklistId": " " }), "My Tasks", "me@x.y", 1).is_err());
+        let t = set_target(&conn, Provider::GoogleTasks, json!({ "tasklistId": "L1" }), "My Tasks", "me@x.y", 1).unwrap();
+        assert_eq!((t.id.as_str(), t.config), ("google_tasks", json!({ "tasklistId": "L1" })));
+        let a = task(&conn, "A");
+        let s = enqueue(&conn, &a, Provider::GoogleTasks, None, 1).unwrap();
+        assert_eq!((s.provider.as_str(), s.state.as_str()), ("google_tasks", "queued"));
+        assert_eq!("google_tasks".parse::<Provider>().unwrap(), Provider::GoogleTasks);
+        assert!(!Provider::GoogleTasks.accepts_token() && Provider::Asana.accepts_token());
     }
 }

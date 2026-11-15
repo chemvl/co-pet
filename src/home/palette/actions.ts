@@ -2,7 +2,7 @@
 // `run` over the palette context; Palette.tsx filters by `when` and matches labels.
 import type { IconName } from '../../ds/types';
 import { errorMessage } from '../../shared/errors';
-import type { TFunction } from '../../shared/i18n';
+import type { I18nKey, TFunction } from '../../shared/i18n';
 import { captureNote, exportTask, retryExports, setSetting, syncNow } from '../../shared/ipc';
 import { canSyncNow } from '../../shared/sync';
 import type { ShowToast } from '../../shared/Toast';
@@ -58,6 +58,13 @@ function scrollToCard(provider: ExportProvider): void {
   };
   requestAnimationFrame(step);
 }
+
+/** "Open Integrations › …" per provider: what its card configures. */
+const OPEN_TARGET_LABEL: Record<ExportProvider, I18nKey> = {
+  notion: 'palette.openNotionMapping',
+  asana: 'palette.openAsanaProject',
+  google_tasks: 'palette.openGoogleTasksList',
+};
 
 const status = (ctx: PaletteContext, p: ExportProvider) => ctx.integrations.find((s) => s.provider === p);
 const waiting = (s: ProviderStatus | undefined) => (s ? s.queued + s.failed : 0);
@@ -139,7 +146,7 @@ export const ACTIONS: readonly PaletteAction[] = [
     (p): PaletteAction => ({
       id: `integrations.${p}`,
       icon: 'settings',
-      label: (t) => t(p === 'notion' ? 'palette.openNotionMapping' : 'palette.openAsanaProject', { provider: PROVIDER_NAME[p] }),
+      label: (t) => t(OPEN_TARGET_LABEL[p], { provider: PROVIDER_NAME[p] }),
       run: (ctx) => {
         ctx.navigate('integrations');
         scrollToCard(p);

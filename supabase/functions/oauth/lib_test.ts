@@ -28,6 +28,12 @@ Deno.test("authorizeUrl builds provider URLs with encoded redirect and scope", (
   const a = authorizeUrl("asana", "aid", "https://r", "s");
   assert(a.startsWith("https://app.asana.com/-/oauth_authorize?client_id=aid&response_type=code"));
   assert(a.endsWith("&scope=tasks%3Aread%20tasks%3Awrite%20workspaces%3Aread%20projects%3Aread%20attachments%3Awrite%20users%3Aread"));
+  const g = new URL(authorizeUrl("google_tasks", "gid", "https://r", "s"));
+  assertEquals(g.origin + g.pathname, "https://accounts.google.com/o/oauth2/v2/auth");
+  assertEquals(g.searchParams.get("scope"), "openid email https://www.googleapis.com/auth/tasks");
+  assertEquals(g.searchParams.get("access_type"), "offline");
+  assertEquals(g.searchParams.get("prompt"), "consent");
+  assertEquals(g.searchParams.get("state"), "s");
 });
 
 Deno.test("doneUrl puts encoded params in the fragment of the done page", () => {
@@ -45,6 +51,10 @@ Deno.test("normalizeToken maps Notion, Asana and refresh responses", () => {
   assertEquals(
     normalizeToken("asana", { access_token: "t", expires_in: 3600, data: { email: "a@b.c" } }, 0),
     { accessToken: "t", refreshToken: null, expiresAt: 3_600_000, accountLabel: "a@b.c" },
+  );
+  assertEquals(
+    normalizeToken("google_tasks", { access_token: "t", refresh_token: "r", expires_in: 3599, id_token: "x.y.z" }, 0),
+    { accessToken: "t", refreshToken: "r", expiresAt: 3_599_000, accountLabel: "" },
   );
   assertEquals(
     normalizeToken("notion", { access_token: "t", workspace_name: "W" }, 0, false),

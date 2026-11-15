@@ -232,7 +232,8 @@ pub async fn delete_everything(app: &AppHandle, confirmation: &str) -> AppResult
     tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
         // Read before the database goes.
         let user_id: Option<String> = settings::read(&app, "sync.userId")?;
-        for account in ["notion", "asana", account::auth::SESSION].into_iter().chain(crate::ai::KEY_ACCOUNTS) {
+        let exporters = crate::export::Provider::ALL.map(crate::export::Provider::as_str);
+        for account in exporters.into_iter().chain([account::auth::SESSION]).chain(crate::ai::KEY_ACCOUNTS) {
             secrets::delete(account)?;
         }
         if let Some(user_id) = user_id {

@@ -107,7 +107,7 @@ async fn probe(b: &Backend) -> AppResult<()> {
 }
 
 /// Checks and tests the project, then saves it. Moving to another project first leaves the
-/// old one: signs out, forgets this device's sync progress and the Notion/Asana connections
+/// old one: signs out, forgets this device's sync progress and the exporter connections
 /// made through the old project's `oauth` function. The same project only replaces the key.
 /// The first project also signs out a session an older build left behind.
 pub async fn set(app: &AppHandle, url: &str, key: &str) -> AppResult<()> {
@@ -127,7 +127,7 @@ pub async fn set(app: &AppHandle, url: &str, key: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Forgets the project: signs out, forgets sync progress and OAuth-connected Notion/Asana.
+/// Forgets the project: signs out, forgets sync progress and the OAuth-connected exporters.
 pub async fn clear(app: &AppHandle) -> AppResult<()> {
     leave(app).await?;
     forget_oauth(app)?;
@@ -150,7 +150,7 @@ async fn leave(app: &AppHandle) -> AppResult<()> {
     crate::sync::forget(app).await
 }
 
-/// Disconnects Notion/Asana connected through the project's `oauth` function (their refresh
+/// Disconnects exporters connected through the project's `oauth` function (their refresh
 /// goes through it); personal tokens stay. Like the Disconnect button, queued jobs fail.
 fn forget_oauth(app: &AppHandle) -> AppResult<()> {
     let mut failed = Vec::new();

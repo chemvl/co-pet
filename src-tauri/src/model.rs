@@ -556,7 +556,7 @@ pub enum Actor {
     Agent(String),
     /// Tasks created from a meeting's action items.
     Meeting,
-    /// Status pulled from Notion or Asana by the status sync.
+    /// Status pulled from Notion, Asana or Google Tasks by the status sync.
     Service(crate::export::Provider),
 }
 
@@ -907,7 +907,8 @@ pub struct TaskExportState {
     pub next_attempt_at: Option<i64>,
 }
 
-/// The live `export_targets` row of a provider; `config` is a `NotionConfig` / `AsanaConfig`.
+/// The live `export_targets` row of a provider; `config` is a `NotionConfig` / `AsanaConfig` /
+/// `GoogleTasksConfig`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportTarget {
@@ -935,7 +936,7 @@ pub struct ProviderStatus {
     pub last_error: Option<String>,
 }
 
-/// A Notion data source or an Asana workspace / project / section.
+/// A Notion data source, an Asana workspace / project / section, or a Google task list.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetOption {
@@ -977,6 +978,12 @@ pub struct AsanaConfig {
     pub workspace_gid: String,
     pub project_gid: String,
     pub section_gid: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoogleTasksConfig {
+    pub tasklist_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

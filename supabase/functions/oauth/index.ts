@@ -1,4 +1,4 @@
-// OAuth hand-off for Notion and Asana. The app opens /start in the browser with a random
+// OAuth hand-off for Notion, Asana and Google Tasks. The app opens /start in the browser with a random
 // `state` and a PKCE-style `challenge`; the provider redirects to /callback, which exchanges the
 // code with the client secret, parks the normalized token and sends the browser to the done page
 // (COPET_OAUTH_DONE_URL), which opens `copet://oauth/done`; the app then claims the token with the
@@ -20,15 +20,15 @@ const DONE_URL = Deno.env.get("COPET_OAUTH_DONE_URL") ?? "";
 const HANDOFF_TTL_MS = 10 * 60 * 1000;
 const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 const ASANA_TOKEN_URL = "https://app.asana.com/-/oauth_token";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const db = createClient(SUPABASE_URL, Deno.env.get("COPET_SERVICE_KEY") ?? "", {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const clientId = (p: Provider) =>
-  Deno.env.get(p === "notion" ? "NOTION_CLIENT_ID" : "ASANA_CLIENT_ID") ?? "";
-const clientSecret = (p: Provider) =>
-  Deno.env.get(p === "notion" ? "NOTION_CLIENT_SECRET" : "ASANA_CLIENT_SECRET") ?? "";
+const ENV_PREFIX: Record<Provider, string> = { notion: "NOTION", asana: "ASANA", google_tasks: "GOOGLE_TASKS" };
+const clientId = (p: Provider) => Deno.env.get(`${ENV_PREFIX[p]}_CLIENT_ID`) ?? "";
+const clientSecret = (p: Provider) => Deno.env.get(`${ENV_PREFIX[p]}_CLIENT_SECRET`) ?? "";
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -54,7 +54,7 @@ function tokenRequest(provider: Provider, grant: Record<string, string>): Promis
       body: JSON.stringify(grant),
     });
   }
-  return fetch(ASANA_TOKEN_URL, {
+  return fetch(provider === "asana" ? ASANA_TOKEN_URL : GOOGLE_TOKEN_URL, {
     method: "POST",
     body: new URLSearchParams({
       ...grant,

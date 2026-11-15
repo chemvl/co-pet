@@ -7,11 +7,12 @@ import { ModelCards } from '../settings/ModelCards';
 import { SpeechModelCards } from '../settings/SpeechModelCards';
 import { AsanaCard } from './AsanaCard';
 import { CloudProvidersCard } from './CloudProvidersCard';
+import { GoogleTasksCard } from './GoogleTasksCard';
 import { NotionCard } from './NotionCard';
 import './integrations.css';
 
 /** Exporters planned for later releases (product names, not translated). */
-const LATER = ['Linear', 'Todoist', 'Jira', 'GitHub Issues', 'Google Tasks'] as const;
+const LATER = ['Linear', 'Todoist', 'Jira', 'GitHub Issues'] as const;
 
 export function IntegrationsPage(): ReactElement {
   const t = useT();
@@ -20,6 +21,7 @@ export function IntegrationsPage(): ReactElement {
   const { data: statuses } = useIntegrations();
   const notion = statuses?.find((s) => s.provider === 'notion');
   const asana = statuses?.find((s) => s.provider === 'asana');
+  const googleTasks = statuses?.find((s) => s.provider === 'google_tasks');
 
   return (
     <div className="hm-page">
@@ -30,6 +32,7 @@ export function IntegrationsPage(): ReactElement {
             <h2 className="in-h" id={exportId}>{t('integrations.exportTasks')}</h2>
             <NotionCard status={notion} />
             <AsanaCard status={asana} />
+            <GoogleTasksCard status={googleTasks} />
             <div className="in-later">
               <span className="caption in-muted">{t('integrations.later')}</span>
               {LATER.map((name) => (

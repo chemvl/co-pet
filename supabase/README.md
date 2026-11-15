@@ -1,8 +1,8 @@
 # Running your own Co-pet backend
 
-Co-pet works fully on your computer without any backend. Accounts, sync between your computers and the one-click "Connect Notion / Asana" buttons need a Supabase project that **you** own. Co-pet has no shared server: you create a free Supabase project, deploy the pieces in this folder to it, and paste its address into Co-pet.
+Co-pet works fully on your computer without any backend. Accounts, sync between your computers and the one-click "Connect Notion / Asana / Google Tasks" buttons need a Supabase project that **you** own. Co-pet has no shared server: you create a free Supabase project, deploy the pieces in this folder to it, and paste its address into Co-pet.
 
-Notion and Asana personal tokens ("Use a token instead" in Integrations) never need a backend.
+Notion and Asana personal tokens ("Use a token instead" in Integrations) never need a backend. Google Tasks has no personal tokens, so it always connects through the `oauth` function.
 
 ## What each feature needs
 
@@ -12,7 +12,7 @@ Notion and Asana personal tokens ("Use a token instead" in Integrations) never n
 | Sign in with Google | Steps 1–3, 4 (Google), 5 |
 | Sync between computers (end-to-end encrypted) | A signed-in account; the database from step 2 |
 | Delete cloud data | The `delete-account` function and `COPET_SERVICE_KEY` (step 3) |
-| Connect Notion / Asana with OAuth | The `oauth` function, its secrets (step 3) and your own Notion / Asana app (step 6) |
+| Connect Notion / Asana / Google Tasks with OAuth | The `oauth` function, its secrets (step 3) and your own Notion / Asana / Google app (step 6) |
 
 ## 1. Create the project
 
@@ -36,14 +36,15 @@ This creates the encrypted sync tables (`records`, `sync_keys`), the private Sto
 ## 3. Deploy the functions and their secrets
 
 1. In Dashboard › Project Settings › API keys, copy the **secret** key (`sb_secret_…`, or the legacy `service_role` key). It stays on the server: never paste it into Co-pet.
-2. Set the secrets. Leave out the Notion or Asana pair if you don't use that OAuth connection:
+2. Set the secrets. Leave out the Notion, Asana or Google Tasks pair if you don't use that OAuth connection:
 
    ```sh
    supabase secrets set \
      COPET_SERVICE_KEY=<secret key> \
      COPET_OAUTH_DONE_URL=https://mrdeeds88.github.io/oauth/done/ \
      NOTION_CLIENT_ID=<from step 6> NOTION_CLIENT_SECRET=<from step 6> \
-     ASANA_CLIENT_ID=<from step 6> ASANA_CLIENT_SECRET=<from step 6>
+     ASANA_CLIENT_ID=<from step 6> ASANA_CLIENT_SECRET=<from step 6> \
+     GOOGLE_TASKS_CLIENT_ID=<from step 6> GOOGLE_TASKS_CLIENT_SECRET=<from step 6>
    ```
 
    `COPET_OAUTH_DONE_URL` is a static page that hands the finished sign-in back to the app (it opens `copet://oauth/done`). It holds no data; you may host your own copy of it.
@@ -73,13 +74,15 @@ This creates the encrypted sync tables (`records`, `sync_keys`), the private Sto
 
 Dashboard › Authentication › URL Configuration › Redirect URLs: add `copet://auth/callback`. Without it, Supabase ignores the app's return address and sends the browser to the Site URL instead.
 
-## 6. Your own Notion and Asana apps (OAuth, optional)
+## 6. Your own Notion, Asana and Google apps (OAuth, optional)
 
-The redirect address for both is `https://<ref>.supabase.co/functions/v1/oauth/callback`.
+The redirect address for all three is `https://<ref>.supabase.co/functions/v1/oauth/callback`.
 
 **Notion.** At https://www.notion.so/profile/integrations create a **public** integration (connection). Set its redirect URI to the address above, and under Capabilities enable Read content, Update content and Insert content. Use its OAuth client ID and secret for `NOTION_CLIENT_ID` / `NOTION_CLIENT_SECRET`. Choose the installation scope that covers the workspaces you want to use; it can't be changed later.
 
 **Asana.** At https://app.asana.com/0/my-apps create an app. Add the redirect URL above under OAuth, and register exactly these scopes: `tasks:read tasks:write workspaces:read projects:read attachments:write users:read`. Use its client ID and secret for `ASANA_CLIENT_ID` / `ASANA_CLIENT_SECRET`.
+
+**Google Tasks.** In the Google Cloud console (https://console.cloud.google.com), pick or create a project and enable the **Google Tasks API** (APIs & Services › Library). On the OAuth consent screen (Google Auth Platform) add the scopes `openid`, `email` and `https://www.googleapis.com/auth/tasks`. Under Clients create an OAuth client of type **Web application** and add the redirect address above as an authorized redirect URI. Use its client ID and secret for `GOOGLE_TASKS_CLIENT_ID` / `GOOGLE_TASKS_CLIENT_SECRET`. The client you made for Google sign-in (step 4) works too once that redirect URI is added. While the app's publishing status is **Testing**, add yourself as a test user, and Google expires the connection after 7 days (Co-pet then asks to reconnect); publish the app to keep it.
 
 After changing the secrets, run `supabase secrets set …` again; the functions pick them up without a redeploy.
 
@@ -88,7 +91,7 @@ After changing the secrets, run `supabase secrets set …` again; the functions 
 1. Dashboard › Project Settings › API keys: copy the **publishable** key (`sb_publishable_…`, or the legacy `anon` key). It's meant for apps; row-level security protects your data.
 2. In Co-pet, open Settings › Account and sync, paste `https://<ref>.supabase.co` and the publishable key, and click **Test and save**. Co-pet checks that the project answers before saving it.
 
-Sign-in, sync and the OAuth buttons work right away, without a restart. **Disconnect** in the same place signs you out and forgets the project; everything on your computer stays. Moving to another project signs you out first, and Notion or Asana connected through the old project's OAuth app have to be connected again (connections made with a token stay).
+Sign-in, sync and the OAuth buttons work right away, without a restart. **Disconnect** in the same place signs you out and forgets the project; everything on your computer stays. Moving to another project signs you out first, and Notion, Asana or Google Tasks connected through the old project's OAuth app have to be connected again (connections made with a token stay).
 
 ## Developing against a local stack
 

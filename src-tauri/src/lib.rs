@@ -261,6 +261,7 @@ pub fn run() {
             commands::notion_data_sources,
             commands::notion_schema,
             commands::asana_options,
+            commands::google_tasks_lists,
             commands::set_export_target,
             commands::export_task,
             commands::retry_exports,

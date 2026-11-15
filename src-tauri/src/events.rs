@@ -33,7 +33,7 @@ pub const WHATS_NEXT: &str = "whats-next";
 pub const DIARY_READY: &str = "diary-ready";
 /// Export jobs changed; listeners also refresh task lists (`TaskSummary.export`).
 pub const EXPORTS_CHANGED: &str = "exports-changed";
-/// A Notion/Asana connection finished (OAuth or token) or failed.
+/// A Notion, Asana or Google Tasks connection finished (OAuth or token) or failed.
 pub const INTEGRATION_CHANGED: &str = "integration-changed";
 /// Agents screen data changed (a call, an activity row, a client, the HTTP server's state);
 /// payload `{}`.

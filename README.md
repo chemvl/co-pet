@@ -1,6 +1,6 @@
 # Co-pet
 
-Co-pet is a desktop companion that lives on the edge of your screen as an animated pet and works as a universal inbox. Drop anything on it — a file, a link, a screenshot, a snippet of text — and it sorts it, turns the actionable parts into tasks, tells you the one thing to do next, and hands content back when you need it: drag it out into another app, export it to Notion or Asana, or let your AI agents read it over MCP.
+Co-pet is a desktop companion that lives on the edge of your screen as an animated pet and works as a universal inbox. Drop anything on it — a file, a link, a screenshot, a snippet of text — and it sorts it, turns the actionable parts into tasks, tells you the one thing to do next, and hands content back when you need it: drag it out into another app, export it to Notion, Asana or Google Tasks, or let your AI agents read it over MCP.
 
 It is local-first: items, tasks and the triage model live on your computer. Nothing leaves the machine unless you turn on a feature that needs the network, and synced data is end-to-end encrypted.
 
@@ -12,7 +12,7 @@ Distributed for Windows 11 x64 through the Microsoft Store, free. The macOS code
 - **Triage** — rules first, then a small local model (llama.cpp `llama-server`) files each item into a category. Every decision can be undone. Items that look like secrets are marked sensitive and never sent to the model or to agents.
 - **Home** — Inbox, item detail, Tasks, Categories & rules editor, Integrations, Agents, Settings, and a command palette (`⌘/Ctrl+K`).
 - **Tasks and What's Next** — convert items to tasks; the pet suggests the next task when you come back to your computer or finish something.
-- **Export** — push tasks to Notion or Asana through a retrying queue.
+- **Export** — push tasks to Notion, Asana or Google Tasks through a retrying queue.
 - **Transcribe** — records meetings on this computer and turns them into a transcript, summary and tasks; offers to record Zoom and Google Meet calls (Settings › Transcribe).
 - **MCP server** — AI agents (Claude Code, Cursor, Codex, Gemini CLI, or any MCP client) can search items and manage tasks through the bundled `copet-mcp` sidecar, with per-client write approval and an undoable activity log.
 - **Accounts and sync** — optional sign-in (email code or Google) and end-to-end encrypted sync between your computers through a Supabase project you run yourself (see [Bring your own backend](#bring-your-own-backend)).
@@ -105,9 +105,9 @@ bun run typecheck
 
 ## Bring your own backend
 
-Builds contain no backend. Accounts, sync, Google sign-in and Notion/Asana OAuth go through a Supabase project that each user deploys and connects themselves: paste its URL and **publishable** key in Settings › Account and sync. Co-pet saves them on this device only (never synced) and runs fully local until then. Never paste the service_role/secret key into the app. Notion and Asana personal tokens work without any backend.
+Builds contain no backend. Accounts, sync, Google sign-in and Notion/Asana/Google Tasks OAuth go through a Supabase project that each user deploys and connects themselves: paste its URL and **publishable** key in Settings › Account and sync. Co-pet saves them on this device only (never synced) and runs fully local until then. Never paste the service_role/secret key into the app. Notion and Asana personal tokens work without any backend; Google Tasks has no personal tokens and needs the backend.
 
-To deploy the backend to a hosted project (migrations, the `oauth` and `delete-account` functions, their secrets, your own Notion/Asana apps with redirect URL `https://<ref>.supabase.co/functions/v1/oauth/callback`, the `copet://auth/callback` redirect and the optional Google provider), follow [`supabase/README.md`](supabase/README.md). Function secrets go in `supabase secrets set` and stay in Supabase; none of them are part of the app.
+To deploy the backend to a hosted project (migrations, the `oauth` and `delete-account` functions, their secrets, your own Notion/Asana/Google apps with redirect URL `https://<ref>.supabase.co/functions/v1/oauth/callback`, the `copet://auth/callback` redirect and the optional Google provider), follow [`supabase/README.md`](supabase/README.md). Function secrets go in `supabase secrets set` and stay in Supabase; none of them are part of the app.
 
 ### Local backend
 
